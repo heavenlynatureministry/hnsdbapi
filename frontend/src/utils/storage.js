@@ -1,5 +1,6 @@
 /**
  * Local Storage Utility Functions
+ * Production-ready with error handling
  */
 
 const TOKEN_KEY = 'hns_access_token'
@@ -13,27 +14,51 @@ const SETTINGS_KEY = 'hns_settings'
 // =========================================================================
 
 export const getToken = () => {
-  return localStorage.getItem(TOKEN_KEY)
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch (e) {
+    return null
+  }
 }
 
 export const setToken = (token) => {
-  localStorage.setItem(TOKEN_KEY, token)
+  try {
+    localStorage.setItem(TOKEN_KEY, token)
+  } catch (e) {
+    console.error('Failed to save token:', e)
+  }
 }
 
 export const removeToken = () => {
-  localStorage.removeItem(TOKEN_KEY)
+  try {
+    localStorage.removeItem(TOKEN_KEY)
+  } catch (e) {
+    // Ignore
+  }
 }
 
 export const getRefreshToken = () => {
-  return localStorage.getItem(REFRESH_TOKEN_KEY)
+  try {
+    return localStorage.getItem(REFRESH_TOKEN_KEY)
+  } catch (e) {
+    return null
+  }
 }
 
 export const setRefreshToken = (token) => {
-  localStorage.setItem(REFRESH_TOKEN_KEY, token)
+  try {
+    localStorage.setItem(REFRESH_TOKEN_KEY, token)
+  } catch (e) {
+    console.error('Failed to save refresh token:', e)
+  }
 }
 
 export const removeRefreshToken = () => {
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  try {
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
+  } catch (e) {
+    // Ignore
+  }
 }
 
 // =========================================================================
@@ -41,16 +66,30 @@ export const removeRefreshToken = () => {
 // =========================================================================
 
 export const getUser = () => {
-  const user = localStorage.getItem(USER_KEY)
-  return user ? JSON.parse(user) : null
+  try {
+    const user = localStorage.getItem(USER_KEY)
+    return user ? JSON.parse(user) : null
+  } catch (e) {
+    // Corrupted data - clear it
+    localStorage.removeItem(USER_KEY)
+    return null
+  }
 }
 
 export const setUser = (user) => {
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify(user))
+  } catch (e) {
+    console.error('Failed to save user:', e)
+  }
 }
 
 export const removeUser = () => {
-  localStorage.removeItem(USER_KEY)
+  try {
+    localStorage.removeItem(USER_KEY)
+  } catch (e) {
+    // Ignore
+  }
 }
 
 // =========================================================================
@@ -58,11 +97,19 @@ export const removeUser = () => {
 // =========================================================================
 
 export const getTheme = () => {
-  return localStorage.getItem(THEME_KEY) || 'light'
+  try {
+    return localStorage.getItem(THEME_KEY) || 'light'
+  } catch (e) {
+    return 'light'
+  }
 }
 
 export const setTheme = (theme) => {
-  localStorage.setItem(THEME_KEY, theme)
+  try {
+    localStorage.setItem(THEME_KEY, theme)
+  } catch (e) {
+    // Ignore
+  }
 }
 
 // =========================================================================
@@ -70,12 +117,21 @@ export const setTheme = (theme) => {
 // =========================================================================
 
 export const getSettings = () => {
-  const settings = localStorage.getItem(SETTINGS_KEY)
-  return settings ? JSON.parse(settings) : {}
+  try {
+    const settings = localStorage.getItem(SETTINGS_KEY)
+    return settings ? JSON.parse(settings) : {}
+  } catch (e) {
+    localStorage.removeItem(SETTINGS_KEY)
+    return {}
+  }
 }
 
 export const setSettings = (settings) => {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  } catch (e) {
+    console.error('Failed to save settings:', e)
+  }
 }
 
 // =========================================================================
@@ -83,7 +139,11 @@ export const setSettings = (settings) => {
 // =========================================================================
 
 export const clearAll = () => {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
+  try {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+  } catch (e) {
+    // Ignore - storage might be unavailable
+  }
 }
