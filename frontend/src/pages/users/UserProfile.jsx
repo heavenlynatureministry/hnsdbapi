@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useApp } from '../../context/AppContext'
+import api from '../../api/axios'
 import authAPI from '../../api/auth'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
@@ -11,7 +12,7 @@ import { User, Mail, Phone, Shield, Key, Save, Camera, Clock } from 'lucide-reac
 import toast from 'react-hot-toast'
 
 function UserProfile() {
-  const { user, updateProfile, changePassword } = useAuth()
+  const { user, setUser } = useAuth()
   const { updatePageTitle, updateBreadcrumbs } = useApp()
 
   const [profileLoading, setProfileLoading] = useState(false)
@@ -59,9 +60,16 @@ function UserProfile() {
     e.preventDefault()
     setProfileLoading(true)
     try {
-      await updateProfile(profileData)
+      const response = await api.put('/auth/me', profileData)
+      if (response.success) {
+        // Update user in context
+        const updatedUser = { ...user, ...profileData }
+        setUser(updatedUser)
+        localStorage.setItem('hns_user', JSON.stringify(updatedUser))
+        toast.success('Profile updated successfully')
+      }
     } catch (error) {
-      toast.error('Failed to update profile')
+      toast.error(error.message || 'Failed to update profile')
     } finally {
       setProfileLoading(false)
     }
@@ -95,10 +103,19 @@ function UserProfile() {
     if (!validatePasswordForm()) return
     setPasswordLoading(true)
     try {
-      await changePassword(passwordData)
-      setPasswordData({ current_password: '', new_password: '', confirm_new_password: '' })
+      const response = await api.post('/auth/change-password', {
+        current_password: passwordData.current_password,
+        new_password: passwordData.new_password,
+        confirm_new_password: passwordData.confirm_new_password,
+      })
+      if (response.success) {
+        toast.success('Password changed successfully')
+        setPasswordData({ current_password: '', new_password: '', confirm_new_password: '' })
+      } else {
+        toast.error(response.message || 'Failed to change password')
+      }
     } catch (error) {
-      toast.error('Failed to change password')
+      toast.error(error.message || 'Failed to change password')
     } finally {
       setPasswordLoading(false)
     }
@@ -142,9 +159,7 @@ function UserProfile() {
               {user.first_name} {user.last_name}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">{user.email}</p>
-            <span
-              className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}
-            >
+            <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
               {user.role?.charAt(0).toUpperCase() + user.role?.slice(1)}
             </span>
           </div>
@@ -152,20 +167,16 @@ function UserProfile() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Mail size={16} />
-            {user.email}
+            <Mail size={16} /> {user.email}
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Phone size={16} />
-            {user.phone_number || 'Not set'}
+            <Phone size={16} /> {user.phone_number || 'Not set'}
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Shield size={16} />
-            {user.permissions?.length || 0} permissions
+            <Shield size={16} /> {user.permissions?.length || 0} permissions
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Clock size={16} />
-            {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'N/A'}
+            <Clock size={16} /> {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'N/A'}
           </div>
         </div>
       </Card>
@@ -182,8 +193,7 @@ function UserProfile() {
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            <tab.icon size={16} />
-            {tab.label}
+            <tab.icon size={16} /> {tab.label}
           </button>
         ))}
       </div>
@@ -193,32 +203,11 @@ function UserProfile() {
         <Card>
           <form onSubmit={handleProfileSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormInput
-                label="First Name"
-                name="first_name"
-                value={profileData.first_name}
-                onChange={handleProfileChange}
-              />
-              <FormInput
-                label="Last Name"
-                name="last_name"
-                value={profileData.last_name}
-                onChange={handleProfileChange}
-              />
+              <FormInput label="First Name" name="first_name" value={profileData.first_name} onChange={handleProfileChange} />
+              <FormInput label="Last Name" name="last_name" value={profileData.last_name} onChange={handleProfileChange} />
             </div>
-            <FormInput
-              label="Email Address"
-              value={user.email}
-              disabled
-              helperText="Email cannot be changed"
-            />
-            <FormInput
-              label="Phone Number"
-              name="phone_number"
-              value={profileData.phone_number}
-              onChange={handleProfileChange}
-              placeholder="+211 900 000 000"
-            />
+            <FormInput label="Email Address" value={user.email} disabled helperText="Email cannot be changed" />
+            <FormInput label="Phone Number" name="phone_number" value={profileData.phone_number} onChange={handleProfileChange} placeholder="+211 900 000 000" />
             <div className="pt-4">
               <Button type="submit" variant="primary" loading={profileLoading} icon={<Save size={18} />}>
                 Update Profile
@@ -232,34 +221,9 @@ function UserProfile() {
       {activeTab === 'password' && (
         <Card>
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <FormInput
-              label="Current Password"
-              name="current_password"
-              type="password"
-              value={passwordData.current_password}
-              onChange={handlePasswordChange}
-              error={passwordErrors.current_password}
-              placeholder="Enter current password"
-            />
-            <FormInput
-              label="New Password"
-              name="new_password"
-              type="password"
-              value={passwordData.new_password}
-              onChange={handlePasswordChange}
-              error={passwordErrors.new_password}
-              placeholder="Enter new password"
-              helperText="Min 8 characters with uppercase, lowercase, number & special character"
-            />
-            <FormInput
-              label="Confirm New Password"
-              name="confirm_new_password"
-              type="password"
-              value={passwordData.confirm_new_password}
-              onChange={handlePasswordChange}
-              error={passwordErrors.confirm_new_password}
-              placeholder="Confirm new password"
-            />
+            <FormInput label="Current Password" name="current_password" type="password" value={passwordData.current_password} onChange={handlePasswordChange} error={passwordErrors.current_password} placeholder="Enter current password" />
+            <FormInput label="New Password" name="new_password" type="password" value={passwordData.new_password} onChange={handlePasswordChange} error={passwordErrors.new_password} placeholder="Enter new password" helperText="Min 8 characters with uppercase, lowercase, number & special character" />
+            <FormInput label="Confirm New Password" name="confirm_new_password" type="password" value={passwordData.confirm_new_password} onChange={handlePasswordChange} error={passwordErrors.confirm_new_password} placeholder="Confirm new password" />
             <div className="pt-4">
               <Button type="submit" variant="primary" loading={passwordLoading} icon={<Key size={18} />}>
                 Change Password
