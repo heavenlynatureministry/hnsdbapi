@@ -1,8 +1,5 @@
-"""
-Authentication Service - Minimal
-"""
+"""Authentication Service - Minimal"""
 from datetime import datetime
-from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import logging
 
@@ -36,6 +33,6 @@ async def create_initial_admin(db: AsyncIOMotorDatabase):
 
     try:
         await db.users.insert_one(admin_user)
-        logger.info(f"✅ Admin user created: {settings.ADMIN_EMAIL}")
+        logger.info(f"Admin user created: {settings.ADMIN_EMAIL}")
     except Exception as e:
         logger.error(f"Failed to create admin user: {e}")
