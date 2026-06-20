@@ -1,6 +1,5 @@
 /**
  * API Module Index
- * Export all API services from a single entry point
  */
 export { default as api } from './axios'
 export { default as authAPI } from './auth'
