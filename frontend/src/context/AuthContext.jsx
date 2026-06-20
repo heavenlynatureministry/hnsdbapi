@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { useNavigate, useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import authAPI from '../api/auth'
+import api from '../api/axios'
 import {
   getToken,
   setToken,
@@ -12,6 +13,7 @@ import {
   getUser,
   setUser,
   removeUser,
+  clearAll,
 } from '../utils/storage'
 
 const AuthContext = createContext(null)
@@ -41,22 +43,10 @@ export function AuthProvider({ children }) {
             setUser({ ...savedUser, ...response.data })
           }
         } catch (error) {
-          // Token invalid, try refresh
-          try {
-            const refreshToken = getRefreshToken()
-            if (refreshToken) {
-              const refreshResponse = await authAPI.refreshToken(refreshToken)
-              if (refreshResponse.success) {
-                setToken(refreshResponse.data.access_token)
-                setRefreshToken(refreshResponse.data.refresh_token)
-              } else {
-                throw new Error('Refresh failed')
-              }
-            }
-          } catch (refreshError) {
-            // Both tokens invalid, logout
-            handleLogout(true)
-          }
+          // Token invalid - silent logout
+          clearAll()
+          setUserState(null)
+          setIsAuthenticated(false)
         }
       }
 
@@ -69,16 +59,16 @@ export function AuthProvider({ children }) {
   // Login
   const handleLogin = useCallback(
     async (credentials) => {
+      setLoading(true)
       try {
-        setLoading(true)
         const response = await authAPI.login(credentials)
 
         if (response.success) {
           const { access_token, refresh_token, user: userData } = response.data
 
-          // Store tokens
+          // Store tokens first
           setToken(access_token)
-          setRefreshToken(refresh_token)
+          if (refresh_token) setRefreshToken(refresh_token)
 
           // Store user
           setUser(userData)
@@ -114,14 +104,11 @@ export function AuthProvider({ children }) {
       } catch (error) {
         // Ignore logout errors
       } finally {
-        removeToken()
-        removeRefreshToken()
-        removeUser()
+        clearAll()
         setUserState(null)
         setIsAuthenticated(false)
 
         if (!silent) {
-          toast.success('Logged out successfully')
           navigate('/login', { replace: true })
         }
       }
@@ -129,12 +116,12 @@ export function AuthProvider({ children }) {
     [navigate]
   )
 
-  // Update user profile
+  // Update user profile - uses direct API call
   const handleUpdateProfile = useCallback(async (data) => {
     try {
-      const response = await authAPI.updateProfile(data)
+      const response = await api.put('/auth/me', data)
       if (response.success) {
-        const updatedUser = { ...user, ...response.data }
+        const updatedUser = { ...user, ...data }
         setUserState(updatedUser)
         setUser(updatedUser)
         toast.success('Profile updated successfully')
@@ -146,10 +133,10 @@ export function AuthProvider({ children }) {
     }
   }, [user])
 
-  // Change password
+  // Change password - uses direct API call
   const handleChangePassword = useCallback(async (data) => {
     try {
-      const response = await authAPI.changePassword(data)
+      const response = await api.post('/auth/change-password', data)
       if (response.success) {
         toast.success('Password changed successfully')
         return { success: true }
