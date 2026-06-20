@@ -164,7 +164,7 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid user id")
 
     # 🔥 FIX: await database properly (THIS WAS YOUR CRASH CAUSE)
-    db = await get_database()
+    db = get_database()
 
     user = await db.users.find_one({"_id": ObjectId(user_id)})
 
