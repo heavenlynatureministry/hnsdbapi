@@ -1,9 +1,9 @@
 import axios from 'axios'
-import { getToken, removeToken, getRefreshToken, setToken, removeUser, clearAll } from '../utils/storage'
+import { getToken, removeToken, clearAll } from '../utils/storage'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'https://hns-api.onrender.com/api/v1',
-  timeout: 60000,
+  timeout: 120000, // 2 minutes for Render cold starts
   headers: {
     'Content-Type': 'application/json',
   },
@@ -31,29 +31,19 @@ api.interceptors.response.use(
       const { status, data } = response
 
       // Only redirect to login on 401 if NOT already on login page
-      // AND if it's not a login attempt itself
       if (status === 401 && !config.url.includes('/auth/login')) {
-        // Clear stored data
         clearAll()
-        // Only redirect if not already on login page
         if (window.location.pathname !== '/login') {
           window.location.href = '/login'
         }
-        return Promise.reject({
-          status: 401,
-          message: data?.message || 'Session expired',
-        })
+        return Promise.reject({ status: 401, message: 'Session expired' })
       }
 
-      // For login failures, just pass the error through
+      // For login failures, pass through
       if (status === 401 && config.url.includes('/auth/login')) {
-        return Promise.reject({
-          status: 401,
-          message: data?.message || 'Invalid credentials',
-        })
+        return Promise.reject({ status: 401, message: data?.message || 'Invalid credentials' })
       }
 
-      // Other errors
       if (status === 500) {
         console.error('Server error:', data?.message)
       }
@@ -66,11 +56,11 @@ api.interceptors.response.use(
       })
     }
 
-    // Network error
+    // Network error - likely cold start
     console.error('Network error:', error.message)
     return Promise.reject({
       status: 0,
-      message: 'Network error. Server may be waking up. Please try again.',
+      message: 'Server is waking up (free tier). Please wait 30-60 seconds and try again.',
       errors: null,
       data: null,
     })
