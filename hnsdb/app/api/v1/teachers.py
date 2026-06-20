@@ -1,11 +1,11 @@
-"""Teachers API - Simplified"""
+"""Teachers API"""
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from bson import ObjectId
 
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
-from app.schemas.teacher import TeacherCreate, TeacherUpdate, TeacherResponse
+from app.schemas.teacher import TeacherCreate
 from app.schemas.common import SuccessResponse
 
 router = APIRouter()
