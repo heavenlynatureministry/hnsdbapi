@@ -1,4 +1,4 @@
-"""Auth API - Production"""
+"""Auth API - Self Contained (No AuthService)"""
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Dict, Any
 from datetime import datetime
@@ -14,37 +14,61 @@ router = APIRouter()
 
 @router.post("/login", response_model=SuccessResponse)
 async def login(request: UserLogin):
-    """Login"""
+    """
+    Login with email and password.
+    
+    Try: admin@school.com / Admin@2024!
+    """
+    # Get database
     try:
         db = get_database()
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {str(e)}")
 
+    email = request.email.lower().strip()
+    
     # Find user
-    user = await db.users.find_one({"email": request.email.lower().strip()})
-
+    user = await db.users.find_one({"email": email})
+    
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
 
+    # Check status
     if user.get("status") != "active":
-        raise HTTPException(status_code=403, detail="Account inactive")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive"
+        )
 
     # Verify password
-    if not verify_password(request.password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    password_valid = verify_password(request.password, user.get("password_hash", ""))
+    
+    if not password_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
 
-    # Convert ObjectId to string
+    # Convert ID to string
     user_id = str(user["_id"])
 
     # Create tokens
     access_token = create_access_token({
-        "sub": user_id, "email": user["email"], "role": user["role"]
+        "sub": user_id,
+        "email": user["email"],
+        "role": user["role"]
     })
+    
     refresh_token = create_refresh_token({
-        "sub": user_id, "email": user["email"], "role": user["role"]
+        "sub": user_id,
+        "email": user["email"],
+        "role": user["role"]
     })
 
-    # Update last login
+    # Update last login (don't fail if this errors)
     try:
         await db.users.update_one(
             {"_id": ObjectId(user_id)},
@@ -65,7 +89,8 @@ async def login(request: UserLogin):
                 "email": user["email"],
                 "first_name": user.get("first_name", ""),
                 "last_name": user.get("last_name", ""),
-                "role": user["role"]
+                "role": user["role"],
+                "status": user.get("status", "active")
             }
         }
     )
@@ -73,9 +98,15 @@ async def login(request: UserLogin):
 
 @router.get("/me", response_model=SuccessResponse)
 async def me(current_user: Dict[str, Any] = Depends(get_current_user)):
-    return SuccessResponse(success=True, message="Profile retrieved", data=current_user)
+    """Get current authenticated user"""
+    return SuccessResponse(
+        success=True,
+        message="Profile retrieved",
+        data=current_user
+    )
 
 
 @router.post("/logout", response_model=SuccessResponse)
 async def logout(current_user: Dict[str, Any] = Depends(get_current_user)):
-    return SuccessResponse(success=True, message="Logged out")
+    """Logout current user"""
+    return SuccessResponse(success=True, message="Logged out successfully")
