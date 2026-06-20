@@ -1,0 +1,146 @@
+# =========================================================================
+# Heavenly Nature School Management System - Docker Compose
+# =========================================================================
+
+version: '3.8'
+
+services:
+  # =========================================================================
+  # API APPLICATION
+  # =========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: hns-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - MONGODB_URL=${MONGODB_URL}
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - BREVO_API_KEY=${BREVO_API_KEY}
+      - EMAIL_ENABLED=${EMAIL_ENABLED:-false}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_ENDPOINT_URL=${R2_ENDPOINT_URL}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME}
+      - R2_PUBLIC_URL=${R2_PUBLIC_URL}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./backups:/app/backups
+    env_file:
+      - .env
+    networks:
+      - hns-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =========================================================================
+  # MONGODB DATABASE (Development Only)
+  # =========================================================================
+  mongodb:
+    image: mongo:7.0
+    container_name: hns-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-securepassword}
+      - MONGO_INITDB_DATABASE=${MONGODB_DB_NAME:-heavenly_nature_school}
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - hns-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Remove this section in production (use MongoDB Atlas instead)
+    profiles:
+      - development
+      - local
+
+  # =========================================================================
+  # REDIS CACHE (Optional)
+  # =========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: hns-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - hns-network
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - full
+      - caching
+
+  # =========================================================================
+  # NGINX REVERSE PROXY (Optional - Production)
+  # =========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: hns-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./static:/app/static:ro
+    depends_on:
+      - api
+    networks:
+      - hns-network
+    profiles:
+      - production
+
+# =========================================================================
+# NETWORKS
+# =========================================================================
+networks:
+  hns-network:
+    driver: bridge
+    name: hns-network
+
+# =========================================================================
+# VOLUMES
+# =========================================================================
+volumes:
+  mongodb_data:
+    name: hns-mongodb-data
+  mongodb_config:
+    name: hns-mongodb-config
+  redis_data:
+    name: hns-redis-data

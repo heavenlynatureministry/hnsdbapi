@@ -1,0 +1,6 @@
+export { default as StudentForm } from './StudentForm'
+export { default as TeacherForm } from './TeacherForm'
+export { default as AttendanceForm } from './AttendanceForm'
+export { default as ExamResultForm } from './ExamResultForm'
+export { default as PaymentForm } from './PaymentForm'
+export { default as EventForm } from './EventForm'

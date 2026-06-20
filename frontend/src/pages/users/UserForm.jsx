@@ -1,0 +1,293 @@
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useApp } from '../../context/AppContext'
+import authAPI from '../../api/auth'
+import PageHeader from '../../components/common/PageHeader'
+import Card from '../../components/common/Card'
+import Button from '../../components/common/Button'
+import FormInput from '../../components/common/FormInput'
+import FormSelect from '../../components/common/FormSelect'
+import LoadingSpinner from '../../components/common/LoadingSpinner'
+import { ArrowLeft, Save, UserPlus, Eye, EyeOff } from 'lucide-react'
+import toast from 'react-hot-toast'
+
+function UserForm() {
+  const { id } = useParams()
+  const isEdit = Boolean(id)
+  const navigate = useNavigate()
+  const { updatePageTitle, updateBreadcrumbs } = useApp()
+
+  const [loading, setLoading] = useState(false)
+  const [fetching, setFetching] = useState(isEdit)
+  const [showPassword, setShowPassword] = useState(false)
+  const [errors, setErrors] = useState({})
+
+  const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    password: '',
+    confirm_password: '',
+    role: 'staff',
+    phone_number: '',
+    status: 'active',
+  })
+
+  useEffect(() => {
+    updatePageTitle(isEdit ? 'Edit User' : 'Add User')
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Users', path: '/users' },
+      { label: isEdit ? 'Edit User' : 'Add User' },
+    ])
+  }, [isEdit, updatePageTitle, updateBreadcrumbs])
+
+  useEffect(() => {
+    if (isEdit) {
+      fetchUser()
+    }
+  }, [id])
+
+  const fetchUser = async () => {
+    try {
+      const response = await authAPI.getUser(id)
+      if (response.success && response.data) {
+        const user = response.data
+        setFormData({
+          first_name: user.first_name || '',
+          last_name: user.last_name || '',
+          email: user.email || '',
+          password: '',
+          confirm_password: '',
+          role: user.role || 'staff',
+          phone_number: user.phone_number || '',
+          status: user.status || 'active',
+        })
+      }
+    } catch (error) {
+      toast.error('Failed to fetch user details')
+      navigate('/users')
+    } finally {
+      setFetching(false)
+    }
+  }
+
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: '' }))
+    }
+  }
+
+  const validateForm = () => {
+    const newErrors = {}
+
+    if (!formData.first_name.trim()) newErrors.first_name = 'First name is required'
+    if (!formData.last_name.trim()) newErrors.last_name = 'Last name is required'
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Invalid email format'
+    }
+
+    if (!isEdit) {
+      if (!formData.password) {
+        newErrors.password = 'Password is required'
+      } else if (formData.password.length < 8) {
+        newErrors.password = 'Password must be at least 8 characters'
+      }
+      if (formData.password !== formData.confirm_password) {
+        newErrors.confirm_password = 'Passwords do not match'
+      }
+    } else if (formData.password && formData.password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters'
+    }
+
+    if (!formData.role) newErrors.role = 'Role is required'
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!validateForm()) return
+
+    setLoading(true)
+    try {
+      const payload = { ...formData }
+      delete payload.confirm_password
+      if (isEdit && !payload.password) {
+        delete payload.password
+      }
+
+      const response = isEdit
+        ? await authAPI.updateUser(id, payload)
+        : await authAPI.createUser(payload)
+
+      if (response.success) {
+        toast.success(`User ${isEdit ? 'updated' : 'created'} successfully`)
+        navigate('/users')
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to save user')
+      if (error.errors) {
+        const fieldErrors = {}
+        error.errors.forEach((e) => {
+          fieldErrors[e.field] = e.message
+        })
+        setErrors(fieldErrors)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (fetching) return <LoadingSpinner fullScreen />
+
+  const roleOptions = [
+    { value: 'admin', label: 'Admin' },
+    { value: 'teacher', label: 'Teacher' },
+    { value: 'accountant', label: 'Accountant' },
+    { value: 'counselor', label: 'Counselor' },
+    { value: 'staff', label: 'Staff' },
+  ]
+
+  const statusOptions = [
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' },
+  ]
+
+  return (
+    <div className="space-y-6 max-w-2xl animate-fade-in-up">
+      <PageHeader
+        title={isEdit ? 'Edit User' : 'Add New User'}
+        actions={
+          <button onClick={() => navigate('/users')} className="btn btn-secondary">
+            <ArrowLeft size={18} />
+            Back
+          </button>
+        }
+      />
+
+      <Card>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormInput
+              label="First Name"
+              name="first_name"
+              value={formData.first_name}
+              onChange={handleChange}
+              error={errors.first_name}
+              placeholder="Enter first name"
+              required
+            />
+            <FormInput
+              label="Last Name"
+              name="last_name"
+              value={formData.last_name}
+              onChange={handleChange}
+              error={errors.last_name}
+              placeholder="Enter last name"
+              required
+            />
+          </div>
+
+          <FormInput
+            label="Email Address"
+            name="email"
+            type="email"
+            value={formData.email}
+            onChange={handleChange}
+            error={errors.email}
+            placeholder="Enter email address"
+            required
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">
+                Password {isEdit && '(leave blank to keep unchanged)'}
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className={`form-input pr-10 ${errors.password ? 'error' : ''}`}
+                  placeholder={isEdit ? 'New password (optional)' : 'Enter password'}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              {errors.password && <p className="form-error">{errors.password}</p>}
+            </div>
+            <div>
+              <label className="form-label">Confirm Password</label>
+              <input
+                type="password"
+                name="confirm_password"
+                value={formData.confirm_password}
+                onChange={handleChange}
+                className={`form-input ${errors.confirm_password ? 'error' : ''}`}
+                placeholder="Confirm password"
+              />
+              {errors.confirm_password && (
+                <p className="form-error">{errors.confirm_password}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormSelect
+              label="Role"
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
+              options={roleOptions}
+              error={errors.role}
+              required
+            />
+            <FormInput
+              label="Phone Number"
+              name="phone_number"
+              value={formData.phone_number}
+              onChange={handleChange}
+              placeholder="+211 900 000 000"
+            />
+          </div>
+
+          {isEdit && (
+            <FormSelect
+              label="Status"
+              name="status"
+              value={formData.status}
+              onChange={handleChange}
+              options={statusOptions}
+            />
+          )}
+
+          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <Button type="submit" variant="primary" loading={loading} icon={<Save size={18} />}>
+              {isEdit ? 'Update User' : 'Create User'}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => navigate('/users')}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  )
+}
+
+export default UserForm
