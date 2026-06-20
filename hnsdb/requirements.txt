@@ -3,8 +3,9 @@
 # =========================================================================
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-pydantic[email-validator]==2.10.3
+pydantic[email]==2.10.3
 pydantic-settings==2.7.0
+email-validator==2.2.0
 
 # =========================================================================
 # DATABASE
