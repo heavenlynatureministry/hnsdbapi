@@ -1,12 +1,12 @@
-"""Users API - Simplified"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path
+"""Users API"""
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from typing import Optional, Dict, Any
 from bson import ObjectId
 from datetime import datetime
 
-from app.core.security import get_current_user, require_role
+from app.core.security import get_current_user, require_role, get_password_hash
 from app.core.database import get_database
-from app.schemas.user import UserCreate, UserUpdate
+from app.schemas.user import UserCreate
 from app.schemas.common import SuccessResponse
 
 router = APIRouter()
