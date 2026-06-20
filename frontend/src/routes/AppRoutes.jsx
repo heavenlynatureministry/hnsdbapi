@@ -72,6 +72,7 @@ const AcademicReport = lazy(() => import('../pages/reports/AcademicReport'))
 const AttendanceReportPage = lazy(() => import('../pages/reports/AttendanceReport'))
 const FinancialReport = lazy(() => import('../pages/reports/FinancialReport'))
 const EnrollmentReport = lazy(() => import('../pages/reports/EnrollmentReport'))
+const AnnualReport = lazy(() => import('../pages/reports/AnnualReport'))
 
 // Users (Admin)
 const UsersList = lazy(() => import('../pages/users/UsersList'))
@@ -175,7 +176,7 @@ function AppRoutes() {
             {/* --------------------------------------------------------- */}
             {/* FINANCIAL */}
             {/* --------------------------------------------------------- */}
-            <Route element={<AccountantRoute />}>
+            <Route element={<AdminRoute />}>
               <Route path="/financial">
                 <Route index element={<TransactionsList />} />
                 <Route path="new" element={<TransactionForm />} />
@@ -208,6 +209,7 @@ function AppRoutes() {
               <Route path="attendance" element={<AttendanceReportPage />} />
               <Route path="financial" element={<FinancialReport />} />
               <Route path="enrollment" element={<EnrollmentReport />} />
+              <Route path="annual" element={<AnnualReport />} />
             </Route>
 
             {/* --------------------------------------------------------- */}
@@ -236,29 +238,14 @@ function AppRoutes() {
           element={
             <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
               <div className="text-center animate-fade-in-up">
-                <div className="text-8xl font-bold text-gray-200 dark:text-gray-700">
-                  404
-                </div>
-                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mt-4">
-                  Page Not Found
-                </h1>
+                <div className="text-8xl font-bold text-gray-200 dark:text-gray-700">404</div>
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mt-4">Page Not Found</h1>
                 <p className="text-gray-500 dark:text-gray-400 mt-2 max-w-md">
-                  The page you are looking for might have been removed, had its
-                  name changed, or is temporarily unavailable.
+                  The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.
                 </p>
                 <div className="mt-6 space-x-3">
-                  <a
-                    href="/dashboard"
-                    className="btn btn-primary inline-flex"
-                  >
-                    Go to Dashboard
-                  </a>
-                  <button
-                    onClick={() => window.history.back()}
-                    className="btn btn-secondary inline-flex"
-                  >
-                    Go Back
-                  </button>
+                  <a href="/dashboard" className="btn btn-primary inline-flex">Go to Dashboard</a>
+                  <button onClick={() => window.history.back()} className="btn btn-secondary inline-flex">Go Back</button>
                 </div>
               </div>
             </div>
@@ -270,7 +257,7 @@ function AppRoutes() {
 }
 
 // =========================================================================
-// ROUTE METADATA (for breadcrumbs and navigation)
+// ROUTE METADATA
 // =========================================================================
 export const routeMetadata = {
   '/dashboard': { title: 'Dashboard', icon: 'LayoutDashboard' },
@@ -299,6 +286,11 @@ export const routeMetadata = {
   '/school/board': { title: 'Board Members', parent: 'School' },
   '/school/settings': { title: 'Settings', parent: 'School' },
   '/reports': { title: 'Reports', icon: 'BarChart3' },
+  '/reports/academic': { title: 'Academic Report', parent: 'Reports' },
+  '/reports/attendance': { title: 'Attendance Report', parent: 'Reports' },
+  '/reports/financial': { title: 'Financial Report', parent: 'Reports' },
+  '/reports/enrollment': { title: 'Enrollment Report', parent: 'Reports' },
+  '/reports/annual': { title: 'Annual Report', parent: 'Reports' },
   '/users': { title: 'Users', icon: 'Shield' },
   '/profile': { title: 'My Profile', icon: 'UserCircle' },
 }
