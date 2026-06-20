@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from typing import Dict, Any
 from datetime import datetime
 from bson import ObjectId
+from pydantic import BaseModel, Field
 
 from app.core.security import (
     get_current_user,
@@ -14,11 +15,30 @@ from app.core.security import (
     get_client_ip
 )
 from app.core.database import get_database
-from app.schemas.user import UserLogin, ChangePasswordRequest
+from app.schemas.user import UserLogin
 from app.schemas.common import SuccessResponse
 
 router = APIRouter()
 
+
+# =========================================================================
+# SCHEMAS
+# =========================================================================
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+    confirm_new_password: str = Field(..., min_length=8)
+
+
+class UpdateProfileRequest(BaseModel):
+    first_name: str = None
+    last_name: str = None
+    phone_number: str = None
+
+
+# =========================================================================
+# ENDPOINTS
+# =========================================================================
 
 @router.post("/login", response_model=SuccessResponse)
 async def login(request: UserLogin, req: Request):
@@ -102,18 +122,19 @@ async def verify_token(current_user: Dict[str, Any] = Depends(get_current_user))
 
 @router.put("/me", response_model=SuccessResponse)
 async def update_profile(
-    first_name: str = None,
-    last_name: str = None,
-    phone_number: str = None,
+    request: UpdateProfileRequest,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Update current user profile"""
     db = get_database()
 
     update_data = {}
-    if first_name: update_data["first_name"] = first_name.strip().title()
-    if last_name: update_data["last_name"] = last_name.strip().title()
-    if phone_number: update_data["phone_number"] = phone_number
+    if request.first_name:
+        update_data["first_name"] = request.first_name.strip().title()
+    if request.last_name:
+        update_data["last_name"] = request.last_name.strip().title()
+    if request.phone_number:
+        update_data["phone_number"] = request.phone_number
 
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -130,19 +151,17 @@ async def update_profile(
 
 @router.post("/change-password", response_model=SuccessResponse)
 async def change_password(
-    current_password: str,
-    new_password: str,
-    confirm_new_password: str,
+    request: ChangePasswordRequest,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Change current user password"""
     db = get_database()
 
     # Validate
-    if new_password != confirm_new_password:
+    if request.new_password != request.confirm_new_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
 
-    if len(new_password) < 8:
+    if len(request.new_password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
     # Find user
@@ -152,11 +171,11 @@ async def change_password(
         raise HTTPException(status_code=404, detail="User not found")
 
     # Verify current password
-    if not verify_password(current_password, user.get("password_hash", "")):
+    if not verify_password(request.current_password, user.get("password_hash", "")):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
     # Hash new password
-    new_hash = get_password_hash(new_password)
+    new_hash = get_password_hash(request.new_password)
 
     # Update
     await db.users.update_one(
