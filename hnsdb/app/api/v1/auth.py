@@ -1,5 +1,5 @@
 """Auth API - Self Contained"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Dict, Any
 from datetime import datetime
 from bson import ObjectId
@@ -8,7 +8,9 @@ from app.core.security import (
     get_current_user,
     create_access_token,
     create_refresh_token,
-    verify_password
+    verify_password,
+    RateLimiter,
+    get_client_ip
 )
 from app.core.database import get_database
 from app.schemas.user import UserLogin
@@ -21,21 +23,32 @@ router = APIRouter()
 @router.post("/login", response_model=SuccessResponse)
 async def login(
     request: UserLogin,
-    db: AsyncIOMotorDatabase = Depends(get_database)   # ✅ FIXED HERE
+    req: Request,
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Login with email and password"""
+    """Login with email and password (rate limited)"""
 
     email = request.email.lower().strip()
+
+    # =========================================================
+    # 🔐 RATE LIMITING (NEW - BRUTE FORCE PROTECTION)
+    # =========================================================
+    ip = get_client_ip(req)
+    RateLimiter.check_login_limit(ip=ip, email=email)
 
     user = await db.users.find_one({"email": email})
 
     if not user:
+        # Still trigger limiter on failed attempts
+        RateLimiter.check_login_limit(ip=ip, email=email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if user.get("status") != "active":
         raise HTTPException(status_code=403, detail="Account is inactive")
 
     if not verify_password(request.password, user.get("password_hash", "")):
+        # Track failed attempt through limiter
+        RateLimiter.check_login_limit(ip=ip, email=email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     user_id = str(user["_id"])
