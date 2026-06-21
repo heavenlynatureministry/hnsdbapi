@@ -1,3 +1,4 @@
+# hnsdb/app/core/config.py
 """
 Core Configuration
 Production-ready settings for Render deployment
@@ -75,13 +76,11 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = Field(default=None)
     
     # =========================================================================
-    # CORS SETTINGS
+    # CORS SETTINGS - Production Only
     # =========================================================================
     ALLOWED_ORIGINS: List[str] = Field(
         default_factory=lambda: [
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "https://hns-frontend.vercel.app",
+            "https://hnsdbapi.vercel.app",
         ]
     )
     ALLOWED_METHODS: List[str] = Field(
