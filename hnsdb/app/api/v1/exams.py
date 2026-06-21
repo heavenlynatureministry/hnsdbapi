@@ -1,5 +1,5 @@
-"""Exams API"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+"""Exams API - Production Ready"""
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from bson import ObjectId
@@ -10,17 +10,22 @@ from app.schemas.common import SuccessResponse
 
 router = APIRouter()
 
+
 @router.get("/", response_model=SuccessResponse)
 async def list_exams(
     class_id: Optional[str] = Query(None),
+    exam_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """List exams"""
+    """List exams with filters"""
     db = get_database()
     filter_query = {}
     if class_id: filter_query["class_id"] = ObjectId(class_id)
+    if exam_type: filter_query["exam_type"] = exam_type
+    if status: filter_query["status"] = status
     
     skip = (page - 1) * limit
     total = await db.exams.count_documents(filter_query)
@@ -30,83 +35,306 @@ async def list_exams(
         e["_id"] = str(e["_id"])
         e["class_id"] = str(e["class_id"])
         e["subject_id"] = str(e["subject_id"])
+        if e.get("created_by"): e["created_by"] = str(e["created_by"])
     
-    return SuccessResponse(success=True, message="Exams retrieved", data={"exams": exams, "total": total})
+    return SuccessResponse(success=True, message="Exams retrieved", data={
+        "exams": exams, "total": total, "page": page, "limit": limit
+    })
+
+
+@router.get("/subjects", response_model=SuccessResponse)
+async def list_subjects(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """List available subjects"""
+    db = get_database()
+    subjects = await db.subjects.find({}).to_list(length=None)
+    for s in subjects: s["_id"] = str(s["_id"])
+    return SuccessResponse(success=True, message="Subjects retrieved", data={
+        "subjects": subjects, "total": len(subjects)
+    })
+
+
+@router.get("/grading-systems", response_model=SuccessResponse)
+async def get_grading_systems(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get grading systems"""
+    db = get_database()
+    systems = await db.grading_systems.find({}).to_list(length=None)
+    for s in systems: s["_id"] = str(s["_id"])
+    
+    if not systems:
+        systems = [{
+            "_id": "default",
+            "name": "Standard Grading System",
+            "grade_boundaries": [
+                {"grade": "A", "min_score": 80, "max_score": 100, "remarks": "Excellent", "gpa": 4.0},
+                {"grade": "B", "min_score": 70, "max_score": 79, "remarks": "Very Good", "gpa": 3.0},
+                {"grade": "C", "min_score": 60, "max_score": 69, "remarks": "Good", "gpa": 2.0},
+                {"grade": "D", "min_score": 50, "max_score": 59, "remarks": "Satisfactory", "gpa": 1.0},
+                {"grade": "F", "min_score": 0, "max_score": 49, "remarks": "Fail", "gpa": 0.0}
+            ],
+            "is_default": True
+        }]
+    
+    return SuccessResponse(success=True, message="Grading systems retrieved", data={
+        "systems": systems, "total": len(systems)
+    })
+
+
+@router.get("/{exam_id}", response_model=SuccessResponse)
+async def get_exam(
+    exam_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get exam details"""
+    db = get_database()
+    exam = await db.exams.find_one({"_id": ObjectId(exam_id)})
+    if not exam: raise HTTPException(status_code=404, detail="Exam not found")
+    
+    exam["_id"] = str(exam["_id"])
+    exam["class_id"] = str(exam["class_id"])
+    exam["subject_id"] = str(exam["subject_id"])
+    if exam.get("created_by"): exam["created_by"] = str(exam["created_by"])
+    
+    return SuccessResponse(success=True, message="Exam retrieved", data=exam)
+
 
 @router.post("/", response_model=SuccessResponse, status_code=201)
 async def create_exam(
-    exam_name: str = Body(...),
-    exam_type: str = Body(...),
-    class_id: str = Body(...),
-    subject_id: str = Body(...),
-    exam_date: str = Body(...),
-    max_score: float = Body(100),
+    request: Request,
     current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))
 ):
     """Create an exam"""
     db = get_database()
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    exam_name = body.get("exam_name", "").strip()
+    exam_type = body.get("exam_type", "").strip()
+    class_id = body.get("class_id", "")
+    subject_id = body.get("subject_id", "")
+    exam_date = body.get("exam_date", "")
+    
+    if not exam_name or not exam_type or not class_id or not subject_id or not exam_date:
+        raise HTTPException(status_code=400, detail="Exam name, type, class, subject, and date are required")
+    
+    try:
+        date_obj = datetime.strptime(exam_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    max_score = float(body.get("max_score", 100))
+    
     doc = {
-        "exam_name": exam_name, "exam_type": exam_type,
-        "class_id": ObjectId(class_id), "subject_id": ObjectId(subject_id),
-        "exam_date": datetime.strptime(exam_date, "%Y-%m-%d"),
-        "max_score": max_score, "pass_mark": max_score * 0.5,
-        "status": "scheduled", "results_entered": 0, "total_students": 0,
+        "exam_name": exam_name,
+        "exam_type": exam_type,
+        "class_id": ObjectId(class_id),
+        "subject_id": ObjectId(subject_id),
+        "exam_date": date_obj,
+        "max_score": max_score,
+        "pass_mark": body.get("pass_mark", max_score * 0.5),
+        "weight": body.get("weight", 1.0),
+        "start_time": body.get("start_time"),
+        "end_time": body.get("end_time"),
+        "academic_year": body.get("academic_year"),
+        "term": body.get("term"),
+        "instructions": body.get("instructions"),
+        "status": "scheduled",
+        "results_entered": 0,
+        "total_students": 0,
         "created_by": ObjectId(current_user["_id"]),
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
     }
+    
+    # Remove None values
+    doc = {k: v for k, v in doc.items() if v is not None}
+    
     result = await db.exams.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     doc["class_id"] = str(doc["class_id"])
     doc["subject_id"] = str(doc["subject_id"])
+    doc["created_by"] = str(doc["created_by"])
+    
     return SuccessResponse(success=True, message="Exam created", data=doc)
 
+
+@router.put("/{exam_id}", response_model=SuccessResponse)
+async def update_exam(
+    exam_id: str = Path(...),
+    request: Request = None,
+    current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))
+):
+    """Update exam"""
+    db = get_database()
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    if not body:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    body["updated_at"] = datetime.utcnow()
+    
+    result = await db.exams.find_one_and_update(
+        {"_id": ObjectId(exam_id)},
+        {"$set": body},
+        return_document=True
+    )
+    
+    if not result: raise HTTPException(status_code=404, detail="Exam not found")
+    result["_id"] = str(result["_id"])
+    result["class_id"] = str(result["class_id"])
+    result["subject_id"] = str(result["subject_id"])
+    
+    return SuccessResponse(success=True, message="Exam updated", data=result)
+
+
+@router.delete("/{exam_id}", response_model=SuccessResponse)
+async def cancel_exam(
+    exam_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Cancel an exam"""
+    db = get_database()
+    result = await db.exams.update_one(
+        {"_id": ObjectId(exam_id)},
+        {"$set": {"status": "cancelled", "updated_at": datetime.utcnow()}}
+    )
+    if result.modified_count == 0: raise HTTPException(status_code=404, detail="Exam not found")
+    return SuccessResponse(success=True, message="Exam cancelled")
+
+
 @router.get("/results/{exam_id}", response_model=SuccessResponse)
-async def get_results(exam_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_results(
+    exam_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """Get exam results"""
     db = get_database()
+    exam = await db.exams.find_one({"_id": ObjectId(exam_id)})
+    if not exam: raise HTTPException(status_code=404, detail="Exam not found")
+    
     results = await db.exam_results.find({"exam_id": ObjectId(exam_id)}).to_list(length=None)
     for r in results:
         r["_id"] = str(r["_id"])
         r["exam_id"] = str(r["exam_id"])
         r["student_id"] = str(r["student_id"])
-    return SuccessResponse(success=True, message="Results retrieved", data={"results": results, "total": len(results)})
+        if r.get("recorded_by"): r["recorded_by"] = str(r["recorded_by"])
+    
+    # Calculate statistics
+    scores = [r["score"] for r in results]
+    stats = {
+        "total_students": len(results),
+        "highest_score": max(scores) if scores else 0,
+        "lowest_score": min(scores) if scores else 0,
+        "average_score": round(sum(scores) / len(scores), 2) if scores else 0,
+        "pass_rate": round(sum(1 for r in results if r.get("is_passed")) / len(results) * 100, 2) if results else 0
+    }
+    
+    return SuccessResponse(success=True, message="Results retrieved", data={
+        "exam": {
+            "_id": str(exam["_id"]),
+            "exam_name": exam["exam_name"],
+            "max_score": exam["max_score"],
+            "pass_mark": exam["pass_mark"]
+        },
+        "results": results,
+        "statistics": stats
+    })
+
 
 @router.post("/results", response_model=SuccessResponse, status_code=201)
 async def record_results(
-    exam_id: str = Body(...),
-    results: List[Dict[str, Any]] = Body(...),
+    request: Request,
     current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))
 ):
     """Record exam results"""
     db = get_database()
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    exam_id = body.get("exam_id", "")
+    results = body.get("results", [])
+    
+    if not exam_id or not results:
+        raise HTTPException(status_code=400, detail="exam_id and results are required")
+    
     exam = await db.exams.find_one({"_id": ObjectId(exam_id)})
     if not exam: raise HTTPException(status_code=404, detail="Exam not found")
     
     successful = 0
     for r in results:
-        score = r.get("score", 0)
+        score = float(r.get("score", 0))
         percentage = (score / exam["max_score"]) * 100
-        grade = "A" if percentage >= 80 else "B" if percentage >= 70 else "C" if percentage >= 60 else "D" if percentage >= 50 else "F"
         
-        await db.exam_results.update_one(
-            {"exam_id": ObjectId(exam_id), "student_id": ObjectId(r["student_id"])},
-            {"$set": {
-                "score": score, "grade": grade, "percentage": round(percentage, 2),
-                "is_passed": score >= exam["pass_mark"],
-                "recorded_by": ObjectId(current_user["_id"]),
-                "updated_at": datetime.utcnow()
-            }},
-            upsert=True
-        )
-        successful += 1
+        if percentage >= 80: grade = "A"
+        elif percentage >= 70: grade = "B"
+        elif percentage >= 60: grade = "C"
+        elif percentage >= 50: grade = "D"
+        else: grade = "F"
+        
+        try:
+            await db.exam_results.update_one(
+                {"exam_id": ObjectId(exam_id), "student_id": ObjectId(r["student_id"])},
+                {"$set": {
+                    "score": score,
+                    "grade": grade,
+                    "percentage": round(percentage, 2),
+                    "is_passed": score >= exam["pass_mark"],
+                    "remarks": r.get("remarks", ""),
+                    "recorded_by": ObjectId(current_user["_id"]),
+                    "updated_at": datetime.utcnow()
+                }},
+                upsert=True
+            )
+            successful += 1
+        except Exception:
+            pass
     
-    await db.exams.update_one({"_id": ObjectId(exam_id)}, {"$set": {"results_entered": successful, "status": "completed"}})
+    # Update exam status
+    total_results = await db.exam_results.count_documents({"exam_id": ObjectId(exam_id)})
+    await db.exams.update_one(
+        {"_id": ObjectId(exam_id)},
+        {"$set": {
+            "results_entered": total_results,
+            "status": "completed",
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
     return SuccessResponse(success=True, message=f"Recorded {successful} results")
 
-@router.get("/subjects", response_model=SuccessResponse)
-async def list_subjects(current_user: Dict[str, Any] = Depends(get_current_user)):
-    """List subjects"""
+
+@router.get("/student/{student_id}", response_model=SuccessResponse)
+async def get_student_results(
+    student_id: str,
+    academic_year: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get exam results for a student"""
     db = get_database()
-    subjects = await db.subjects.find({}).to_list(length=None)
-    for s in subjects: s["_id"] = str(s["_id"])
-    return SuccessResponse(success=True, message="Subjects retrieved", data={"subjects": subjects, "total": len(subjects)})
+    
+    # Get all exams for student
+    results = await db.exam_results.find({"student_id": ObjectId(student_id)}).to_list(length=None)
+    
+    for r in results:
+        r["_id"] = str(r["_id"])
+        r["exam_id"] = str(r["exam_id"])
+        r["student_id"] = str(r["student_id"])
+    
+    # Get student info
+    student = await db.students.find_one({"_id": ObjectId(student_id)})
+    
+    return SuccessResponse(success=True, message="Student results retrieved", data={
+        "student_id": student_id,
+        "student_name": f"{student['first_name']} {student['last_name']}" if student else "Unknown",
+        "results": results,
+        "total": len(results)
+    })
