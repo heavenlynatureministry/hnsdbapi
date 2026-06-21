@@ -1,41 +1,12 @@
 import api from './axios'
 
-/**
- * Authentication API Service - Production
- */
 const authAPI = {
-  /**
-   * Login user
-   * @param {Object} credentials - { email, password, remember_me }
-   * @returns {Promise} Login response with tokens
-   */
-  login: async (credentials) => {
-    return api.post('/auth/login', credentials)
-  },
-
-  /**
-   * Get current user profile
-   * @returns {Promise} Current user data
-   */
-  getMe: async () => {
-    return api.get('/auth/me')
-  },
-
-  /**
-   * Logout user
-   * @returns {Promise}
-   */
-  logout: async () => {
-    return api.post('/auth/logout')
-  },
-
-  /**
-   * Verify token validity
-   * @returns {Promise}
-   */
-  verifyToken: async () => {
-    return api.get('/auth/verify')
-  },
+  login: async (credentials) => api.post('/auth/login/', credentials),
+  getMe: async () => api.get('/auth/me/'),
+  logout: async () => api.post('/auth/logout/'),
+  verifyToken: async () => api.get('/auth/verify/'),
+  changePassword: async (data) => api.post('/auth/change-password/', data),
+  updateProfile: async (data) => api.put('/auth/me/', data),
 }
 
 export default authAPI
