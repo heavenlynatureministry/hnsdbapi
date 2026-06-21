@@ -1,5 +1,5 @@
 """Exams API - Production Ready"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path, Request
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from bson import ObjectId
