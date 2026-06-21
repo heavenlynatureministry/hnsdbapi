@@ -1,125 +1,176 @@
-"""Financial API"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+"""Teachers API - Production Ready"""
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path, Request
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import date, datetime
 from bson import ObjectId
 
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
+from app.schemas.teacher import TeacherCreate
 from app.schemas.common import SuccessResponse
 
 router = APIRouter()
 
+
 @router.get("/", response_model=SuccessResponse)
-async def list_transactions(
-    type: Optional[str] = Query(None, alias="type"),
+async def list_teachers(
+    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """List financial transactions"""
+    """List teachers"""
     db = get_database()
     filter_query = {}
-    if type: filter_query["transaction_type"] = type
-    
+    if status: filter_query["status"] = status
+    if search:
+        filter_query["$or"] = [
+            {"first_name": {"$regex": search, "$options": "i"}},
+            {"last_name": {"$regex": search, "$options": "i"}},
+            {"email": {"$regex": search, "$options": "i"}}
+        ]
     skip = (page - 1) * limit
-    total = await db.financial_records.count_documents(filter_query)
-    transactions = await db.financial_records.find(filter_query).sort("transaction_date", -1).skip(skip).limit(limit).to_list(length=limit)
-    
-    for t in transactions:
-        t["_id"] = str(t["_id"])
-        if t.get("recorded_by"): t["recorded_by"] = str(t["recorded_by"])
-    
-    return SuccessResponse(success=True, message="Transactions retrieved", data={"transactions": transactions, "total": total})
+    total = await db.teachers.count_documents(filter_query)
+    teachers = await db.teachers.find(filter_query).sort("last_name", 1).skip(skip).limit(limit).to_list(length=limit)
+    for t in teachers: t["_id"] = str(t["_id"])
+    return SuccessResponse(success=True, message="Teachers retrieved", data={"teachers": teachers, "total": total, "page": page, "limit": limit})
 
-@router.post("/", response_model=SuccessResponse, status_code=201)
-async def create_transaction(
-    transaction_date: str = Body(...),
-    amount: float = Body(...),
-    transaction_type: str = Body(...),
-    category: str = Body(...),
-    description: str = Body(...),
-    payment_method: str = Body("cash"),
-    current_user: Dict[str, Any] = Depends(require_role("admin", "accountant"))
-):
-    """Record a transaction"""
-    db = get_database()
-    doc = {
-        "transaction_date": datetime.strptime(transaction_date, "%Y-%m-%d"),
-        "amount": amount, "transaction_type": transaction_type,
-        "category": category, "description": description,
-        "payment_method": payment_method,
-        "reference_number": f"TXN-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
-        "recorded_by": ObjectId(current_user["_id"]),
-        "approval_status": "pending", "created_at": datetime.utcnow()
-    }
-    result = await db.financial_records.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-    return SuccessResponse(success=True, message="Transaction recorded", data=doc)
 
-@router.get("/summary", response_model=SuccessResponse)
-async def get_summary(current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Get financial summary"""
+@router.get("/statistics/overview", response_model=SuccessResponse)
+async def teacher_statistics(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get teacher statistics"""
     db = get_database()
-    income = await db.financial_records.aggregate([
-        {"$match": {"transaction_type": "income", "approval_status": "approved"}},
-        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
-    ]).to_list(length=1)
-    expenses = await db.financial_records.aggregate([
-        {"$match": {"transaction_type": "expense", "approval_status": "approved"}},
-        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
-    ]).to_list(length=1)
+    total = await db.teachers.count_documents({"status": "active"})
+    by_status = await db.teachers.aggregate([
+        {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+    ]).to_list(length=None)
+    by_qualification = await db.teachers.aggregate([
+        {"$match": {"status": "active"}},
+        {"$group": {"_id": "$qualification", "count": {"$sum": 1}}}
+    ]).to_list(length=None)
     
-    total_income = income[0]["total"] if income else 0
-    total_expenses = expenses[0]["total"] if expenses else 0
-    
-    return SuccessResponse(success=True, message="Summary retrieved", data={
-        "total_income": total_income, "total_expenses": total_expenses,
-        "balance": total_income - total_expenses
+    return SuccessResponse(success=True, message="Statistics retrieved", data={
+        "total_active_teachers": total,
+        "by_status": {item["_id"]: item["count"] for item in by_status},
+        "by_qualification": {item["_id"]: item["count"] for item in by_qualification}
     })
 
-@router.get("/payments", response_model=SuccessResponse)
-async def list_payments(
-    student_id: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+
+@router.get("/{teacher_id}", response_model=SuccessResponse)
+async def get_teacher(
+    teacher_id: str = Path(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """List payments"""
+    """Get teacher details"""
     db = get_database()
-    filter_query = {}
-    if student_id: filter_query["student_id"] = ObjectId(student_id)
-    
-    skip = (page - 1) * limit
-    total = await db.payments.count_documents(filter_query)
-    payments = await db.payments.find(filter_query).sort("payment_date", -1).skip(skip).limit(limit).to_list(length=limit)
-    
-    for p in payments:
-        p["_id"] = str(p["_id"])
-        p["student_id"] = str(p["student_id"])
-        if p.get("fee_structure_id"): p["fee_structure_id"] = str(p["fee_structure_id"])
-    
-    return SuccessResponse(success=True, message="Payments retrieved", data={"payments": payments, "total": total})
+    teacher = await db.teachers.find_one({"_id": ObjectId(teacher_id)})
+    if not teacher: raise HTTPException(status_code=404, detail="Teacher not found")
+    teacher["_id"] = str(teacher["_id"])
+    if teacher.get("class_teacher_of"): teacher["class_teacher_of"] = str(teacher["class_teacher_of"])
+    return SuccessResponse(success=True, message="Teacher retrieved", data=teacher)
 
-@router.post("/payments", response_model=SuccessResponse, status_code=201)
-async def record_payment(
-    student_id: str = Body(...),
-    amount_paid: float = Body(...),
-    payment_method: str = Body("cash"),
-    paid_by: str = Body(...),
-    current_user: Dict[str, Any] = Depends(require_role("admin", "accountant"))
+
+@router.post("/", response_model=SuccessResponse, status_code=201)
+async def create_teacher(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Record a payment"""
+    """Create teacher - accepts raw JSON"""
     db = get_database()
-    doc = {
-        "student_id": ObjectId(student_id),
-        "amount_paid": amount_paid, "payment_method": payment_method,
-        "paid_by": paid_by, "payment_date": datetime.utcnow(),
-        "receipt_number": f"RCP-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
-        "status": "completed", "recorded_by": ObjectId(current_user["_id"]),
-        "created_at": datetime.utcnow()
-    }
-    result = await db.payments.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-    doc["student_id"] = str(doc["student_id"])
-    return SuccessResponse(success=True, message="Payment recorded", data=doc)
+    from app.models.teacher import TeacherModel
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    first_name = (body.get('first_name', '') or '').strip()
+    last_name = (body.get('last_name', '') or '').strip()
+    
+    if not first_name or not last_name:
+        raise HTTPException(status_code=400, detail="First name and last name are required")
+    
+    # Parse dates
+    dob_str = body.get('date_of_birth', '')
+    hire_str = body.get('hire_date', '')
+    
+    try:
+        date_of_birth = datetime.strptime(dob_str, '%Y-%m-%d').date() if dob_str else date.today()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date of birth format. Use YYYY-MM-DD")
+    
+    try:
+        hire_date = datetime.strptime(hire_str, '%Y-%m-%d').date() if hire_str else date.today()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid hire date format. Use YYYY-MM-DD")
+    
+    success, message, result = await TeacherModel.create_teacher(
+        db=db,
+        first_name=first_name,
+        last_name=last_name,
+        date_of_birth=date_of_birth,
+        gender=body.get('gender', 'Male'),
+        qualification=body.get('qualification', 'Diploma'),
+        hire_date=hire_date,
+        phone_number=body.get('phone_number', ''),
+        email=body.get('email', ''),
+        specialization=body.get('specialization'),
+        middle_name=body.get('middle_name'),
+        nationality=body.get('nationality'),
+        subjects=body.get('subjects'),
+        address=body.get('address'),
+        years_of_experience=body.get('years_of_experience', 0),
+        salary_grade=body.get('salary_grade'),
+        photo_url=body.get('photo_url'),
+        created_by=current_user["_id"]
+    )
+    
+    if not success: raise HTTPException(status_code=400, detail=message)
+    return SuccessResponse(success=True, message=message, data=result)
+
+
+@router.put("/{teacher_id}", response_model=SuccessResponse)
+async def update_teacher(
+    teacher_id: str = Path(...),
+    request: Request = None,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Update teacher"""
+    db = get_database()
+    from app.models.teacher import TeacherModel
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    if not body:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    for key in ['_id', 'employee_id', 'created_at', 'created_by']:
+        body.pop(key, None)
+    
+    success, message, result = await TeacherModel.update_teacher(
+        db=db, teacher_id=teacher_id, update_data=body, updated_by=current_user["_id"]
+    )
+    
+    if not success: raise HTTPException(status_code=400, detail=message)
+    return SuccessResponse(success=True, message=message, data=result)
+
+
+@router.delete("/{teacher_id}", response_model=SuccessResponse)
+async def deactivate_teacher(
+    teacher_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Deactivate teacher"""
+    db = get_database()
+    from app.models.teacher import TeacherModel
+    success, message, _ = await TeacherModel.update_teacher(
+        db=db, teacher_id=teacher_id,
+        update_data={"status": "inactive"},
+        updated_by=current_user["_id"]
+    )
+    if not success: raise HTTPException(status_code=404, detail="Teacher not found")
+    return SuccessResponse(success=True, message="Teacher deactivated")
