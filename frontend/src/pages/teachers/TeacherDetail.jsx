@@ -36,58 +36,50 @@ function TeacherDetail() {
   }, [id])
 
   const fetchTeacher = async () => {
+    setLoading(true)
     try {
-      // Simulated data for demo
-      const timer = setTimeout(() => {
-        setTeacher({
-          _id: id,
-          employee_id: 'HNS-TCH-001',
-          first_name: 'John',
-          last_name: 'Doe',
-          middle_name: '',
-          gender: 'Male',
-          date_of_birth: '1980-05-15',
-          nationality: 'South Sudanese',
-          qualification: 'B.Ed',
-          specialization: 'Mathematics',
-          subjects: ['Mathematics', 'Science', 'Computer Studies'],
-          phone_number: '+211 912 345 678',
-          email: 'john.doe@school.com',
-          address: 'Juba, South Sudan',
-          hire_date: '2015-01-10',
-          years_of_experience: 9,
-          salary_grade: 'Grade 5',
-          status: 'active',
-          emergency_contact: { name: 'Jane Doe', relationship: 'Spouse', phone_number: '+211 900 111 222' },
-          performance_reviews: [
-            { rating: 4.5, reviewer: 'Head Teacher', review_date: '2024-06-15', overall_comments: 'Excellent teacher, very dedicated.' },
-            { rating: 4.2, reviewer: 'Head Teacher', review_date: '2023-12-10', overall_comments: 'Good performance, needs to improve on documentation.' },
-          ],
-          training_history: [
-            { training_name: 'Modern Teaching Methods', provider: 'Ministry of Education', start_date: '2023-08-15', end_date: '2023-08-20' },
-            { training_name: 'Computer Literacy', provider: 'ICT Center', start_date: '2022-05-10', end_date: '2022-05-14' },
-          ],
-          classes_info: [
-            { class_name: 'P5', class_level: 'primary' },
-            { class_name: 'P6', class_level: 'primary' },
-          ],
-        })
-        setLoading(false)
-      }, 500)
+      const response = await teachersAPI.getById(id)
+      if (response?.success && response.data) {
+        setTeacher(response.data)
+      } else {
+        toast.error('Failed to load teacher details')
+        navigate('/teachers')
+      }
     } catch (error) {
+      console.error('Failed to fetch teacher:', error)
       toast.error('Failed to load teacher details')
       navigate('/teachers')
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleDeactivate = async () => {
     try {
-      await teachersAPI.update(id, { status: 'inactive' })
-      toast.success('Teacher deactivated')
-      setShowDeactivate(false)
-      fetchTeacher()
+      const response = await teachersAPI.update(id, { status: 'inactive' })
+      if (response?.success) {
+        toast.success('Teacher deactivated')
+        setShowDeactivate(false)
+        fetchTeacher()
+      } else {
+        toast.error(response?.message || 'Failed to deactivate teacher')
+      }
     } catch (error) {
-      toast.error('Failed to deactivate teacher')
+      toast.error(error.message || 'Failed to deactivate teacher')
+    }
+  }
+
+  const handleActivate = async () => {
+    try {
+      const response = await teachersAPI.update(id, { status: 'active' })
+      if (response?.success) {
+        toast.success('Teacher activated')
+        fetchTeacher()
+      } else {
+        toast.error(response?.message || 'Failed to activate teacher')
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to activate teacher')
     }
   }
 
@@ -143,10 +135,10 @@ function TeacherDetail() {
                 <BookOpen size={16} /> {teacher.specialization}
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Calendar size={16} /> Since {new Date(teacher.hire_date).getFullYear()}
+                <Calendar size={16} /> Since {teacher.hire_date ? new Date(teacher.hire_date).getFullYear() : 'N/A'}
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Clock size={16} /> {teacher.years_of_experience} years exp.
+                <Clock size={16} /> {teacher.years_of_experience || 0} years exp.
               </div>
             </div>
             <div className="flex gap-2 mt-4">
@@ -158,7 +150,7 @@ function TeacherDetail() {
                   <UserX size={14} /> Deactivate
                 </button>
               ) : (
-                <button onClick={() => teachersAPI.update(id, { status: 'active' }).then(() => { toast.success('Activated'); fetchTeacher() })} className="btn btn-success btn-sm">
+                <button onClick={handleActivate} className="btn btn-success btn-sm">
                   <UserCheck size={14} /> Activate
                 </button>
               )}
@@ -170,7 +162,13 @@ function TeacherDetail() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-700">
         {tabs.map((tab) => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
             <tab.icon size={16} /> {tab.label}
           </button>
         ))}
@@ -195,16 +193,22 @@ function TeacherDetail() {
           </Card>
           <Card title="Subjects">
             <div className="flex flex-wrap gap-2">
-              {teacher.subjects?.map((s) => (
-                <Badge key={s} variant="info">{s}</Badge>
-              ))}
+              {(teacher.subjects || []).length === 0 ? (
+                <p className="text-sm text-gray-500">No subjects assigned</p>
+              ) : (
+                teacher.subjects.map((s) => <Badge key={s} variant="info">{s}</Badge>)
+              )}
             </div>
           </Card>
           <Card title="Classes">
             <div className="flex flex-wrap gap-2">
-              {teacher.classes_info?.map((c, i) => (
-                <Badge key={i} variant="success">{c.class_name} ({c.class_level})</Badge>
-              ))}
+              {(teacher.classes_info || []).length === 0 ? (
+                <p className="text-sm text-gray-500">No classes assigned</p>
+              ) : (
+                teacher.classes_info.map((c, i) => (
+                  <Badge key={i} variant="success">{c.class_name} ({c.class_level})</Badge>
+                ))
+              )}
             </div>
           </Card>
         </div>
@@ -212,33 +216,41 @@ function TeacherDetail() {
 
       {activeTab === 'reviews' && (
         <div className="space-y-4">
-          {teacher.performance_reviews?.map((review, index) => (
-            <Card key={index}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-primary-600">{review.rating}</span>
-                  <span className="text-sm text-gray-500">/ 5.0</span>
+          {(teacher.performance_reviews || []).length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No performance reviews yet.</p>
+          ) : (
+            teacher.performance_reviews.map((review, index) => (
+              <Card key={index}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-bold text-primary-600">{review.rating}</span>
+                    <span className="text-sm text-gray-500">/ 5.0</span>
+                  </div>
+                  <span className="text-sm text-gray-400">{new Date(review.review_date).toLocaleDateString()}</span>
                 </div>
-                <span className="text-sm text-gray-400">{new Date(review.review_date).toLocaleDateString()}</span>
-              </div>
-              <p className="text-sm text-gray-500">Reviewer: {review.reviewer}</p>
-              <p className="text-sm mt-2">{review.overall_comments}</p>
-            </Card>
-          ))}
+                <p className="text-sm text-gray-500">Reviewer: {review.reviewer}</p>
+                <p className="text-sm mt-2">{review.overall_comments}</p>
+              </Card>
+            ))
+          )}
         </div>
       )}
 
       {activeTab === 'training' && (
         <div className="space-y-4">
-          {teacher.training_history?.map((training, index) => (
-            <Card key={index}>
-              <h4 className="font-semibold">{training.training_name}</h4>
-              <p className="text-sm text-gray-500">{training.provider}</p>
-              <p className="text-xs text-gray-400 mt-1">
-                {new Date(training.start_date).toLocaleDateString()} - {new Date(training.end_date).toLocaleDateString()}
-              </p>
-            </Card>
-          ))}
+          {(teacher.training_history || []).length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No training history yet.</p>
+          ) : (
+            teacher.training_history.map((training, index) => (
+              <Card key={index}>
+                <h4 className="font-semibold">{training.training_name}</h4>
+                <p className="text-sm text-gray-500">{training.provider}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {new Date(training.start_date).toLocaleDateString()} - {new Date(training.end_date).toLocaleDateString()}
+                </p>
+              </Card>
+            ))
+          )}
         </div>
       )}
 
