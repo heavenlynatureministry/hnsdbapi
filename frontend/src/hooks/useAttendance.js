@@ -13,14 +13,16 @@ export function useAttendance() {
 
   const fetchTodayAttendance = useCallback(async (params = {}) => {
     setLoading(true)
+    setError(null)
     try {
       const response = await attendanceAPI.getToday(params)
       if (response.success) {
         setStatistics(response.data)
       }
-      return response
+      return response?.data || null
     } catch (err) {
       setError(err.message)
+      toast.error('Failed to fetch today\'s attendance')
       return null
     } finally {
       setLoading(false)
@@ -29,15 +31,17 @@ export function useAttendance() {
 
   const fetchClassAttendance = useCallback(async (classId, params = {}) => {
     setLoading(true)
+    setError(null)
     try {
       const response = await attendanceAPI.getByClass(classId, params)
       if (response.success) {
         setRecords(response.data?.students || [])
         setStatistics(response.data?.statistics || null)
       }
-      return response
+      return response?.data || null
     } catch (err) {
       setError(err.message)
+      toast.error('Failed to fetch class attendance')
       return null
     } finally {
       setLoading(false)
@@ -46,11 +50,13 @@ export function useAttendance() {
 
   const fetchStudentAttendance = useCallback(async (studentId, params = {}) => {
     setLoading(true)
+    setError(null)
     try {
       const response = await attendanceAPI.getByStudent(studentId, params)
       return response?.data || null
     } catch (err) {
       setError(err.message)
+      toast.error('Failed to fetch student attendance')
       return null
     } finally {
       setLoading(false)
@@ -59,15 +65,18 @@ export function useAttendance() {
 
   const markAttendance = useCallback(async (data) => {
     setLoading(true)
+    setError(null)
     try {
       const response = await attendanceAPI.mark(data)
       if (response.success) {
         toast.success('Attendance marked successfully')
-        return true
+        return response.data || true
       }
+      return null
     } catch (err) {
+      setError(err.message)
       toast.error(err.message || 'Failed to mark attendance')
-      return false
+      return null
     } finally {
       setLoading(false)
     }
@@ -75,13 +84,22 @@ export function useAttendance() {
 
   const bulkMarkAttendance = useCallback(async (data) => {
     setLoading(true)
+    setError(null)
     try {
       const response = await attendanceAPI.bulkMark(data)
       if (response.success) {
-        toast.success(`Attendance saved! ${response.data?.successful || 0} marked.`)
+        const count = response.data?.successful || 0
+        const failed = response.data?.failed || 0
+        if (failed > 0) {
+          toast.success(`Attendance saved! ${count} marked, ${failed} failed.`)
+        } else {
+          toast.success(`Attendance saved! ${count} marked.`)
+        }
         return response.data
       }
+      return null
     } catch (err) {
+      setError(err.message)
       toast.error('Failed to save attendance')
       return null
     } finally {
@@ -91,10 +109,15 @@ export function useAttendance() {
 
   const getAnalytics = useCallback(async (params = {}) => {
     setLoading(true)
+    setError(null)
     try {
       const response = await attendanceAPI.getAnalytics(params)
+      if (response?.data) {
+        setStatistics(response.data)
+      }
       return response?.data || null
     } catch (err) {
+      setError(err.message)
       return null
     } finally {
       setLoading(false)
@@ -103,15 +126,30 @@ export function useAttendance() {
 
   const generateReport = useCallback(async (params = {}) => {
     setLoading(true)
+    setError(null)
     try {
       const response = await attendanceAPI.generateReport(params)
+      if (response?.data) {
+        toast.success('Report generated successfully')
+      }
       return response?.data || null
     } catch (err) {
+      setError(err.message)
       toast.error('Failed to generate report')
       return null
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  const clearError = useCallback(() => {
+    setError(null)
+  }, [])
+
+  const resetState = useCallback(() => {
+    setRecords([])
+    setStatistics(null)
+    setError(null)
   }, [])
 
   return {
@@ -126,6 +164,8 @@ export function useAttendance() {
     bulkMarkAttendance,
     getAnalytics,
     generateReport,
+    clearError,
+    resetState,
   }
 }
 
