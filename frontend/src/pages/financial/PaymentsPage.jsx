@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
+import financialAPI from '../../api/financial'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -29,17 +30,35 @@ function PaymentsPage() {
 
   useEffect(() => {
     updatePageTitle('Payments')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Financial', path: '/financial' }, { label: 'Payments' }])
-    setTimeout(() => {
-      setPayments([
-        { _id: '1', student_name: 'Abraham Kuol', class_name: 'P3', amount_paid: 15000, payment_method: 'cash', receipt_number: 'RCP-20240115-0001', status: 'completed', payment_date: '2024-01-15', paid_by: 'Michael Kuol' },
-        { _id: '2', student_name: 'Achol Deng', class_name: 'P2', amount_paid: 15000, payment_method: 'mobile_money', receipt_number: 'RCP-20240116-0001', status: 'completed', payment_date: '2024-01-16', paid_by: 'Sarah Deng' },
-        { _id: '3', student_name: 'Bol Malek', class_name: 'P4', amount_paid: 10000, payment_method: 'bank_transfer', receipt_number: 'RCP-20240120-0001', status: 'partial', payment_date: '2024-01-20', paid_by: 'Peter Malek' },
-        { _id: '4', student_name: 'Aya Dut', class_name: 'Baby', amount_paid: 8000, payment_method: 'cash', receipt_number: 'RCP-20240201-0001', status: 'completed', payment_date: '2024-02-01', paid_by: 'James Dut' },
-      ])
-      setLoading(false)
-    }, 500)
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Financial', path: '/financial' },
+      { label: 'Payments' },
+    ])
+    fetchPayments()
   }, [])
+
+  const fetchPayments = async () => {
+    setLoading(true)
+    try {
+      const response = await financialAPI.getPayments({ search: search || undefined })
+      if (response?.success) {
+        setPayments(response.data?.payments || response.data || [])
+      } else {
+        setPayments([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch payments:', error)
+      toast.error('Failed to load payments')
+      setPayments([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchPayments()
+  }, [search])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -50,12 +69,20 @@ function PaymentsPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 800))
-      toast.success('Payment recorded successfully!')
-      setShowModal(false)
-      setFormData({ student_id: '', fee_structure_id: '', amount_paid: '', payment_method: 'cash', paid_by: '', transaction_reference: '', academic_year: '2024/2025', term: 'Term 1', notes: '' })
-    } catch (error) { toast.error('Failed to record payment') }
-    finally { setSaving(false) }
+      const response = await financialAPI.recordPayment(formData)
+      if (response?.success) {
+        toast.success('Payment recorded successfully!')
+        setShowModal(false)
+        setFormData({ student_id: '', fee_structure_id: '', amount_paid: '', payment_method: 'cash', paid_by: '', transaction_reference: '', academic_year: '2024/2025', term: 'Term 1', notes: '' })
+        fetchPayments()
+      } else {
+        toast.error(response?.message || 'Failed to record payment')
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to record payment')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const getStatusBadge = (status) => {
@@ -65,7 +92,7 @@ function PaymentsPage() {
     return <Badge variant={variants[status] || 'gray'}><span className="flex items-center gap-1">{Icon && <Icon size={12} />}{status}</span></Badge>
   }
 
-  const totalCollected = payments.reduce((s, p) => s + p.amount_paid, 0)
+  const totalCollected = payments.reduce((s, p) => s + (p.amount_paid || 0), 0)
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -121,10 +148,10 @@ function PaymentsPage() {
                     <td className="text-xs font-mono">{payment.receipt_number}</td>
                     <td className="font-medium text-sm">{payment.student_name}</td>
                     <td className="text-sm">{payment.class_name}</td>
-                    <td className="text-sm font-semibold text-green-600">SSP {payment.amount_paid.toLocaleString()}</td>
+                    <td className="text-sm font-semibold text-green-600">SSP {(payment.amount_paid || 0).toLocaleString()}</td>
                     <td className="text-sm capitalize">{payment.payment_method?.replace('_', ' ')}</td>
                     <td className="text-sm">{payment.paid_by}</td>
-                    <td className="text-sm">{new Date(payment.payment_date).toLocaleDateString()}</td>
+                    <td className="text-sm">{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : 'N/A'}</td>
                     <td>{getStatusBadge(payment.status)}</td>
                   </tr>
                 ))}
@@ -134,7 +161,6 @@ function PaymentsPage() {
         </div>
       )}
 
-      {/* Record Payment Modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Record Payment" size="md">
         <form onSubmit={handleSubmit} className="space-y-4">
           <FormInput label="Student ID *" name="student_id" value={formData.student_id} onChange={handleChange} required placeholder="Search student..." />
