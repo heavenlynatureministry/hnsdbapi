@@ -45,7 +45,13 @@ const AcademicCalendar = lazy(() => import('./pages/school/AcademicCalendar'))
 const EventsPage = lazy(() => import('./pages/school/EventsPage'))
 const SettingsPage = lazy(() => import('./pages/school/SettingsPage'))
 
+// Report pages
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'))
+const AcademicReport = lazy(() => import('./pages/reports/AcademicReport'))
+const AttendanceReportPage = lazy(() => import('./pages/reports/AttendanceReport'))
+const FinancialReport = lazy(() => import('./pages/reports/FinancialReport'))
+const EnrollmentReport = lazy(() => import('./pages/reports/EnrollmentReport'))
+const AnnualReport = lazy(() => import('./pages/reports/AnnualReport'))
 
 const UsersList = lazy(() => import('./pages/users/UsersList'))
 const UserProfile = lazy(() => import('./pages/users/UserProfile'))
@@ -118,6 +124,11 @@ function App() {
 
             {/* Reports */}
             <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/reports/academic" element={<AcademicReport />} />
+            <Route path="/reports/attendance" element={<AttendanceReportPage />} />
+            <Route path="/reports/financial" element={<FinancialReport />} />
+            <Route path="/reports/enrollment" element={<EnrollmentReport />} />
+            <Route path="/reports/annual" element={<AnnualReport />} />
 
             {/* Users (Admin only) */}
             <Route element={<RoleRoute roles={['admin']} />}>
