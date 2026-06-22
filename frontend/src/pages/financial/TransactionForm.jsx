@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import financialAPI from '../../api/financial'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -66,20 +67,54 @@ function TransactionForm() {
     term: 'Term 1',
     currency: 'SSP',
     notes: '',
-    tags: '',
     receipt_url: '',
   })
 
   useEffect(() => {
     updatePageTitle(isEdit ? 'Edit Transaction' : 'New Transaction')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Financial', path: '/financial' }, { label: isEdit ? 'Edit' : 'New' }])
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Financial', path: '/financial' },
+      { label: isEdit ? 'Edit' : 'New' },
+    ])
+    
     if (isEdit) {
-      setTimeout(() => {
-        setFormData(prev => ({ ...prev, amount: '15000', category: 'tuition_fees', description: 'Tuition payment', payment_method: 'cash' }))
-        setFetching(false)
-      }, 400)
+      fetchTransaction()
+    } else {
+      setFetching(false)
     }
   }, [id])
+
+  const fetchTransaction = async () => {
+    setFetching(true)
+    try {
+      const response = await financialAPI.getTransaction(id)
+      if (response?.success && response.data) {
+        const t = response.data
+        setFormData({
+          transaction_date: t.transaction_date?.split('T')[0] || new Date().toISOString().split('T')[0],
+          amount: t.amount || '',
+          transaction_type: t.transaction_type || 'income',
+          category: t.category || '',
+          description: t.description || '',
+          payment_method: t.payment_method || 'cash',
+          academic_year: t.academic_year || '2024/2025',
+          term: t.term || 'Term 1',
+          currency: t.currency || 'SSP',
+          notes: t.notes || '',
+          receipt_url: t.receipt_url || '',
+        })
+      } else {
+        toast.error('Failed to load transaction')
+        navigate('/financial')
+      }
+    } catch (error) {
+      toast.error('Failed to fetch transaction')
+      navigate('/financial')
+    } finally {
+      setFetching(false)
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -101,14 +136,43 @@ function TransactionForm() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validateForm()) return
+
     setLoading(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 800))
-      toast.success(`Transaction ${isEdit ? 'updated' : 'recorded'} successfully`)
-      navigate('/financial')
+      const payload = { ...formData }
+      
+      let response
+      if (isEdit) {
+        response = await financialAPI.updateTransaction(id, payload)
+      } else {
+        response = await financialAPI.createTransaction(payload)
+      }
+
+      if (response && response.success) {
+        toast.success(`Transaction ${isEdit ? 'updated' : 'recorded'} successfully`)
+        navigate('/financial')
+      } else {
+        toast.error(response?.message || 'Failed to save transaction')
+      }
     } catch (error) {
-      toast.error('Failed to save transaction')
-    } finally { setLoading(false) }
+      if (error.status === 422) {
+        const fieldErrors = error.errors || []
+        const newErrors = {}
+        fieldErrors.forEach(err => {
+          const field = err.loc?.[err.loc.length - 1] || 'general'
+          newErrors[field] = err.msg
+        })
+        setErrors(newErrors)
+        toast.error('Please fix the validation errors')
+      } else if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to save transaction')
+      }
+      console.error('Transaction save error:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (fetching) return <LoadingSpinner fullScreen />
