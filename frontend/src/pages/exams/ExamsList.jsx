@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import examsAPI from '../../api/exams'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Badge from '../../components/common/Badge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
 import { FileText, Plus, MoreVertical, Eye, Edit, BarChart3, GraduationCap, BookOpen } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 function ExamsList() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
@@ -18,17 +20,30 @@ function ExamsList() {
   useEffect(() => {
     updatePageTitle('Examinations')
     updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Exams' }])
-    setTimeout(() => {
-      setExams([
-        { _id: 'e1', exam_name: 'Mid-Term English', exam_type: 'mid_term', class_name: 'P5', subject_name: 'English', exam_date: '2024-03-15', max_score: 100, status: 'completed', results_entered: 22, total_students: 22, term: 'Term 1', academic_year: '2024/2025' },
-        { _id: 'e2', exam_name: 'Mid-Term Mathematics', exam_type: 'mid_term', class_name: 'P5', subject_name: 'Mathematics', exam_date: '2024-03-16', max_score: 100, status: 'completed', results_entered: 20, total_students: 22, term: 'Term 1', academic_year: '2024/2025' },
-        { _id: 'e3', exam_name: 'End of Term Science', exam_type: 'end_term', class_name: 'P6', subject_name: 'Science', exam_date: '2024-04-10', max_score: 100, status: 'scheduled', results_entered: 0, total_students: 20, term: 'Term 1', academic_year: '2024/2025' },
-        { _id: 'e4', exam_name: 'Weekly Quiz Social Studies', exam_type: 'quiz', class_name: 'P4', subject_name: 'Social Studies', exam_date: '2024-02-20', max_score: 50, status: 'completed', results_entered: 18, total_students: 18, term: 'Term 1', academic_year: '2024/2025' },
-        { _id: 'e5', exam_name: 'Mock Exam English', exam_type: 'mock', class_name: 'P8', subject_name: 'English', exam_date: '2024-05-01', max_score: 100, status: 'scheduled', results_entered: 0, total_students: 15, term: 'Term 2', academic_year: '2024/2025' },
-      ])
-      setLoading(false)
-    }, 500)
+    fetchExams()
   }, [])
+
+  const fetchExams = async () => {
+    setLoading(true)
+    try {
+      const response = await examsAPI.list({ exam_type: typeFilter || undefined })
+      if (response?.success) {
+        setExams(response.data?.exams || response.data || [])
+      } else {
+        setExams([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch exams:', error)
+      toast.error('Failed to load exams')
+      setExams([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchExams()
+  }, [typeFilter])
 
   const getStatusBadge = (status) => {
     const variants = { scheduled: 'info', ongoing: 'warning', completed: 'success', cancelled: 'danger' }
@@ -36,7 +51,7 @@ function ExamsList() {
   }
 
   const getTypeBadge = (type) => {
-    const variants = { mid_term: 'warning', end_term: 'info', final: 'danger', mock: 'purple', quiz: 'success', assignment: 'gray' }
+    const variants = { mid_term: 'warning', end_term: 'info', final: 'danger', mock: 'info', quiz: 'success', assignment: 'gray' }
     return <Badge variant={variants[type] || 'gray'}>{type?.replace('_', ' ')}</Badge>
   }
 
@@ -55,7 +70,6 @@ function ExamsList() {
         }
       />
 
-      {/* Filter Tabs */}
       <div className="flex gap-2 flex-wrap">
         {['', 'mid_term', 'end_term', 'quiz', 'mock'].map((type) => (
           <button key={type} onClick={() => setTypeFilter(type)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${typeFilter === type ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}>
@@ -100,7 +114,7 @@ function ExamsList() {
               <div className="space-y-2 text-sm mb-3">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500">Date:</span>
-                  <span>{new Date(exam.exam_date).toLocaleDateString()}</span>
+                  <span>{exam.exam_date ? new Date(exam.exam_date).toLocaleDateString() : 'N/A'}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500">Max Score:</span>
@@ -108,7 +122,7 @@ function ExamsList() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500">Results:</span>
-                  <span className="font-medium">{exam.results_entered}/{exam.total_students}</span>
+                  <span className="font-medium">{exam.results_entered || 0}/{exam.total_students || 0}</span>
                 </div>
               </div>
 
@@ -117,11 +131,10 @@ function ExamsList() {
                 {getStatusBadge(exam.status)}
               </div>
 
-              {/* Progress Bar */}
-              {exam.status !== 'scheduled' && (
+              {exam.status !== 'scheduled' && exam.total_students > 0 && (
                 <div className="mt-2">
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                    <div className="bg-primary-600 h-1.5 rounded-full" style={{ width: `${(exam.results_entered / exam.total_students) * 100}%` }} />
+                    <div className="bg-primary-600 h-1.5 rounded-full" style={{ width: `${((exam.results_entered || 0) / exam.total_students) * 100}%` }} />
                   </div>
                 </div>
               )}
