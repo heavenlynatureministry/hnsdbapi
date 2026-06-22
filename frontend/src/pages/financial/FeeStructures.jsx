@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
+import financialAPI from '../../api/financial'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -28,16 +29,31 @@ function FeeStructures() {
 
   useEffect(() => {
     updatePageTitle('Fee Structures')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Financial', path: '/financial' }, { label: 'Fees' }])
-    setTimeout(() => {
-      setStructures([
-        { _id: '1', name: 'Nursery Fees 2024/2025', academic_year: '2024/2025', class_name: 'Baby', student_type: 'all', total_amount: 15000, fee_items: [{ name: 'Tuition', amount: 10000 }, { name: 'Materials', amount: 5000 }], currency: 'SSP', status: 'active' },
-        { _id: '2', name: 'Primary Fees 2024/2025', academic_year: '2024/2025', class_name: 'P1-P4', student_type: 'all', total_amount: 25000, fee_items: [{ name: 'Tuition', amount: 18000 }, { name: 'Books', amount: 7000 }], currency: 'SSP', status: 'active' },
-        { _id: '3', name: 'Upper Primary Fees', academic_year: '2024/2025', class_name: 'P5-P8', student_type: 'all', total_amount: 30000, fee_items: [{ name: 'Tuition', amount: 22000 }, { name: 'Books', amount: 8000 }], currency: 'SSP', status: 'inactive' },
-      ])
-      setLoading(false)
-    }, 500)
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Financial', path: '/financial' },
+      { label: 'Fees' },
+    ])
+    fetchStructures()
   }, [])
+
+  const fetchStructures = async () => {
+    setLoading(true)
+    try {
+      const response = await financialAPI.getFeeStructures()
+      if (response?.success) {
+        setStructures(response.data?.structures || response.data || [])
+      } else {
+        setStructures([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch fee structures:', error)
+      toast.error('Failed to load fee structures')
+      setStructures([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const openCreateModal = () => {
     setEditingStructure(null)
@@ -73,11 +89,27 @@ function FeeStructures() {
     e.preventDefault()
     setSaving(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 800))
-      toast.success(editingStructure ? 'Fee structure updated!' : 'Fee structure created!')
-      setShowModal(false)
-    } catch (error) { toast.error('Failed to save') }
-    finally { setSaving(false) }
+      const payload = { ...formData, total_amount: totalAmount }
+      
+      let response
+      if (editingStructure) {
+        response = await financialAPI.updateFeeStructure(editingStructure._id, payload)
+      } else {
+        response = await financialAPI.createFeeStructure(payload)
+      }
+
+      if (response?.success) {
+        toast.success(editingStructure ? 'Fee structure updated!' : 'Fee structure created!')
+        setShowModal(false)
+        fetchStructures()
+      } else {
+        toast.error(response?.message || 'Failed to save')
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (loading) return <LoadingSpinner />
@@ -103,13 +135,13 @@ function FeeStructures() {
               <div className="space-y-2 text-sm mb-3">
                 <p><span className="text-gray-500">Class:</span> {structure.class_name}</p>
                 <p><span className="text-gray-500">Year:</span> {structure.academic_year}</p>
-                <p className="text-2xl font-bold text-primary-600">SSP {structure.total_amount?.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-primary-600">SSP {(structure.total_amount || 0).toLocaleString()}</p>
               </div>
               <div className="space-y-1 mb-3">
-                {structure.fee_items?.map((item, i) => (
+                {(structure.fee_items || []).map((item, i) => (
                   <div key={i} className="flex justify-between text-xs text-gray-500">
                     <span>{item.name}</span>
-                    <span>SSP {item.amount?.toLocaleString()}</span>
+                    <span>SSP {(item.amount || 0).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
@@ -134,7 +166,6 @@ function FeeStructures() {
               options={[{ value: 'all', label: 'All' }, { value: 'street', label: 'Street' }, { value: 'abundant', label: 'Abundant' }, { value: 'orphan', label: 'Orphan' }]} />
           </div>
 
-          {/* Fee Items */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="form-label mb-0">Fee Items</label>
