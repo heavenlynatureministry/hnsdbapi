@@ -12,6 +12,7 @@ from app.schemas.common import SuccessResponse
 router = APIRouter()
 
 
+@router.get("", response_model=SuccessResponse)
 @router.get("/", response_model=SuccessResponse)
 async def list_teachers(
     status: Optional[str] = Query(None),
@@ -71,6 +72,7 @@ async def get_teacher(
     return SuccessResponse(success=True, message="Teacher retrieved", data=teacher)
 
 
+@router.post("", response_model=SuccessResponse, status_code=201)
 @router.post("/", response_model=SuccessResponse, status_code=201)
 async def create_teacher(
     request: Request,
@@ -91,7 +93,6 @@ async def create_teacher(
     if not first_name or not last_name:
         raise HTTPException(status_code=400, detail="First name and last name are required")
     
-    # Parse dates
     dob_str = body.get('date_of_birth', '')
     hire_str = body.get('hire_date', '')
     
