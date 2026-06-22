@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import studentsAPI from '../../api/students'
 import PageHeader from '../../components/common/PageHeader'
 import SearchBar from '../../components/common/SearchBar'
 import Pagination from '../../components/common/Pagination'
@@ -12,6 +13,7 @@ import {
   MoreVertical, Eye, Edit, UserCheck, ArrowUpRight,
   Users, School, BookOpen
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 function StudentsList() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
@@ -36,53 +38,57 @@ function StudentsList() {
     ])
   }, [updatePageTitle, updateBreadcrumbs])
 
-  // Dummy data
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setStudents([
-        { _id: '1', student_id_number: 'HNS-2024-0001', first_name: 'Abraham', last_name: 'Kuol', gender: 'Male', date_of_birth: '2016-03-10', student_type: 'street', enrollment_date: '2020-01-15', current_class_id: 'c1', class_name: 'P3', class_level: 'primary', status: 'active', age: 8 },
-        { _id: '2', student_id_number: 'HNS-2024-0002', first_name: 'Achol', last_name: 'Deng', gender: 'Female', date_of_birth: '2017-07-22', student_type: 'abundant', enrollment_date: '2020-01-15', current_class_id: 'c2', class_name: 'P2', class_level: 'primary', status: 'active', age: 7 },
-        { _id: '3', student_id_number: 'HNS-2024-0003', first_name: 'Bol', last_name: 'Malek', gender: 'Male', date_of_birth: '2015-11-05', student_type: 'orphan', enrollment_date: '2019-09-01', current_class_id: 'c3', class_name: 'P4', class_level: 'primary', status: 'active', age: 9 },
-        { _id: '4', student_id_number: 'HNS-2024-0004', first_name: 'Aya', last_name: 'Dut', gender: 'Female', date_of_birth: '2018-04-12', student_type: 'other', enrollment_date: '2021-02-10', current_class_id: 'c4', class_name: 'Baby', class_level: 'nursery', status: 'active', age: 6 },
-        { _id: '5', student_id_number: 'HNS-2024-0005', first_name: 'Peter', last_name: 'Garang', gender: 'Male', date_of_birth: '2014-08-30', student_type: 'street', enrollment_date: '2019-01-20', current_class_id: 'c5', class_name: 'P5', class_level: 'primary', status: 'graduated', age: 10 },
-      ])
-      setTotal(5)
-      setTotalPages(1)
+  const fetchStudents = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await studentsAPI.getAll({
+        search: search || undefined,
+        class_name: classFilter || undefined,
+        student_type: typeFilter || undefined,
+        gender: genderFilter || undefined,
+        page,
+        limit,
+      })
+      
+      if (response?.success) {
+        setStudents(response.data?.students || response.data || [])
+        setTotal(response.data?.total || 0)
+        setTotalPages(response.data?.total_pages || Math.ceil((response.data?.total || 0) / limit))
+      } else {
+        setStudents([])
+        setTotal(0)
+        setTotalPages(0)
+      }
+    } catch (error) {
+      console.error('Failed to fetch students:', error)
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to fetch students')
+      }
+      setStudents([])
+    } finally {
       setLoading(false)
-    }, 500)
+    }
   }, [search, classFilter, typeFilter, genderFilter, page])
+
+  useEffect(() => {
+    fetchStudents()
+  }, [fetchStudents])
 
   const getStatusBadge = (status) => {
     const variants = {
-      active: 'success',
-      inactive: 'danger',
-      graduated: 'info',
-      transferred: 'warning',
-      suspended: 'danger',
+      active: 'success', inactive: 'danger', graduated: 'info',
+      transferred: 'warning', suspended: 'danger',
     }
     return <Badge variant={variants[status] || 'gray'}>{status}</Badge>
   }
 
   const getTypeBadge = (type) => {
-    const variants = {
-      street: 'warning',
-      abundant: 'success',
-      orphan: 'info',
-      other: 'gray',
-    }
+    const variants = { street: 'warning', abundant: 'success', orphan: 'info', other: 'gray' }
     const labels = { street: 'Street Child', abundant: 'Abundant', orphan: 'Orphan', other: 'Other' }
     return <Badge variant={variants[type] || 'gray'}>{labels[type] || type}</Badge>
   }
-
-  const filteredStudents = students.filter((s) => {
-    const matchesSearch = !search || 
-      `${s.first_name} ${s.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
-      s.student_id_number?.toLowerCase().includes(search.toLowerCase())
-    const matchesClass = !classFilter || s.class_name === classFilter
-    const matchesType = !typeFilter || s.student_type === typeFilter
-    const matchesGender = !genderFilter || s.gender === genderFilter
-    return matchesSearch && matchesClass && matchesType && matchesGender
-  })
 
   const classes = [...new Set(students.map(s => s.class_name).filter(Boolean))]
 
@@ -125,18 +131,18 @@ function StudentsList() {
           <div className="flex-1">
             <SearchBar value={search} onChange={setSearch} placeholder="Search by name or ID..." />
           </div>
-          <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="form-input w-full sm:w-32">
+          <select value={classFilter} onChange={(e) => { setClassFilter(e.target.value); setPage(1) }} className="form-input w-full sm:w-32">
             <option value="">All Classes</option>
             {classes.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="form-input w-full sm:w-36">
+          <select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1) }} className="form-input w-full sm:w-36">
             <option value="">All Types</option>
             <option value="street">Street Child</option>
             <option value="abundant">Abundant</option>
             <option value="orphan">Orphan</option>
             <option value="other">Other</option>
           </select>
-          <select value={genderFilter} onChange={(e) => setGenderFilter(e.target.value)} className="form-input w-full sm:w-28">
+          <select value={genderFilter} onChange={(e) => { setGenderFilter(e.target.value); setPage(1) }} className="form-input w-full sm:w-28">
             <option value="">All Genders</option>
             <option value="Male">Male</option>
             <option value="Female">Female</option>
@@ -147,8 +153,13 @@ function StudentsList() {
       {/* Table */}
       {loading ? (
         <LoadingSpinner />
-      ) : filteredStudents.length === 0 ? (
-        <EmptyState icon={<GraduationCap size={48} />} title="No students found" description="No students match your search criteria." action={<Link to="/students/new" className="btn btn-primary">Add Student</Link>} />
+      ) : students.length === 0 ? (
+        <EmptyState
+          icon={<GraduationCap size={48} />}
+          title="No students found"
+          description="No students match your search criteria."
+          action={<Link to="/students/new" className="btn btn-primary">Add Student</Link>}
+        />
       ) : (
         <div className="card p-0 overflow-hidden">
           <div className="table-container">
@@ -166,7 +177,7 @@ function StudentsList() {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.map((student) => (
+                {students.map((student) => (
                   <tr key={student._id}>
                     <td>
                       <div className="flex items-center gap-3">
@@ -180,7 +191,7 @@ function StudentsList() {
                     </td>
                     <td className="text-sm font-mono">{student.student_id_number}</td>
                     <td className="text-sm">{student.gender}</td>
-                    <td className="text-sm">{student.age} yrs</td>
+                    <td className="text-sm">{student.age || 'N/A'} yrs</td>
                     <td className="text-sm">{student.class_name || 'N/A'}</td>
                     <td>{getTypeBadge(student.student_type)}</td>
                     <td>{getStatusBadge(student.status)}</td>
