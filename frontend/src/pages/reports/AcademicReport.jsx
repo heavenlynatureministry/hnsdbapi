@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import PageHeader from '../../components/common/PageHeader'
@@ -8,9 +8,11 @@ import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import Badge from '../../components/common/Badge'
 import { ArrowLeft, Download, BarChart3, GraduationCap, TrendingUp } from 'lucide-react'
+import { exportToPDF } from '../../utils/exportPDF'
 
 function AcademicReport() {
   const navigate = useNavigate()
+  const reportRef = useRef(null)
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
@@ -31,7 +33,6 @@ function AcademicReport() {
 
   const handleGenerate = async () => {
     setLoading(true)
-    // Simulate API call
     setTimeout(() => {
       setReportData({
         class_name: 'P5',
@@ -54,6 +55,10 @@ function AcademicReport() {
       setLoading(false)
       setGenerated(true)
     }, 1000)
+  }
+
+  const handleExportPDF = () => {
+    exportToPDF(reportRef.current, `Academic_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
   }
 
   const getGradeColor = (grade) => {
@@ -120,7 +125,7 @@ function AcademicReport() {
             Generate Report
           </Button>
           {generated && (
-            <Button variant="secondary" icon={<Download size={18} />}>
+            <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>
               Export PDF
             </Button>
           )}
@@ -131,7 +136,7 @@ function AcademicReport() {
       {loading && <LoadingSpinner />}
 
       {generated && reportData && (
-        <div className="space-y-6">
+        <div ref={reportRef} className="space-y-6">
           {/* Overview */}
           <Card>
             <div className="text-center mb-4">
