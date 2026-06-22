@@ -235,3 +235,32 @@ async def remove_board_member(
     )
     if result.modified_count == 0: raise HTTPException(status_code=404, detail="Member not found")
     return SuccessResponse(success=True, message="Board member removed")
+
+
+# =========================================================================
+# SETTINGS
+# =========================================================================
+@router.get("/settings", response_model=SuccessResponse)
+async def get_settings(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get school settings"""
+    db = get_database()
+    settings = await db.settings.find_one({}) or {}
+    if settings.get("_id"): settings["_id"] = str(settings["_id"])
+    return SuccessResponse(success=True, message="Settings retrieved", data=settings)
+
+
+@router.put("/settings", response_model=SuccessResponse)
+async def update_settings(
+    request: Request = None,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Update school settings"""
+    db = get_database()
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    body["updated_at"] = datetime.utcnow()
+    await db.settings.update_one({}, {"$set": body}, upsert=True)
+    return SuccessResponse(success=True, message="Settings updated")
