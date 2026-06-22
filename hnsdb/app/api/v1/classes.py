@@ -11,6 +11,7 @@ from app.schemas.common import SuccessResponse
 router = APIRouter()
 
 
+@router.get("", response_model=SuccessResponse)
 @router.get("/", response_model=SuccessResponse)
 async def list_classes(
     class_level: Optional[str] = Query(None),
@@ -105,12 +106,10 @@ async def get_class(
     if class_doc.get("class_teacher_id"): class_doc["class_teacher_id"] = str(class_doc["class_teacher_id"])
     if class_doc.get("classroom_id"): class_doc["classroom_id"] = str(class_doc["classroom_id"])
     
-    # Get teacher name
     if class_doc.get("class_teacher_id"):
         teacher = await db.teachers.find_one({"_id": ObjectId(class_doc["class_teacher_id"])})
         if teacher: class_doc["teacher_name"] = f"{teacher['first_name']} {teacher['last_name']}"
     
-    # Get student count
     class_doc["student_count"] = await db.students.count_documents({
         "current_class_id": ObjectId(class_id), "status": "active"
     })
@@ -133,7 +132,6 @@ async def get_class_students(
         s["_id"] = str(s["_id"])
         if s.get("current_class_id"): s["current_class_id"] = str(s["current_class_id"])
     
-    # Get class name
     class_doc = await db.classes.find_one({"_id": ObjectId(class_id)})
     class_name = class_doc["class_name"] if class_doc else "Unknown"
     
@@ -145,6 +143,7 @@ async def get_class_students(
     })
 
 
+@router.post("", response_model=SuccessResponse, status_code=201)
 @router.post("/", response_model=SuccessResponse, status_code=201)
 async def create_class(
     request: Request,
@@ -171,7 +170,6 @@ async def create_class(
         month = now.month
         academic_year = f"{year}/{year+1}" if month >= 9 else f"{year-1}/{year}"
     
-    # Check for duplicate
     existing = await db.classes.find_one({
         "class_name": class_name, "class_level": class_level,
         "academic_year": academic_year, "status": "active"
@@ -196,7 +194,6 @@ async def create_class(
         "updated_at": datetime.utcnow()
     }
     
-    # Remove None values
     doc = {k: v for k, v in doc.items() if v is not None}
     
     result = await db.classes.insert_one(doc)
