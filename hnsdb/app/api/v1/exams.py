@@ -11,6 +11,7 @@ from app.schemas.common import SuccessResponse
 router = APIRouter()
 
 
+@router.get("", response_model=SuccessResponse)
 @router.get("/", response_model=SuccessResponse)
 async def list_exams(
     class_id: Optional[str] = Query(None),
@@ -97,6 +98,7 @@ async def get_exam(
     return SuccessResponse(success=True, message="Exam retrieved", data=exam)
 
 
+@router.post("", response_model=SuccessResponse, status_code=201)
 @router.post("/", response_model=SuccessResponse, status_code=201)
 async def create_exam(
     request: Request,
@@ -148,7 +150,6 @@ async def create_exam(
         "updated_at": datetime.utcnow()
     }
     
-    # Remove None values
     doc = {k: v for k, v in doc.items() if v is not None}
     
     result = await db.exams.insert_one(doc)
@@ -225,7 +226,6 @@ async def get_results(
         r["student_id"] = str(r["student_id"])
         if r.get("recorded_by"): r["recorded_by"] = str(r["recorded_by"])
     
-    # Calculate statistics
     scores = [r["score"] for r in results]
     stats = {
         "total_students": len(results),
@@ -298,7 +298,6 @@ async def record_results(
         except Exception:
             pass
     
-    # Update exam status
     total_results = await db.exam_results.count_documents({"exam_id": ObjectId(exam_id)})
     await db.exams.update_one(
         {"_id": ObjectId(exam_id)},
@@ -321,7 +320,6 @@ async def get_student_results(
     """Get exam results for a student"""
     db = get_database()
     
-    # Get all exams for student
     results = await db.exam_results.find({"student_id": ObjectId(student_id)}).to_list(length=None)
     
     for r in results:
@@ -329,7 +327,6 @@ async def get_student_results(
         r["exam_id"] = str(r["exam_id"])
         r["student_id"] = str(r["student_id"])
     
-    # Get student info
     student = await db.students.find_one({"_id": ObjectId(student_id)})
     
     return SuccessResponse(success=True, message="Student results retrieved", data={
