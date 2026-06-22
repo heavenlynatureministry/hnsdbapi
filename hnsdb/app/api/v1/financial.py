@@ -11,6 +11,7 @@ from app.schemas.common import SuccessResponse
 router = APIRouter()
 
 
+@router.get("", response_model=SuccessResponse)
 @router.get("/", response_model=SuccessResponse)
 async def list_transactions(
     type: Optional[str] = Query(None, alias="type"),
@@ -37,6 +38,7 @@ async def list_transactions(
     })
 
 
+@router.post("", response_model=SuccessResponse, status_code=201)
 @router.post("/", response_model=SuccessResponse, status_code=201)
 async def create_transaction(
     request: Request,
@@ -115,15 +117,16 @@ async def get_summary(current_user: Dict[str, Any] = Depends(get_current_user)):
 async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Financial dashboard"""
     db = get_database()
-    summary = await get_summary()
+    summary_data = await get_summary()
+    summary = summary_data.data if hasattr(summary_data, 'data') else summary_data.get("data", {})
     pending = await db.financial_records.count_documents({"approval_status": "pending"})
     recent = await db.financial_records.find().sort("created_at", -1).limit(5).to_list(length=5)
     for t in recent: t["_id"] = str(t["_id"])
     
     return SuccessResponse(success=True, message="Dashboard retrieved", data={
-        "current_balance": summary["data"]["balance"],
-        "total_income_current_term": summary["data"]["income"]["total"],
-        "total_expenses_current_term": summary["data"]["expense"]["total"],
+        "current_balance": summary.get("balance", 0),
+        "total_income_current_term": summary.get("income", {}).get("total", 0),
+        "total_expenses_current_term": summary.get("expense", {}).get("total", 0),
         "pending_approvals": pending,
         "recent_transactions": recent
     })
@@ -147,7 +150,7 @@ async def list_payments(
     
     for p in payments:
         p["_id"] = str(p["_id"])
-        p["student_id"] = str(p["student_id"])
+        if p.get("student_id"): p["student_id"] = str(p["student_id"])
         if p.get("fee_structure_id"): p["fee_structure_id"] = str(p["fee_structure_id"])
         if p.get("recorded_by"): p["recorded_by"] = str(p["recorded_by"])
     
@@ -175,13 +178,22 @@ async def record_payment(
     if not student_id or not amount_paid:
         raise HTTPException(status_code=400, detail="Student ID and amount are required")
     
-    # Get student name
-    student = await db.students.find_one({"_id": ObjectId(student_id)})
+    try:
+        student_obj_id = ObjectId(student_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+    
+    student = await db.students.find_one({"_id": student_obj_id})
     student_name = f"{student['first_name']} {student['last_name']}" if student else "Unknown"
+    class_name = ""
+    if student and student.get("current_class_id"):
+        cls = await db.classes.find_one({"_id": student["current_class_id"]})
+        if cls: class_name = cls.get("class_name", "")
     
     doc = {
-        "student_id": ObjectId(student_id),
+        "student_id": student_obj_id,
         "student_name": student_name,
+        "class_name": class_name,
         "amount_paid": float(amount_paid),
         "payment_method": body.get('payment_method', 'cash'),
         "paid_by": body.get('paid_by', ''),
@@ -192,6 +204,7 @@ async def record_payment(
         "academic_year": body.get('academic_year'),
         "term": body.get('term'),
         "notes": body.get('notes'),
+        "transaction_reference": body.get('transaction_reference'),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
