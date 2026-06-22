@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
+import { useAuth } from './context/AuthContext'
 import LoadingSpinner from './components/common/LoadingSpinner'
 import PrivateRoute from './routes/PrivateRoute'
 import RoleRoute from './routes/RoleRoute'
@@ -50,89 +51,102 @@ const UsersList = lazy(() => import('./pages/users/UsersList'))
 const UserProfile = lazy(() => import('./pages/users/UserProfile'))
 
 function App() {
+  const { isAuthenticated, loading } = useAuth()
+
+  // Show loading spinner while checking authentication
+  if (loading) {
+    return <LoadingSpinner fullScreen message="Loading application..." />
+  }
+
   return (
     <Suspense fallback={<LoadingSpinner fullScreen />}>
       <Routes>
-        {/* Public Auth Routes */}
-        <Route element={<AuthLayout />}>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password/:token" element={<ResetPassword />} />
-        </Route>
-
-        {/* Protected Routes */}
-        <Route element={<PrivateRoute />}>
-          <Route element={<MainLayout />}>
-            {/* Dashboard */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-
-            {/* Students */}
-            <Route path="/students" element={<StudentsList />} />
-            <Route path="/students/new" element={<StudentForm />} />
-            <Route path="/students/:id" element={<StudentDetail />} />
-            <Route path="/students/:id/edit" element={<StudentForm />} />
-
-            {/* Teachers */}
-            <Route path="/teachers" element={<TeachersList />} />
-            <Route path="/teachers/new" element={<TeacherForm />} />
-            <Route path="/teachers/:id" element={<TeacherDetail />} />
-            <Route path="/teachers/:id/edit" element={<TeacherForm />} />
-
-            {/* Classes */}
-            <Route path="/classes" element={<ClassesList />} />
-            <Route path="/classes/new" element={<ClassForm />} />
-            <Route path="/classes/:id" element={<ClassDetail />} />
-            <Route path="/classes/:id/edit" element={<ClassForm />} />
-
-            {/* Attendance */}
-            <Route path="/attendance" element={<AttendancePage />} />
-            <Route path="/attendance/mark/:classId" element={<AttendanceMark />} />
-            <Route path="/attendance/report" element={<AttendanceReport />} />
-
-            {/* Exams */}
-            <Route path="/exams" element={<ExamsList />} />
-            <Route path="/exams/new" element={<ExamForm />} />
-            <Route path="/exams/:id" element={<ExamDetail />} />
-            <Route path="/exams/:id/results" element={<ResultsEntry />} />
-            <Route path="/exams/report-cards" element={<ReportCard />} />
-
-            {/* Financial */}
-            <Route path="/financial" element={<TransactionsList />} />
-            <Route path="/financial/fees" element={<FeeStructures />} />
-            <Route path="/financial/payments" element={<PaymentsPage />} />
-
-            {/* School */}
-            <Route path="/school/info" element={<SchoolInfo />} />
-            <Route path="/school/calendar" element={<AcademicCalendar />} />
-            <Route path="/school/events" element={<EventsPage />} />
-            <Route path="/school/settings" element={<SettingsPage />} />
-
-            {/* Reports */}
-            <Route path="/reports" element={<ReportsPage />} />
-
-            {/* Users (Admin only) */}
-            <Route element={<RoleRoute roles={['admin']} />}>
-              <Route path="/users" element={<UsersList />} />
-            </Route>
-
-            {/* Profile */}
-            <Route path="/profile" element={<UserProfile />} />
+        {/* Public Auth Routes - Only when NOT authenticated */}
+        {!isAuthenticated && (
+          <Route element={<AuthLayout />}>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
+            {/* Redirect all other paths to login */}
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Route>
-        </Route>
+        )}
 
-        {/* 404 */}
-        <Route path="*" element={
-          <div className="flex items-center justify-center min-h-screen">
-            <div className="text-center">
-              <h1 className="text-6xl font-bold text-gray-300">404</h1>
-              <p className="text-xl text-gray-500 mt-4">Page not found</p>
-              <a href="/" className="text-primary-600 hover:text-primary-700 mt-4 inline-block">
-                Go to Dashboard
-              </a>
-            </div>
-          </div>
-        } />
+        {/* Protected Routes - Only when authenticated */}
+        {isAuthenticated && (
+          <Route element={<PrivateRoute />}>
+            <Route element={<MainLayout />}>
+              {/* Dashboard */}
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+
+              {/* Students */}
+              <Route path="/students" element={<StudentsList />} />
+              <Route path="/students/new" element={<StudentForm />} />
+              <Route path="/students/:id" element={<StudentDetail />} />
+              <Route path="/students/:id/edit" element={<StudentForm />} />
+
+              {/* Teachers */}
+              <Route path="/teachers" element={<TeachersList />} />
+              <Route path="/teachers/new" element={<TeacherForm />} />
+              <Route path="/teachers/:id" element={<TeacherDetail />} />
+              <Route path="/teachers/:id/edit" element={<TeacherForm />} />
+
+              {/* Classes */}
+              <Route path="/classes" element={<ClassesList />} />
+              <Route path="/classes/new" element={<ClassForm />} />
+              <Route path="/classes/:id" element={<ClassDetail />} />
+              <Route path="/classes/:id/edit" element={<ClassForm />} />
+
+              {/* Attendance */}
+              <Route path="/attendance" element={<AttendancePage />} />
+              <Route path="/attendance/mark/:classId" element={<AttendanceMark />} />
+              <Route path="/attendance/report" element={<AttendanceReport />} />
+
+              {/* Exams */}
+              <Route path="/exams" element={<ExamsList />} />
+              <Route path="/exams/new" element={<ExamForm />} />
+              <Route path="/exams/:id" element={<ExamDetail />} />
+              <Route path="/exams/:id/results" element={<ResultsEntry />} />
+              <Route path="/exams/report-cards" element={<ReportCard />} />
+
+              {/* Financial */}
+              <Route path="/financial" element={<TransactionsList />} />
+              <Route path="/financial/fees" element={<FeeStructures />} />
+              <Route path="/financial/payments" element={<PaymentsPage />} />
+
+              {/* School */}
+              <Route path="/school/info" element={<SchoolInfo />} />
+              <Route path="/school/calendar" element={<AcademicCalendar />} />
+              <Route path="/school/events" element={<EventsPage />} />
+              <Route path="/school/settings" element={<SettingsPage />} />
+
+              {/* Reports */}
+              <Route path="/reports" element={<ReportsPage />} />
+
+              {/* Users (Admin only) */}
+              <Route element={<RoleRoute roles={['admin']} />}>
+                <Route path="/users" element={<UsersList />} />
+              </Route>
+
+              {/* Profile */}
+              <Route path="/profile" element={<UserProfile />} />
+
+              {/* 404 for authenticated users */}
+              <Route path="*" element={
+                <div className="flex items-center justify-center min-h-screen">
+                  <div className="text-center">
+                    <h1 className="text-6xl font-bold text-gray-300">404</h1>
+                    <p className="text-xl text-gray-500 mt-4">Page not found</p>
+                    <a href="/dashboard" className="text-primary-600 hover:text-primary-700 mt-4 inline-block">
+                      Go to Dashboard
+                    </a>
+                  </div>
+                </div>
+              } />
+            </Route>
+          </Route>
+        )}
       </Routes>
     </Suspense>
   )
