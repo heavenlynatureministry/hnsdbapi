@@ -15,7 +15,7 @@ function RecentStudents() {
   const fetchRecentStudents = async () => {
     setLoading(true)
     try {
-      const response = await studentsAPI.getAll({ limit: 5, sort: '-enrollment_date' })
+      const response = await studentsAPI.getAll({ limit: 5, status: 'active' })
       if (response?.success) {
         setStudents(response.data?.students || response.data || [])
       } else {
