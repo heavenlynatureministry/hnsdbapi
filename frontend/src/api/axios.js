@@ -1,8 +1,10 @@
 import axios from 'axios'
 import { getToken, removeToken, clearAll } from '../utils/storage'
 
+const API_URL = import.meta.env.VITE_API_URL || 'https://hns-api.onrender.com/api/v1'
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://hns-api.onrender.com/api/v1',
+  baseURL: API_URL,
   timeout: 120000, // 2 minutes for Render cold starts
   headers: {
     'Content-Type': 'application/json',
@@ -31,16 +33,17 @@ api.interceptors.response.use(
       const { status, data } = response
 
       // Only redirect to login on 401 if NOT already on login page
-      if (status === 401 && !config.url.includes('/auth/login')) {
+      if (status === 401 && !config.url?.includes('/auth/login')) {
         clearAll()
+        // Use window.location.origin to handle any base path
         if (window.location.pathname !== '/login') {
-          window.location.href = '/login'
+          window.location.href = window.location.origin + '/login'
         }
         return Promise.reject({ status: 401, message: 'Session expired' })
       }
 
       // For login failures, pass through
-      if (status === 401 && config.url.includes('/auth/login')) {
+      if (status === 401 && config.url?.includes('/auth/login')) {
         return Promise.reject({ status: 401, message: data?.message || 'Invalid credentials' })
       }
 
