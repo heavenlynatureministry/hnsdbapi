@@ -242,9 +242,9 @@ app = FastAPI(
     description=settings.APP_DESCRIPTION,
     version=settings.APP_VERSION,
     lifespan=lifespan,
-    docs_url="/docs" if settings.is_development or settings.DEBUG else "/docs",
-    redoc_url="/redoc" if settings.is_development or settings.DEBUG else None,
-    openapi_url="/openapi.json" if settings.is_development or settings.DEBUG else None,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
     contact={
         "name": settings.SCHOOL_NAME,
         "email": settings.SCHOOL_EMAIL,
@@ -253,7 +253,8 @@ app = FastAPI(
     license_info={
         "name": "Proprietary",
         "url": settings.SCHOOL_WEBSITE
-    }
+    },
+    redirect_slashes=False  # Don't redirect trailing slashes
 )
 
 
@@ -405,7 +406,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # =========================================================================
-# API ROUTES
+# API ROUTES (No trailing slashes)
 # =========================================================================
 API_PREFIX = settings.API_V1_PREFIX
 
@@ -559,4 +560,4 @@ if __name__ == "__main__":
         reload=settings.is_development,
         log_level=settings.LOG_LEVEL.lower(),
         workers=1  # Single worker for stateful rate limiting
-)
+        )
