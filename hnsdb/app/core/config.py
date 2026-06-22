@@ -1,4 +1,3 @@
-# hnsdb/app/core/config.py
 """
 Core Configuration
 Production-ready settings for Render deployment
@@ -53,27 +52,6 @@ class Settings(BaseSettings):
     MONGODB_MIN_POOL_SIZE: int = Field(default=2)
     MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = Field(default=15000)
     MONGODB_CONNECT_TIMEOUT_MS: int = Field(default=15000)
-    
-    # =========================================================================
-    # CLOUDFLARE R2 STORAGE (Optional)
-    # =========================================================================
-    R2_ACCESS_KEY_ID: Optional[str] = Field(default=None)
-    R2_SECRET_ACCESS_KEY: Optional[str] = Field(default=None)
-    R2_ENDPOINT_URL: Optional[str] = Field(default=None)
-    R2_BUCKET_NAME: str = Field(default="school-files")
-    R2_PUBLIC_URL: Optional[str] = Field(default=None)
-    
-    # =========================================================================
-    # BREVO EMAIL (Optional)
-    # =========================================================================
-    BREVO_API_KEY: Optional[str] = Field(default=None)
-    EMAIL_ENABLED: bool = Field(default=False)
-    EMAIL_FROM: str = Field(default="info@heavenlynatureschools.com")
-    EMAIL_FROM_NAME: str = Field(default="Heavenly Nature Nursery & Primary School")
-    SMTP_HOST: Optional[str] = Field(default=None)
-    SMTP_PORT: int = Field(default=587)
-    SMTP_USER: Optional[str] = Field(default=None)
-    SMTP_PASSWORD: Optional[str] = Field(default=None)
     
     # =========================================================================
     # CORS SETTINGS - Production Only
