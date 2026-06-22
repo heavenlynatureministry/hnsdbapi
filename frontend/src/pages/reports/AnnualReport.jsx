@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import PageHeader from '../../components/common/PageHeader'
@@ -6,9 +6,11 @@ import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import { ArrowLeft, Download, FileText } from 'lucide-react'
+import { exportToPDF } from '../../utils/exportPDF'
 
 function AnnualReport() {
   const navigate = useNavigate()
+  const reportRef = useRef(null)
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
@@ -56,6 +58,10 @@ function AnnualReport() {
     }, 1200)
   }
 
+  const handleExportPDF = () => {
+    exportToPDF(reportRef.current, `Annual_Report_${reportData.academic_year.replace('/', '_')}`)
+  }
+
   return (
     <div className="space-y-6 max-w-4xl animate-fade-in-up">
       <PageHeader
@@ -73,14 +79,18 @@ function AnnualReport() {
           <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<FileText size={18} />}>
             Generate Annual Report
           </Button>
-          {generated && <Button variant="secondary" icon={<Download size={18} />}>Export PDF</Button>}
+          {generated && (
+            <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>
+              Export PDF
+            </Button>
+          )}
         </div>
       </Card>
 
       {loading && <LoadingSpinner />}
 
       {generated && reportData && (
-        <div className="space-y-6">
+        <div ref={reportRef} className="space-y-6">
           <Card title={`Annual Report - ${reportData.academic_year}`}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
