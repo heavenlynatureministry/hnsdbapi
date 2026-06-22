@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import financialAPI from '../../../api/financial'
 import { DollarSign, ArrowRight, TrendingUp, TrendingDown } from 'lucide-react'
 
 function FinancialSummary({ data }) {
@@ -7,17 +8,31 @@ function FinancialSummary({ data }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSummary({
-        balance: 250000,
-        income_this_month: 150000,
-        expenses_this_month: 85000,
-        collection_rate: 78,
-        pending_payments: 45000,
-      })
-      setLoading(false)
-    }, 500)
+    fetchFinancialSummary()
   }, [])
+
+  const fetchFinancialSummary = async () => {
+    setLoading(true)
+    try {
+      // Try to use passed data first
+      if (data && Object.keys(data).length > 0) {
+        setSummary(data)
+        setLoading(false)
+        return
+      }
+
+      const response = await financialAPI.getSummary()
+      if (response?.success && response.data) {
+        setSummary(response.data)
+      } else if (response?.data) {
+        setSummary(response.data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch financial summary:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -45,46 +60,42 @@ function FinancialSummary({ data }) {
       </div>
 
       <div className="space-y-3">
-        {/* Balance */}
         <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
           <p className="text-xs text-gray-500 dark:text-gray-400">Current Balance</p>
           <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-            SSP {summary?.balance?.toLocaleString()}
+            SSP {(summary?.balance || 0).toLocaleString()}
           </p>
         </div>
 
-        {/* Income */}
         <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <div>
             <p className="text-xs text-gray-500">Income This Month</p>
-            <p className="font-semibold text-green-600">SSP {summary?.income_this_month?.toLocaleString()}</p>
+            <p className="font-semibold text-green-600">SSP {(summary?.income_this_month || 0).toLocaleString()}</p>
           </div>
           <TrendingUp size={20} className="text-green-500" />
         </div>
 
-        {/* Expenses */}
         <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <div>
             <p className="text-xs text-gray-500">Expenses This Month</p>
-            <p className="font-semibold text-red-600">SSP {summary?.expenses_this_month?.toLocaleString()}</p>
+            <p className="font-semibold text-red-600">SSP {(summary?.expenses_this_month || 0).toLocaleString()}</p>
           </div>
           <TrendingDown size={20} className="text-red-500" />
         </div>
 
-        {/* Collection Rate */}
         <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs text-gray-500">Fee Collection Rate</p>
-            <span className="text-sm font-semibold text-primary-600">{summary?.collection_rate}%</span>
+            <span className="text-sm font-semibold text-primary-600">{summary?.collection_rate || 0}%</span>
           </div>
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
             <div
               className="bg-primary-600 h-2 rounded-full transition-all"
-              style={{ width: `${summary?.collection_rate}%` }}
+              style={{ width: `${Math.min(summary?.collection_rate || 0, 100)}%` }}
             />
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            SSP {summary?.pending_payments?.toLocaleString()} pending
+            SSP {(summary?.pending_payments || 0).toLocaleString()} pending
           </p>
         </div>
       </div>
