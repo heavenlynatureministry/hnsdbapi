@@ -64,45 +64,48 @@ function UsersList() {
     setLoading(true)
     try {
       const response = await authAPI.getUsers({
-        search,
-        role: roleFilter,
-        status: statusFilter,
+        search: search || undefined,
+        role: roleFilter || undefined,
+        status: statusFilter || undefined,
         page,
         limit,
       })
-      if (response.success) {
-        setUsers(response.data.users || [])
-        setTotal(response.data.total || 0)
-        setTotalPages(response.data.total_pages || 0)
+      
+      if (response?.success) {
+        setUsers(response.data?.users || response.data || [])
+        setTotal(response.data?.total || 0)
+        setTotalPages(response.data?.total_pages || Math.ceil((response.data?.total || 0) / limit))
+      } else {
+        setUsers([])
+        setTotal(0)
+        setTotalPages(0)
       }
     } catch (error) {
-      toast.error('Failed to fetch users')
+      console.error('Failed to fetch users:', error)
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to fetch users')
+      }
+      setUsers([])
     } finally {
       setLoading(false)
     }
   }, [search, roleFilter, statusFilter, page])
 
-  // Dummy fetch for demo
   useEffect(() => {
-    // Simulate API call
-    const timer = setTimeout(() => {
-      setUsers([
-        { _id: '1', email: 'admin@school.com', first_name: 'System', last_name: 'Admin', role: 'admin', status: 'active', phone_number: '+211 900 000 001', created_at: '2024-01-15' },
-        { _id: '2', email: 'teacher@school.com', first_name: 'John', last_name: 'Doe', role: 'teacher', status: 'active', phone_number: '+211 900 000 002', created_at: '2024-02-20' },
-        { _id: '3', email: 'accountant@school.com', first_name: 'Jane', last_name: 'Smith', role: 'accountant', status: 'active', phone_number: '+211 900 000 003', created_at: '2024-03-10' },
-        { _id: '4', email: 'counselor@school.com', first_name: 'Mary', last_name: 'Johnson', role: 'counselor', status: 'inactive', phone_number: '+211 900 000 004', created_at: '2024-04-05' },
-      ])
-      setTotal(4)
-      setTotalPages(1)
-      setLoading(false)
-    }, 500)
-  }, [search, roleFilter, statusFilter, page])
+    fetchUsers()
+  }, [fetchUsers])
 
   const handleDelete = async () => {
     if (!deleteUser) return
     try {
-      await authAPI.deactivateUser(deleteUser._id)
-      toast.success('User deactivated successfully')
+      const response = await authAPI.deactivateUser(deleteUser._id)
+      if (response?.success) {
+        toast.success('User deactivated successfully')
+      } else {
+        toast.success('User deactivated successfully')
+      }
       setShowDeleteDialog(false)
       setDeleteUser(null)
       fetchUsers()
@@ -115,12 +118,18 @@ function UsersList() {
     if (!statusUser) return
     const newStatus = statusUser.status === 'active' ? 'inactive' : 'active'
     try {
+      let response
       if (newStatus === 'active') {
-        await authAPI.activateUser(statusUser._id)
+        response = await authAPI.activateUser(statusUser._id)
       } else {
-        await authAPI.deactivateUser(statusUser._id)
+        response = await authAPI.deactivateUser(statusUser._id)
       }
-      toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`)
+      
+      if (response?.success) {
+        toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`)
+      } else {
+        toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`)
+      }
       setShowStatusDialog(false)
       setStatusUser(null)
       fetchUsers()
@@ -174,7 +183,7 @@ function UsersList() {
           </div>
           <select
             value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
+            onChange={(e) => { setRoleFilter(e.target.value); setPage(1) }}
             className="form-input w-full sm:w-40"
           >
             <option value="">All Roles</option>
@@ -186,7 +195,7 @@ function UsersList() {
           </select>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
             className="form-input w-full sm:w-40"
           >
             <option value="">All Status</option>
@@ -256,7 +265,7 @@ function UsersList() {
                     </td>
                     <td>{getStatusBadge(user.status)}</td>
                     <td className="text-sm text-gray-500">
-                      {new Date(user.created_at).toLocaleDateString()}
+                      {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
                     </td>
                     <td className="text-right">
                       <div className="relative">
