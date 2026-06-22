@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import classesAPI from '../../api/classes'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Badge from '../../components/common/Badge'
@@ -22,34 +23,34 @@ function ClassesList() {
   useEffect(() => {
     updatePageTitle('Classes Management')
     updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Classes' }])
-    
-    setTimeout(() => {
-      setClasses([
-        { _id: 'c1', class_name: 'Baby', class_level: 'nursery', max_capacity: 20, current_enrollment: 15, academic_year: '2024/2025', status: 'active', teacher_name: 'Sarah Williams', classroom_number: 'Room 1', schedule_count: 25 },
-        { _id: 'c2', class_name: 'Middle', class_level: 'nursery', max_capacity: 20, current_enrollment: 18, academic_year: '2024/2025', status: 'active', teacher_name: 'Grace Brown', classroom_number: 'Room 2', schedule_count: 25 },
-        { _id: 'c3', class_name: 'Top', class_level: 'nursery', max_capacity: 20, current_enrollment: 20, academic_year: '2024/2025', status: 'active', teacher_name: 'Mary Smith', classroom_number: 'Room 3', schedule_count: 28 },
-        { _id: 'c4', class_name: 'P1', class_level: 'primary', max_capacity: 25, current_enrollment: 22, academic_year: '2024/2025', status: 'active', teacher_name: 'John Doe', classroom_number: 'Room 4', schedule_count: 30 },
-        { _id: 'c5', class_name: 'P2', class_level: 'primary', max_capacity: 25, current_enrollment: 20, academic_year: '2024/2025', status: 'active', teacher_name: 'James Johnson', classroom_number: 'Room 5', schedule_count: 30 },
-        { _id: 'c6', class_name: 'P3', class_level: 'primary', max_capacity: 25, current_enrollment: 18, academic_year: '2024/2025', status: 'active', teacher_name: 'Rebecca Williams', classroom_number: 'Room 6', schedule_count: 32 },
-        { _id: 'c7', class_name: 'P4', class_level: 'primary', max_capacity: 25, current_enrollment: 16, academic_year: '2024/2025', status: 'active', teacher_name: 'Daniel Johnson', classroom_number: 'Room 7', schedule_count: 30 },
-        { _id: 'c8', class_name: 'P5', class_level: 'primary', max_capacity: 25, current_enrollment: 14, academic_year: '2024/2025', status: 'active', teacher_name: 'Mark Davis', classroom_number: 'Room 8', schedule_count: 30 },
-        { _id: 'c9', class_name: 'P6', class_level: 'primary', max_capacity: 25, current_enrollment: 15, academic_year: '2024/2025', status: 'active', teacher_name: 'John Doe', classroom_number: 'Room 9', schedule_count: 32 },
-      ])
-      setLoading(false)
-    }, 500)
+    fetchClasses()
   }, [])
 
-  const filteredClasses = levelFilter ? classes.filter(c => c.class_level === levelFilter) : classes
-
-  const totalStudents = classes.reduce((s, c) => s + c.current_enrollment, 0)
-  const totalCapacity = classes.reduce((s, c) => s + c.max_capacity, 0)
-  const occupancyRate = totalCapacity > 0 ? ((totalStudents / totalCapacity) * 100).toFixed(1) : 0
-
-  const getOccupancyColor = (rate) => {
-    if (rate >= 90) return 'text-red-600 bg-red-100'
-    if (rate >= 75) return 'text-yellow-600 bg-yellow-100'
-    return 'text-green-600 bg-green-100'
+  const fetchClasses = async () => {
+    setLoading(true)
+    try {
+      const response = await classesAPI.getAll()
+      if (response?.success) {
+        setClasses(response.data?.classes || response.data || [])
+      } else {
+        setClasses([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch classes:', error)
+      toast.error('Failed to load classes')
+      setClasses([])
+    } finally {
+      setLoading(false)
+    }
   }
+
+  const filteredClasses = levelFilter
+    ? classes.filter(c => c.class_level === levelFilter)
+    : classes
+
+  const totalStudents = classes.reduce((s, c) => s + (c.current_enrollment || 0), 0)
+  const totalCapacity = classes.reduce((s, c) => s + (c.max_capacity || 0), 0)
+  const occupancyRate = totalCapacity > 0 ? ((totalStudents / totalCapacity) * 100).toFixed(1) : 0
 
   if (loading) return <LoadingSpinner />
 
@@ -88,21 +89,31 @@ function ClassesList() {
             key={level}
             onClick={() => setLevelFilter(level)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              levelFilter === level ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+              levelFilter === level
+                ? 'bg-primary-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
             }`}
           >
-            {level || 'All'} {level && `(${classes.filter(c => c.class_level === level).length})`}
+            {level || 'All'}{' '}
+            {level && `(${classes.filter(c => c.class_level === level).length})`}
           </button>
         ))}
       </div>
 
       {/* Classes Grid */}
       {filteredClasses.length === 0 ? (
-        <EmptyState icon={<School size={48} />} title="No classes found" description="No classes match your filter." action={<Link to="/classes/new" className="btn btn-primary">Add Class</Link>} />
+        <EmptyState
+          icon={<School size={48} />}
+          title="No classes found"
+          description="No classes match your filter."
+          action={<Link to="/classes/new" className="btn btn-primary">Add Class</Link>}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredClasses.map((cls) => {
-            const occRate = ((cls.current_enrollment / cls.max_capacity) * 100).toFixed(0)
+            const occRate = cls.max_capacity > 0
+              ? ((cls.current_enrollment / cls.max_capacity) * 100).toFixed(0)
+              : 0
             return (
               <Card key={cls._id} className="hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between mb-3">
@@ -118,7 +129,10 @@ function ClassesList() {
                     </div>
                   </div>
                   <div className="relative">
-                    <button onClick={() => setOpenDropdown(openDropdown === cls._id ? null : cls._id)} className="btn btn-ghost btn-sm btn-icon">
+                    <button
+                      onClick={() => setOpenDropdown(openDropdown === cls._id ? null : cls._id)}
+                      className="btn btn-ghost btn-sm btn-icon"
+                    >
                       <MoreVertical size={16} />
                     </button>
                     {openDropdown === cls._id && (
@@ -142,7 +156,7 @@ function ClassesList() {
 
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center gap-2 text-gray-500">
-                    <Users size={14} /> {cls.current_enrollment} / {cls.max_capacity} students
+                    <Users size={14} /> {cls.current_enrollment || 0} / {cls.max_capacity || 0} students
                   </div>
                   <div className="flex items-center gap-2 text-gray-500">
                     <GraduationCap size={14} /> {cls.teacher_name || 'No teacher assigned'}
@@ -160,7 +174,9 @@ function ClassesList() {
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                     <div
-                      className={`h-2 rounded-full transition-all ${occRate >= 90 ? 'bg-red-500' : occRate >= 75 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                      className={`h-2 rounded-full transition-all ${
+                        occRate >= 90 ? 'bg-red-500' : occRate >= 75 ? 'bg-yellow-500' : 'bg-green-500'
+                      }`}
                       style={{ width: `${Math.min(occRate, 100)}%` }}
                     />
                   </div>
