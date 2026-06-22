@@ -42,12 +42,12 @@ export function AppProvider({ children }) {
   const fetchSchoolInfo = useCallback(async () => {
     try {
       const response = await schoolAPI.getInfo()
-      if (response.success && response.data) {
+      if (response?.success && response.data) {
         setSchoolInfo((prev) => ({ ...prev, ...response.data }))
       }
     } catch (error) {
-      // Use defaults
-      console.error('Failed to fetch school info:', error)
+      // Silently use defaults - API might not be available
+      console.log('School info API not available, using defaults')
     }
   }, [])
 
@@ -55,11 +55,12 @@ export function AppProvider({ children }) {
   const fetchDashboardData = useCallback(async () => {
     try {
       const response = await schoolAPI.getDashboard()
-      if (response.success && response.data) {
+      if (response?.success && response.data) {
         setDashboardData(response.data)
       }
     } catch (error) {
-      console.error('Failed to fetch dashboard:', error)
+      // Silently use defaults - API might not be available
+      console.log('Dashboard API not available, using defaults')
     }
   }, [])
 
@@ -67,27 +68,29 @@ export function AppProvider({ children }) {
   const fetchCurrentTerm = useCallback(async () => {
     try {
       const response = await schoolAPI.getCurrentTerm()
-      if (response.success && response.data) {
+      if (response?.success && response.data) {
         setCurrentAcademicYear(response.data.academic_year || currentAcademicYear)
         setCurrentTerm(response.data.term_name || currentTerm)
       }
     } catch (error) {
-      // Use defaults
+      // Silently use defaults
     }
   }, [])
 
   // Initialize app data
   useEffect(() => {
     const initApp = async () => {
-      setAppLoading(true)
       if (isAuthenticated) {
-        await Promise.allSettled([
-          fetchSchoolInfo(),
-          fetchDashboardData(),
-          fetchCurrentTerm(),
-        ])
+        setAppLoading(true)
+        // Don't block on these - let them fail silently
+        fetchSchoolInfo().catch(() => {})
+        fetchDashboardData().catch(() => {})
+        fetchCurrentTerm().catch(() => {})
+        // Small delay to prevent flash
+        setTimeout(() => setAppLoading(false), 500)
+      } else {
+        setAppLoading(false)
       }
-      setAppLoading(false)
     }
 
     initApp()
