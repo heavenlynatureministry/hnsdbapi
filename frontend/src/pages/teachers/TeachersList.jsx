@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
-import teachersAPI from '../../api/auth' // Will use teachersAPI in production
+import teachersAPI from '../../api/teachers'
 import PageHeader from '../../components/common/PageHeader'
 import SearchBar from '../../components/common/SearchBar'
 import Pagination from '../../components/common/Pagination'
@@ -10,7 +10,8 @@ import EmptyState from '../../components/common/EmptyState'
 import Badge from '../../components/common/Badge'
 import { 
   Users, UserPlus, Search, Mail, Phone, BookOpen, 
-  MoreVertical, Edit, Eye, BarChart3, GraduationCap 
+  MoreVertical, Edit, Eye, BarChart3, GraduationCap,
+  UserCheck, Clock
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -36,67 +37,54 @@ function TeachersList() {
     ])
   }, [updatePageTitle, updateBreadcrumbs])
 
-  // Dummy data for demonstration
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setTeachers([
-        { _id: '1', employee_id: 'HNS-TCH-001', first_name: 'John', last_name: 'Doe', gender: 'Male', qualification: 'B.Ed', specialization: 'Mathematics', subjects: ['Mathematics', 'Science'], phone_number: '+211 912 345 678', email: 'john.doe@school.com', hire_date: '2015-01-10', status: 'active', photo_url: null },
-        { _id: '2', employee_id: 'HNS-TCH-002', first_name: 'Mary', last_name: 'Smith', gender: 'Female', qualification: 'M.Ed', specialization: 'English Language', subjects: ['English Language', 'Social Studies'], phone_number: '+211 923 456 789', email: 'mary.smith@school.com', hire_date: '2016-03-15', status: 'active', photo_url: null },
-        { _id: '3', employee_id: 'HNS-TCH-003', first_name: 'James', last_name: 'Johnson', gender: 'Male', qualification: 'B.Sc', specialization: 'Science', subjects: ['Science', 'Physical Education'], phone_number: '+211 934 567 890', email: 'james.johnson@school.com', hire_date: '2014-09-01', status: 'on_leave', photo_url: null },
-        { _id: '4', employee_id: 'HNS-TCH-004', first_name: 'Sarah', last_name: 'Williams', gender: 'Female', qualification: 'Diploma', specialization: 'Creative Arts', subjects: ['Creative Arts', 'Music'], phone_number: '+211 945 678 901', email: 'sarah.williams@school.com', hire_date: '2018-02-20', status: 'inactive', photo_url: null },
-      ])
-      setTotal(4)
-      setTotalPages(1)
+  const fetchTeachers = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await teachersAPI.getAll({
+        search: search || undefined,
+        status: statusFilter || undefined,
+        specialization: specializationFilter || undefined,
+        page,
+        limit,
+      })
+      
+      if (response?.success) {
+        setTeachers(response.data?.teachers || response.data || [])
+        setTotal(response.data?.total || 0)
+        setTotalPages(response.data?.total_pages || Math.ceil((response.data?.total || 0) / limit))
+      } else {
+        setTeachers([])
+        setTotal(0)
+        setTotalPages(0)
+      }
+    } catch (error) {
+      console.error('Failed to fetch teachers:', error)
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to fetch teachers')
+      }
+      setTeachers([])
+    } finally {
       setLoading(false)
-    }, 500)
+    }
   }, [search, statusFilter, specializationFilter, page])
+
+  useEffect(() => {
+    fetchTeachers()
+  }, [fetchTeachers])
 
   const getStatusBadge = (status) => {
     const variants = {
-      active: 'success',
-      inactive: 'danger',
-      on_leave: 'warning',
-      suspended: 'danger',
-      resigned: 'gray',
-      retired: 'gray',
+      active: 'success', inactive: 'danger', on_leave: 'warning',
+      suspended: 'danger', resigned: 'gray', retired: 'gray',
     }
     const labels = {
-      active: 'Active',
-      inactive: 'Inactive',
-      on_leave: 'On Leave',
-      suspended: 'Suspended',
-      resigned: 'Resigned',
-      retired: 'Retired',
+      active: 'Active', inactive: 'Inactive', on_leave: 'On Leave',
+      suspended: 'Suspended', resigned: 'Resigned', retired: 'Retired',
     }
     return <Badge variant={variants[status] || 'gray'}>{labels[status] || status}</Badge>
   }
-
-  const getQualificationBadge = (qualification) => {
-    const variants = {
-      'B.Ed': 'info',
-      'M.Ed': 'success',
-      'B.Sc': 'info',
-      'M.Sc': 'success',
-      'B.A': 'info',
-      'PhD': 'warning',
-      'Diploma': 'gray',
-      'Certificate': 'gray',
-    }
-    return <Badge variant={variants[qualification] || 'gray'}>{qualification}</Badge>
-  }
-
-  // Filter teachers based on search
-  const filteredTeachers = teachers.filter((teacher) => {
-    const matchesSearch = !search || 
-      `${teacher.first_name} ${teacher.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
-      teacher.email?.toLowerCase().includes(search.toLowerCase()) ||
-      teacher.employee_id?.toLowerCase().includes(search.toLowerCase())
-    
-    const matchesStatus = !statusFilter || teacher.status === statusFilter
-    const matchesSpecialization = !specializationFilter || teacher.specialization === specializationFilter
-    
-    return matchesSearch && matchesStatus && matchesSpecialization
-  })
 
   const specializations = [...new Set(teachers.map(t => t.specialization).filter(Boolean))]
 
@@ -119,7 +107,7 @@ function TeachersList() {
           { label: 'Total Teachers', value: total, icon: Users, color: 'bg-blue-100 text-blue-600' },
           { label: 'Active', value: teachers.filter(t => t.status === 'active').length, icon: UserCheck, color: 'bg-green-100 text-green-600' },
           { label: 'On Leave', value: teachers.filter(t => t.status === 'on_leave').length, icon: Clock, color: 'bg-yellow-100 text-yellow-600' },
-          { label: 'Subjects', value: [...new Set(teachers.flatMap(t => t.subjects))].length, icon: BookOpen, color: 'bg-purple-100 text-purple-600' },
+          { label: 'Subjects', value: [...new Set(teachers.flatMap(t => t.subjects || []))].length, icon: BookOpen, color: 'bg-purple-100 text-purple-600' },
         ].map((stat, index) => (
           <div key={index} className="stat-card">
             <div className={`stat-card-icon ${stat.color}`}>
@@ -143,7 +131,7 @@ function TeachersList() {
           </div>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
             className="form-input w-full sm:w-40"
           >
             <option value="">All Status</option>
@@ -153,7 +141,7 @@ function TeachersList() {
           </select>
           <select
             value={specializationFilter}
-            onChange={(e) => setSpecializationFilter(e.target.value)}
+            onChange={(e) => { setSpecializationFilter(e.target.value); setPage(1) }}
             className="form-input w-full sm:w-44"
           >
             <option value="">All Specializations</option>
@@ -167,7 +155,7 @@ function TeachersList() {
       {/* Teachers Grid */}
       {loading ? (
         <LoadingSpinner />
-      ) : filteredTeachers.length === 0 ? (
+      ) : teachers.length === 0 ? (
         <EmptyState
           icon={<Users size={48} />}
           title="No teachers found"
@@ -180,7 +168,7 @@ function TeachersList() {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTeachers.map((teacher) => (
+          {teachers.map((teacher) => (
             <div key={teacher._id} className="card hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -244,7 +232,7 @@ function TeachersList() {
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
                 {getStatusBadge(teacher.status)}
                 <span className="text-xs text-gray-400">
-                  Since {new Date(teacher.hire_date).getFullYear()}
+                  Since {teacher.hire_date ? new Date(teacher.hire_date).getFullYear() : 'N/A'}
                 </span>
               </div>
             </div>
@@ -260,8 +248,5 @@ function TeachersList() {
     </div>
   )
 }
-
-// Need to import these for the stats
-import { UserCheck, Clock } from 'lucide-react'
 
 export default TeachersList
