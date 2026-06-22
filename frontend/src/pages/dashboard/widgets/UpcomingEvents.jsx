@@ -22,9 +22,10 @@ function UpcomingEvents({ data }) {
         return
       }
 
-      const response = await schoolAPI.getEvents({ status: 'upcoming', limit: 3 })
+      const response = await schoolAPI.listEvents({ status: 'upcoming' })
       if (response?.success) {
-        setEvents(response.data?.events || response.data || [])
+        const allEvents = response.data?.events || response.data || []
+        setEvents(allEvents.slice(0, 3))
       } else {
         setEvents([])
       }
