@@ -2,11 +2,6 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 
-/**
- * PrivateRoute - Protects routes that require authentication
- * Redirects to login if not authenticated
- * Preserves the intended destination for post-login redirect
- */
 function PrivateRoute() {
   const { isAuthenticated, loading } = useAuth()
   const location = useLocation()
@@ -18,13 +13,12 @@ function PrivateRoute() {
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {
-    return (
-      <Navigate
-        to="/login"
-        state={{ from: location }}
-        replace
-      />
-    )
+    // Don't redirect if already on login page
+    if (location.pathname === '/login') {
+      return <Outlet />
+    }
+    
+    return <Navigate to="/login" state={{ from: location }} replace />
   }
 
   // Render child routes if authenticated
