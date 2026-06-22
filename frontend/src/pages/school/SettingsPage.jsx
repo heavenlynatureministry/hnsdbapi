@@ -79,7 +79,7 @@ function SettingsPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const response = await schoolAPI.updateSettings(settings)
+      const response = await schoolAPI.updateSetting(settings)
       if (response?.success) {
         toast.success('Settings saved successfully')
       } else {
@@ -98,7 +98,6 @@ function SettingsPage() {
 
   const handleReset = () => {
     if (!confirm('Reset all settings to defaults?')) return
-    // Reset to defaults and save
     fetchSettings()
     toast.success('Settings reset to defaults')
   }
