@@ -90,10 +90,11 @@ async def close_mongo_connection():
         logger.info("✅ MongoDB connection closed")
 
 
-# 🔥 FIXED: REMOVE async (THIS WAS THE BUG)
 def get_database() -> AsyncIOMotorDatabase:
     """
     FastAPI dependency - returns active database instance
+    Note: This is synchronous - it returns the database object directly
+    Database operations on the returned object are still async
     """
     global db, _is_connected
 
