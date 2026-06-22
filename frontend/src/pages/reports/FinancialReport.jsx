@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import PageHeader from '../../components/common/PageHeader'
@@ -9,11 +9,13 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import Badge from '../../components/common/Badge'
 import { ArrowLeft, Download, DollarSign, TrendingUp, TrendingDown } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import { exportToPDF } from '../../utils/exportPDF'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 
 function FinancialReport() {
   const navigate = useNavigate()
+  const reportRef = useRef(null)
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
@@ -65,6 +67,10 @@ function FinancialReport() {
     }, 1000)
   }
 
+  const handleExportPDF = () => {
+    exportToPDF(reportRef.current, `Financial_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+  }
+
   return (
     <div className="space-y-6 max-w-5xl animate-fade-in-up">
       <PageHeader
@@ -87,14 +93,14 @@ function FinancialReport() {
         </div>
         <div className="flex gap-3 mt-4">
           <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<DollarSign size={18} />}>Generate Report</Button>
-          {generated && <Button variant="secondary" icon={<Download size={18} />}>Export PDF</Button>}
+          {generated && <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>Export PDF</Button>}
         </div>
       </Card>
 
       {loading && <LoadingSpinner />}
 
       {generated && reportData && (
-        <div className="space-y-6">
+        <div ref={reportRef} className="space-y-6">
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
@@ -115,7 +121,6 @@ function FinancialReport() {
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Income vs Expenses Monthly */}
             <Card title="Monthly Income vs Expenses">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -132,7 +137,6 @@ function FinancialReport() {
               </div>
             </Card>
 
-            {/* Income by Category */}
             <Card title="Income by Category">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -147,7 +151,6 @@ function FinancialReport() {
               </div>
             </Card>
 
-            {/* Expenses by Category */}
             <Card title="Expenses by Category">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -162,7 +165,6 @@ function FinancialReport() {
               </div>
             </Card>
 
-            {/* Fee Collection */}
             <Card title="Fee Collection Status">
               <div className="space-y-4">
                 <div className="text-center">
