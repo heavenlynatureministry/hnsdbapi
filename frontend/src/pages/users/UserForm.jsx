@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
-import usersAPI from '../../api/users'
+import authAPI from '../../api/auth'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -53,7 +53,7 @@ function UserForm() {
   const fetchUser = async () => {
     setFetching(true)
     try {
-      const response = await usersAPI.getById(id)
+      const response = await authAPI.getUser(id)
       if (response?.success && response.data) {
         const user = response.data
         setFormData({
@@ -131,9 +131,9 @@ function UserForm() {
 
       let response
       if (isEdit) {
-        response = await usersAPI.update(id, payload)
+        response = await authAPI.updateUser(id, payload)
       } else {
-        response = await usersAPI.create(payload)
+        response = await authAPI.createUser(payload)
       }
 
       if (response && response.success) {
