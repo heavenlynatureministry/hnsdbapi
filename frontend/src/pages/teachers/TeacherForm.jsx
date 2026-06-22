@@ -63,13 +63,18 @@ function TeacherForm() {
   }, [isEdit, updatePageTitle, updateBreadcrumbs])
 
   useEffect(() => {
-    if (isEdit) fetchTeacher()
+    if (isEdit) {
+      fetchTeacher()
+    } else {
+      setFetching(false)
+    }
   }, [id])
 
   const fetchTeacher = async () => {
+    setFetching(true)
     try {
       const response = await teachersAPI.getById(id)
-      if (response.success && response.data) {
+      if (response?.success && response.data) {
         const t = response.data
         setFormData({
           first_name: t.first_name || '',
@@ -91,6 +96,9 @@ function TeacherForm() {
           emergency_contact_phone: t.emergency_contact?.phone_number || '',
           notes: t.notes || '',
         })
+      } else {
+        toast.error('Failed to load teacher data')
+        navigate('/teachers')
       }
     } catch (error) {
       toast.error('Failed to fetch teacher')
@@ -128,7 +136,7 @@ function TeacherForm() {
       newErrors.email = 'Invalid email format'
     }
     if (!formData.hire_date) newErrors.hire_date = 'Hire date is required'
-    
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -150,16 +158,38 @@ function TeacherForm() {
       delete payload.emergency_contact_name
       delete payload.emergency_contact_phone
 
-      const response = isEdit
-        ? await teachersAPI.update(id, payload)
-        : await teachersAPI.create(payload)
+      let response
+      if (isEdit) {
+        response = await teachersAPI.update(id, payload)
+      } else {
+        response = await teachersAPI.create(payload)
+      }
 
-      if (response.success) {
+      if (response && response.success) {
         toast.success(`Teacher ${isEdit ? 'updated' : 'registered'} successfully`)
         navigate('/teachers')
+      } else {
+        toast.error(response?.message || 'Failed to save teacher')
       }
     } catch (error) {
-      toast.error(error.message || 'Failed to save teacher')
+      // Handle specific error cases
+      if (error.status === 422) {
+        const fieldErrors = error.errors || []
+        const newErrors = {}
+        fieldErrors.forEach(err => {
+          const field = err.loc?.[err.loc.length - 1] || 'general'
+          newErrors[field] = err.msg
+        })
+        setErrors(newErrors)
+        toast.error('Please fix the validation errors')
+      } else if (error.status === 409) {
+        toast.error('A teacher with this email already exists')
+      } else if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'An error occurred while saving teacher')
+      }
+      console.error('Teacher save error:', error)
     } finally {
       setLoading(false)
     }
