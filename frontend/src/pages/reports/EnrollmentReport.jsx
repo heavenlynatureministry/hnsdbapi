@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import PageHeader from '../../components/common/PageHeader'
@@ -7,12 +7,14 @@ import Button from '../../components/common/Button'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import { ArrowLeft, Download, Users, TrendingUp, TrendingDown } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts'
+import { exportToPDF } from '../../utils/exportPDF'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
 const GENDER_COLORS = ['#3b82f6', '#ec4899']
 
 function EnrollmentReport() {
   const navigate = useNavigate()
+  const reportRef = useRef(null)
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
@@ -54,6 +56,10 @@ function EnrollmentReport() {
     }, 1000)
   }
 
+  const handleExportPDF = () => {
+    exportToPDF(reportRef.current, 'Enrollment_Report')
+  }
+
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
@@ -82,14 +88,14 @@ function EnrollmentReport() {
       <Card>
         <div className="flex gap-3">
           <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<Users size={18} />}>Generate Report</Button>
-          {generated && <Button variant="secondary" icon={<Download size={18} />}>Export PDF</Button>}
+          {generated && <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>Export PDF</Button>}
         </div>
       </Card>
 
       {loading && <LoadingSpinner />}
 
       {generated && reportData && (
-        <div className="space-y-6">
+        <div ref={reportRef} className="space-y-6">
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
@@ -107,7 +113,6 @@ function EnrollmentReport() {
 
           {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Enrollment by Class */}
             <Card title="Enrollment by Class">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -122,7 +127,6 @@ function EnrollmentReport() {
               </div>
             </Card>
 
-            {/* Gender Distribution */}
             <Card title="Gender Distribution">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -137,7 +141,6 @@ function EnrollmentReport() {
               </div>
             </Card>
 
-            {/* By Type */}
             <Card title="Students by Type">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -152,7 +155,6 @@ function EnrollmentReport() {
               </div>
             </Card>
 
-            {/* Enrollment Trend */}
             <Card title="Enrollment Trend (5 Years)">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
