@@ -45,18 +45,15 @@ export function AuthProvider({ children }) {
             setUser(updatedUser)
           }
         } catch (error) {
-          console.log('Token verification failed, logging out')
-          // Token invalid - silent logout
+          console.log('Token verification failed, clearing auth')
+          // Token invalid - clear everything
           clearAll()
           setUserState(null)
           setIsAuthenticated(false)
         }
-      } else {
-        // No token, just stop loading
-        setIsAuthenticated(false)
-        setUserState(null)
       }
 
+      // Always set loading to false when done
       setLoading(false)
     }
 
@@ -123,7 +120,7 @@ export function AuthProvider({ children }) {
     [navigate]
   )
 
-  // Update user profile - uses direct API call
+  // Update user profile
   const handleUpdateProfile = useCallback(async (data) => {
     try {
       const response = await api.put('/auth/me', data)
@@ -140,7 +137,7 @@ export function AuthProvider({ children }) {
     }
   }, [user])
 
-  // Change password - uses direct API call
+  // Change password
   const handleChangePassword = useCallback(async (data) => {
     try {
       const response = await api.post('/auth/change-password', data)
