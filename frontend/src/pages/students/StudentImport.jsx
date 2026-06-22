@@ -19,7 +19,7 @@ function StudentImport() {
   const [results, setResults] = useState(null)
   const [step, setStep] = useState(1)
 
-  useState(() => {
+    useEffect(() => {
     updatePageTitle('Import Students')
     updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Students', path: '/students' }, { label: 'Import' }])
   }, [])
