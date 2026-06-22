@@ -8,9 +8,9 @@ import Button from '../../components/common/Button'
 import FormInput from '../../components/common/FormInput'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { 
-  Settings, Save, Moon, Sun, Bell, Shield, 
-  GraduationCap, Clock, DollarSign, RotateCcw 
+import {
+  Settings, Save, Bell, Shield,
+  GraduationCap, Clock, RotateCcw
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -22,13 +22,10 @@ function SettingsPage() {
   const [activeSection, setActiveSection] = useState('general')
 
   const [settings, setSettings] = useState({
-    // General
     school_name: 'Heavenly Nature Nursery & Primary School',
     language: 'en',
     timezone: 'Africa/Juba',
     date_format: 'DD/MM/YYYY',
-    
-    // Academic
     default_academic_year: '2024/2025',
     terms_per_year: '3',
     pass_mark_percentage: '50',
@@ -36,20 +33,14 @@ function SettingsPage() {
     nursery_max_students: '20',
     primary_max_students: '25',
     min_enrollment_age: '3',
-    
-    // Attendance
     chronic_absence_threshold: '75',
     attendance_warning_threshold: '85',
     consecutive_absence_warning: '3',
     consecutive_absence_critical: '5',
-    
-    // Notification
     email_enabled: true,
     notify_attendance: true,
     notify_payments: true,
     notify_events: true,
-    
-    // Security
     session_timeout: '30',
     max_login_attempts: '5',
     password_expiry_days: '90',
@@ -57,9 +48,28 @@ function SettingsPage() {
 
   useEffect(() => {
     updatePageTitle('System Settings')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'School' }, { label: 'Settings' }])
-    setLoading(false)
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'School' },
+      { label: 'Settings' },
+    ])
+    fetchSettings()
   }, [])
+
+  const fetchSettings = async () => {
+    setLoading(true)
+    try {
+      const response = await schoolAPI.getSettings()
+      if (response?.success && response.data) {
+        setSettings(prev => ({ ...prev, ...response.data }))
+      }
+    } catch (error) {
+      console.error('Failed to fetch settings:', error)
+      // Use defaults if API fails
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -69,14 +79,27 @@ function SettingsPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 800))
-      toast.success('Settings saved successfully')
+      const response = await schoolAPI.updateSettings(settings)
+      if (response?.success) {
+        toast.success('Settings saved successfully')
+      } else {
+        toast.error(response?.message || 'Failed to save settings')
+      }
     } catch (error) {
-      toast.error('Failed to save settings')
-    } finally { setSaving(false) }
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to save settings')
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleReset = () => {
+    if (!confirm('Reset all settings to defaults?')) return
+    // Reset to defaults and save
+    fetchSettings()
     toast.success('Settings reset to defaults')
   }
 
@@ -97,8 +120,12 @@ function SettingsPage() {
         subtitle="Configure your school management system"
         actions={
           <div className="flex gap-2">
-            <Button onClick={handleReset} variant="secondary" icon={<RotateCcw size={18} />}>Reset</Button>
-            <Button onClick={handleSave} variant="primary" loading={saving} icon={<Save size={18} />}>Save Settings</Button>
+            <Button onClick={handleReset} variant="secondary" icon={<RotateCcw size={18} />}>
+              Reset
+            </Button>
+            <Button onClick={handleSave} variant="primary" loading={saving} icon={<Save size={18} />}>
+              Save Settings
+            </Button>
           </div>
         }
       />
@@ -126,7 +153,6 @@ function SettingsPage() {
 
         {/* Settings Content */}
         <div className="flex-1 space-y-6">
-          {/* General Settings */}
           {activeSection === 'general' && (
             <Card title="General Settings" icon={<Settings size={20} />}>
               <div className="space-y-4">
@@ -144,15 +170,23 @@ function SettingsPage() {
                     <p className="font-medium text-sm">Dark Mode</p>
                     <p className="text-xs text-gray-500">Toggle dark/light theme</p>
                   </div>
-                  <button onClick={toggleTheme} className={`relative w-12 h-6 rounded-full transition-colors ${theme === 'dark' ? 'bg-primary-600' : 'bg-gray-300'}`}>
-                    <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${theme === 'dark' ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                  <button
+                    onClick={toggleTheme}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${
+                      theme === 'dark' ? 'bg-primary-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                        theme === 'dark' ? 'translate-x-6' : 'translate-x-0.5'
+                      }`}
+                    />
                   </button>
                 </div>
               </div>
             </Card>
           )}
 
-          {/* Academic Settings */}
           {activeSection === 'academic' && (
             <Card title="Academic Settings" icon={<GraduationCap size={20} />}>
               <div className="space-y-4">
@@ -171,7 +205,6 @@ function SettingsPage() {
             </Card>
           )}
 
-          {/* Attendance Settings */}
           {activeSection === 'attendance' && (
             <Card title="Attendance Settings" icon={<Clock size={20} />}>
               <div className="space-y-4">
@@ -187,7 +220,6 @@ function SettingsPage() {
             </Card>
           )}
 
-          {/* Notification Settings */}
           {activeSection === 'notifications' && (
             <Card title="Notification Settings" icon={<Bell size={20} />}>
               <div className="space-y-4">
@@ -212,7 +244,6 @@ function SettingsPage() {
             </Card>
           )}
 
-          {/* Security Settings */}
           {activeSection === 'security' && (
             <Card title="Security Settings" icon={<Shield size={20} />}>
               <div className="space-y-4">
