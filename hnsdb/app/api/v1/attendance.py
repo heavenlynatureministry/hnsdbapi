@@ -11,6 +11,7 @@ from app.schemas.common import SuccessResponse
 router = APIRouter()
 
 
+@router.get("", response_model=SuccessResponse)
 @router.get("/", response_model=SuccessResponse)
 async def list_attendance(
     class_id: Optional[str] = Query(None),
@@ -159,7 +160,6 @@ async def get_student_attendance(
     present = sum(1 for r in records if r["status"] in ["present", "late"])
     absent = sum(1 for r in records if r["status"] == "absent")
     
-    # Get student info
     student = await db.students.find_one({"_id": ObjectId(student_id)})
     
     return SuccessResponse(success=True, message="Student attendance retrieved", data={
