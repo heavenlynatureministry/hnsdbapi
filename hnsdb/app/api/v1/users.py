@@ -12,6 +12,7 @@ from app.schemas.common import SuccessResponse
 router = APIRouter()
 
 
+@router.get("", response_model=SuccessResponse)
 @router.get("/", response_model=SuccessResponse)
 async def list_users(
     role: Optional[str] = Query(None),
@@ -60,6 +61,7 @@ async def get_user(
     return SuccessResponse(success=True, message="User retrieved", data=user)
 
 
+@router.post("", response_model=SuccessResponse, status_code=201)
 @router.post("/", response_model=SuccessResponse, status_code=201)
 async def create_user(
     request: Request,
