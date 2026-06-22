@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import examsAPI from '../../api/exams'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -21,21 +22,58 @@ function ExamForm() {
 
   const [formData, setFormData] = useState({
     exam_name: '', exam_type: 'mid_term', class_id: '', subject_id: '',
-    exam_date: '', start_time: '', end_time: '', max_score: '100',
-    pass_mark: '50', weight: '1.0', academic_year: '2024/2025',
+    exam_date: '', start_time: '', end_time: '', max_score: 100,
+    pass_mark: 50, weight: 1.0, academic_year: '2024/2025',
     term: 'Term 1', instructions: '',
   })
 
   useEffect(() => {
     updatePageTitle(isEdit ? 'Edit Exam' : 'Create Exam')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Exams', path: '/exams' }, { label: isEdit ? 'Edit' : 'Create' }])
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Exams', path: '/exams' },
+      { label: isEdit ? 'Edit' : 'Create' },
+    ])
+    
     if (isEdit) {
-      setTimeout(() => {
-        setFormData(prev => ({ ...prev, exam_name: 'Mid-Term English', exam_type: 'mid_term', class_id: 'c8', subject_id: 's1', exam_date: '2024-03-15', max_score: '100' }))
-        setFetching(false)
-      }, 400)
+      fetchExam()
+    } else {
+      setFetching(false)
     }
   }, [id])
+
+  const fetchExam = async () => {
+    setFetching(true)
+    try {
+      const response = await examsAPI.getById(id)
+      if (response?.success && response.data) {
+        const exam = response.data
+        setFormData({
+          exam_name: exam.exam_name || '',
+          exam_type: exam.exam_type || 'mid_term',
+          class_id: exam.class_id || '',
+          subject_id: exam.subject_id || '',
+          exam_date: exam.exam_date?.split('T')[0] || '',
+          start_time: exam.start_time || '',
+          end_time: exam.end_time || '',
+          max_score: exam.max_score || 100,
+          pass_mark: exam.pass_mark || 50,
+          weight: exam.weight || 1.0,
+          academic_year: exam.academic_year || '2024/2025',
+          term: exam.term || 'Term 1',
+          instructions: exam.instructions || '',
+        })
+      } else {
+        toast.error('Failed to load exam data')
+        navigate('/exams')
+      }
+    } catch (error) {
+      toast.error('Failed to fetch exam')
+      navigate('/exams')
+    } finally {
+      setFetching(false)
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -57,13 +95,45 @@ function ExamForm() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validateForm()) return
+
     setLoading(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 800))
-      toast.success(`Exam ${isEdit ? 'updated' : 'created'} successfully`)
-      navigate('/exams')
-    } catch (error) { toast.error('Failed to save exam') }
-    finally { setLoading(false) }
+      const payload = { ...formData }
+      
+      let response
+      if (isEdit) {
+        response = await examsAPI.update(id, payload)
+      } else {
+        response = await examsAPI.create(payload)
+      }
+
+      if (response && response.success) {
+        toast.success(`Exam ${isEdit ? 'updated' : 'created'} successfully`)
+        navigate('/exams')
+      } else {
+        toast.error(response?.message || 'Failed to save exam')
+      }
+    } catch (error) {
+      if (error.status === 422) {
+        const fieldErrors = error.errors || []
+        const newErrors = {}
+        fieldErrors.forEach(err => {
+          const field = err.loc?.[err.loc.length - 1] || 'general'
+          newErrors[field] = err.msg
+        })
+        setErrors(newErrors)
+        toast.error('Please fix the validation errors')
+      } else if (error.status === 409) {
+        toast.error('An exam with this name already exists')
+      } else if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to save exam')
+      }
+      console.error('Exam save error:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (fetching) return <LoadingSpinner fullScreen />
