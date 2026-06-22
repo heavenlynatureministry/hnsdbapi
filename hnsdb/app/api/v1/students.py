@@ -12,6 +12,7 @@ from app.schemas.common import SuccessResponse
 router = APIRouter()
 
 
+@router.get("", response_model=SuccessResponse)
 @router.get("/", response_model=SuccessResponse)
 async def list_students(
     class_id: Optional[str] = Query(None),
@@ -40,7 +41,6 @@ async def list_students(
     for s in students:
         s["_id"] = str(s["_id"])
         if s.get("current_class_id"): s["current_class_id"] = str(s["current_class_id"])
-        # Get class name
         if s.get("current_class_id"):
             cls = await db.classes.find_one({"_id": ObjectId(s["current_class_id"])})
             if cls: s["class_name"] = cls.get("class_name", "")
@@ -85,7 +85,6 @@ async def get_student(
     if student.get("current_class_id"): student["current_class_id"] = str(student["current_class_id"])
     if student.get("created_by"): student["created_by"] = str(student["created_by"])
     
-    # Get class name
     if student.get("current_class_id"):
         cls = await db.classes.find_one({"_id": ObjectId(student["current_class_id"])})
         if cls: student["class_name"] = cls.get("class_name", "")
@@ -93,6 +92,7 @@ async def get_student(
     return SuccessResponse(success=True, message="Student retrieved", data=student)
 
 
+@router.post("", response_model=SuccessResponse, status_code=201)
 @router.post("/", response_model=SuccessResponse, status_code=201)
 async def create_student(
     request: Request,
@@ -102,27 +102,23 @@ async def create_student(
     db = get_database()
     from app.models.student import StudentModel
     
-    # Parse body manually to avoid schema issues
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     
-    # Extract required fields
     first_name = (body.get('first_name', '') or '').strip()
     last_name = (body.get('last_name', '') or '').strip()
     
     if not first_name or not last_name:
         raise HTTPException(status_code=400, detail="First name and last name are required")
     
-    # Parse date of birth
     dob_str = body.get('date_of_birth', '')
     try:
         date_of_birth = datetime.strptime(dob_str, '%Y-%m-%d').date() if dob_str else date.today()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
-    # Parse enrollment date
     enroll_str = body.get('enrollment_date', '')
     enrollment_date = None
     if enroll_str:
@@ -131,7 +127,6 @@ async def create_student(
         except ValueError:
             enrollment_date = date.today()
     
-    # Create student
     success, message, result = await StudentModel.create_student(
         db=db,
         first_name=first_name,
@@ -154,7 +149,6 @@ async def create_student(
     if not success:
         raise HTTPException(status_code=400, detail=message)
     
-    # Add guardians if provided
     guardians = body.get('guardians', [])
     if guardians and result:
         for guardian in guardians:
@@ -174,7 +168,6 @@ async def create_student(
             except Exception:
                 pass
     
-    # Return created student
     updated = await db.students.find_one({"_id": ObjectId(result["_id"])})
     if updated:
         updated["_id"] = str(updated["_id"])
@@ -203,7 +196,6 @@ async def update_student(
     if not body:
         raise HTTPException(status_code=400, detail="No fields to update")
     
-    # Remove protected fields
     for key in ['_id', 'student_id_number', 'created_at', 'created_by']:
         body.pop(key, None)
     
