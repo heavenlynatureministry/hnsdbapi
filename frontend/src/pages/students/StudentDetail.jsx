@@ -25,40 +25,32 @@ function StudentDetail() {
 
   useEffect(() => {
     updatePageTitle('Student Details')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Students', path: '/students' }, { label: 'Student Details' }])
-    
-    const timer = setTimeout(() => {
-      setStudent({
-        _id: id, student_id_number: 'HNS-2024-0001',
-        first_name: 'Abraham', last_name: 'Kuol', middle_name: '',
-        gender: 'Male', date_of_birth: '2016-03-10', age: 8,
-        place_of_birth: 'Juba', nationality: 'South Sudanese',
-        student_type: 'street', enrollment_date: '2020-01-15',
-        current_class_id: 'c6', class_name: 'P3', class_level: 'primary',
-        status: 'active', address: 'Juba, South Sudan',
-        medical_notes: 'None', special_needs: '',
-        guardians: [
-          { guardian_id: 'g1', first_name: 'Michael', last_name: 'Kuol', relationship: 'Father', phone_number: '+211 912 987 654', email: 'michael@example.com', is_primary_contact: true },
-          { guardian_id: 'g2', first_name: 'Sarah', last_name: 'Kuol', relationship: 'Mother', phone_number: '+211 912 111 222', email: '', is_primary_contact: false },
-        ],
-        attendance: { attendance_rate: 92, present: 45, absent: 4, total: 49 },
-        academic_performance: {
-          overall: { percentage: 78, grade: 'B' },
-          subjects: [
-            { subject_name: 'English', average_percentage: 82, grade: 'A' },
-            { subject_name: 'Mathematics', average_percentage: 75, grade: 'B' },
-            { subject_name: 'Science', average_percentage: 70, grade: 'B' },
-            { subject_name: 'Social Studies', average_percentage: 85, grade: 'A' },
-          ],
-        },
-        recent_payments: [
-          { amount_paid: 5000, payment_date: '2024-01-15', receipt_number: 'RCP-001' },
-          { amount_paid: 5000, payment_date: '2024-02-15', receipt_number: 'RCP-002' },
-        ],
-      })
-      setLoading(false)
-    }, 500)
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Students', path: '/students' },
+      { label: 'Student Details' },
+    ])
+    fetchStudent()
   }, [id])
+
+  const fetchStudent = async () => {
+    setLoading(true)
+    try {
+      const response = await studentsAPI.getById(id)
+      if (response?.success && response.data) {
+        setStudent(response.data)
+      } else {
+        toast.error('Failed to load student details')
+        navigate('/students')
+      }
+    } catch (error) {
+      console.error('Failed to fetch student:', error)
+      toast.error('Failed to load student details')
+      navigate('/students')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const getStatusBadge = (status) => {
     const variants = { active: 'success', inactive: 'danger', graduated: 'info', transferred: 'warning' }
@@ -83,8 +75,12 @@ function StudentDetail() {
         subtitle={student.student_id_number}
         actions={
           <div className="flex gap-2">
-            <button onClick={() => navigate('/students')} className="btn btn-secondary"><ArrowLeft size={18} /> Back</button>
-            <Link to={`/students/${id}/edit`} className="btn btn-primary"><Edit size={18} /> Edit</Link>
+            <button onClick={() => navigate('/students')} className="btn btn-secondary">
+              <ArrowLeft size={18} /> Back
+            </button>
+            <Link to={`/students/${id}/edit`} className="btn btn-primary">
+              <Edit size={18} /> Edit
+            </Link>
           </div>
         }
       />
@@ -101,10 +97,18 @@ function StudentDetail() {
               {getStatusBadge(student.status)}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="flex items-center gap-2 text-sm text-gray-500"><GraduationCap size={16} /> {student.class_name} ({student.class_level})</div>
-              <div className="flex items-center gap-2 text-sm text-gray-500"><Calendar size={16} /> {student.age} years old</div>
-              <div className="flex items-center gap-2 text-sm text-gray-500"><MapPin size={16} /> {student.place_of_birth || 'N/A'}</div>
-              <div className="flex items-center gap-2 text-sm text-gray-500"><Calendar size={16} /> Enrolled {new Date(student.enrollment_date).toLocaleDateString()}</div>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <GraduationCap size={16} /> {student.class_name || 'N/A'} ({student.class_level || 'N/A'})
+              </div>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Calendar size={16} /> {student.age || 'N/A'} years old
+              </div>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <MapPin size={16} /> {student.place_of_birth || 'N/A'}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Calendar size={16} /> Enrolled {student.enrollment_date ? new Date(student.enrollment_date).toLocaleDateString() : 'N/A'}
+              </div>
             </div>
           </div>
         </div>
@@ -113,7 +117,13 @@ function StudentDetail() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
         {tabs.map((tab) => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+              activeTab === tab.id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
             <tab.icon size={16} /> {tab.label}
           </button>
         ))}
@@ -125,16 +135,16 @@ function StudentDetail() {
           <Card title="Personal Information">
             <div className="space-y-2 text-sm">
               <p><span className="text-gray-500">Gender:</span> {student.gender}</p>
-              <p><span className="text-gray-500">Date of Birth:</span> {new Date(student.date_of_birth).toLocaleDateString()}</p>
-              <p><span className="text-gray-500">Nationality:</span> {student.nationality}</p>
+              <p><span className="text-gray-500">Date of Birth:</span> {student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : 'N/A'}</p>
+              <p><span className="text-gray-500">Nationality:</span> {student.nationality || 'N/A'}</p>
               <p><span className="text-gray-500">Address:</span> {student.address || 'N/A'}</p>
             </div>
           </Card>
           <Card title="Enrollment Details">
             <div className="space-y-2 text-sm">
               <p><span className="text-gray-500">Student Type:</span> <Badge variant="info">{student.student_type}</Badge></p>
-              <p><span className="text-gray-500">Class:</span> {student.class_name}</p>
-              <p><span className="text-gray-500">Enrolled:</span> {new Date(student.enrollment_date).toLocaleDateString()}</p>
+              <p><span className="text-gray-500">Class:</span> {student.class_name || 'N/A'}</p>
+              <p><span className="text-gray-500">Enrolled:</span> {student.enrollment_date ? new Date(student.enrollment_date).toLocaleDateString() : 'N/A'}</p>
             </div>
           </Card>
           <Card title="Medical Information">
@@ -147,82 +157,104 @@ function StudentDetail() {
       {/* Guardians Tab */}
       {activeTab === 'guardians' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {student.guardians?.map((g) => (
-            <Card key={g.guardian_id}>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold">{g.first_name} {g.last_name}</h4>
-                {g.is_primary_contact && <Badge variant="success">Primary</Badge>}
-              </div>
-              <p className="text-sm text-gray-500">{g.relationship}</p>
-              <div className="space-y-1 mt-2">
-                <div className="flex items-center gap-2 text-sm"><Phone size={14} className="text-gray-400" /> {g.phone_number}</div>
-                {g.email && <div className="flex items-center gap-2 text-sm"><Mail size={14} className="text-gray-400" /> {g.email}</div>}
-              </div>
-            </Card>
-          ))}
+          {(student.guardians || []).length === 0 ? (
+            <p className="text-sm text-gray-500 col-span-2 text-center py-4">No guardians on record.</p>
+          ) : (
+            student.guardians.map((g) => (
+              <Card key={g.guardian_id || g._id}>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-semibold">{g.first_name} {g.last_name}</h4>
+                  {g.is_primary_contact && <Badge variant="success">Primary</Badge>}
+                </div>
+                <p className="text-sm text-gray-500">{g.relationship}</p>
+                <div className="space-y-1 mt-2">
+                  <div className="flex items-center gap-2 text-sm"><Phone size={14} className="text-gray-400" /> {g.phone_number}</div>
+                  {g.email && <div className="flex items-center gap-2 text-sm"><Mail size={14} className="text-gray-400" /> {g.email}</div>}
+                </div>
+              </Card>
+            ))
+          )}
         </div>
       )}
 
       {/* Academic Tab */}
       {activeTab === 'academic' && (
         <div className="space-y-4">
-          <Card>
-            <div className="text-center">
-              <p className="text-4xl font-bold text-primary-600">{student.academic_performance?.overall?.percentage}%</p>
-              <Badge variant={student.academic_performance?.overall?.grade === 'A' ? 'success' : 'info'}>
-                Grade {student.academic_performance?.overall?.grade}
-              </Badge>
-            </div>
-          </Card>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {student.academic_performance?.subjects?.map((subject, i) => (
-              <Card key={i}>
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium">{subject.subject_name}</h4>
-                  <Badge variant={subject.grade === 'A' ? 'success' : 'info'}>{subject.grade}</Badge>
+          {student.academic_performance ? (
+            <>
+              <Card>
+                <div className="text-center">
+                  <p className="text-4xl font-bold text-primary-600">{student.academic_performance?.overall?.percentage || 0}%</p>
+                  <Badge variant={student.academic_performance?.overall?.grade === 'A' ? 'success' : 'info'}>
+                    Grade {student.academic_performance?.overall?.grade || 'N/A'}
+                  </Badge>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2">
-                  <div className="h-2 rounded-full bg-primary-600" style={{ width: `${subject.average_percentage}%` }} />
-                </div>
-                <p className="text-sm text-gray-500 mt-1">{subject.average_percentage}%</p>
               </Card>
-            ))}
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {(student.academic_performance?.subjects || []).map((subject, i) => (
+                  <Card key={i}>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium">{subject.subject_name}</h4>
+                      <Badge variant={subject.grade === 'A' ? 'success' : 'info'}>{subject.grade}</Badge>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2">
+                      <div className="h-2 rounded-full bg-primary-600" style={{ width: `${subject.average_percentage || 0}%` }} />
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">{subject.average_percentage || 0}%</p>
+                  </Card>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-500 text-center py-8">No academic data available.</p>
+          )}
         </div>
       )}
 
       {/* Attendance Tab */}
       {activeTab === 'attendance' && (
         <Card>
-          <div className="text-center mb-4">
-            <p className="text-4xl font-bold text-primary-600">{student.attendance?.attendance_rate}%</p>
-            <p className="text-sm text-gray-500">Attendance Rate</p>
-          </div>
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div><p className="text-2xl font-bold text-green-600">{student.attendance?.present}</p><p className="text-xs text-gray-500">Present</p></div>
-            <div><p className="text-2xl font-bold text-red-600">{student.attendance?.absent}</p><p className="text-xs text-gray-500">Absent</p></div>
-            <div><p className="text-2xl font-bold text-gray-600">{student.attendance?.total}</p><p className="text-xs text-gray-500">Total Days</p></div>
-          </div>
+          {student.attendance ? (
+            <>
+              <div className="text-center mb-4">
+                <p className="text-4xl font-bold text-primary-600">{student.attendance.attendance_rate || 0}%</p>
+                <p className="text-sm text-gray-500">Attendance Rate</p>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div><p className="text-2xl font-bold text-green-600">{student.attendance.present || 0}</p><p className="text-xs text-gray-500">Present</p></div>
+                <div><p className="text-2xl font-bold text-red-600">{student.attendance.absent || 0}</p><p className="text-xs text-gray-500">Absent</p></div>
+                <div><p className="text-2xl font-bold text-gray-600">{student.attendance.total || 0}</p><p className="text-xs text-gray-500">Total Days</p></div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-500 text-center py-8">No attendance data available.</p>
+          )}
         </Card>
       )}
 
       {/* Payments Tab */}
       {activeTab === 'payments' && (
         <div className="space-y-3">
-          {student.recent_payments?.map((payment, i) => (
-            <Card key={i}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">SSP {payment.amount_paid?.toLocaleString()}</p>
-                  <p className="text-xs text-gray-500">Receipt: {payment.receipt_number}</p>
-                </div>
-                <span className="text-sm text-gray-500">{new Date(payment.payment_date).toLocaleDateString()}</span>
-              </div>
-            </Card>
-          ))}
-          <p className="text-sm text-gray-500 text-center">
-            Total Paid: SSP {student.recent_payments?.reduce((s, p) => s + (p.amount_paid || 0), 0).toLocaleString()}
-          </p>
+          {(student.recent_payments || []).length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No payment records found.</p>
+          ) : (
+            <>
+              {student.recent_payments.map((payment, i) => (
+                <Card key={i}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">SSP {payment.amount_paid?.toLocaleString()}</p>
+                      <p className="text-xs text-gray-500">Receipt: {payment.receipt_number}</p>
+                    </div>
+                    <span className="text-sm text-gray-500">{new Date(payment.payment_date).toLocaleDateString()}</span>
+                  </div>
+                </Card>
+              ))}
+              <p className="text-sm text-gray-500 text-center">
+                Total Paid: SSP {student.recent_payments.reduce((s, p) => s + (p.amount_paid || 0), 0).toLocaleString()}
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>
