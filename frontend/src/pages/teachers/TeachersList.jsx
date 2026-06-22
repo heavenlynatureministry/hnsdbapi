@@ -43,7 +43,6 @@ function TeachersList() {
       const response = await teachersAPI.getAll({
         search: search || undefined,
         status: statusFilter || undefined,
-        specialization: specializationFilter || undefined,
         page,
         limit,
       })
@@ -65,14 +64,21 @@ function TeachersList() {
         toast.error(error.message || 'Failed to fetch teachers')
       }
       setTeachers([])
+      setTotal(0)
+      setTotalPages(0)
     } finally {
       setLoading(false)
     }
-  }, [search, statusFilter, specializationFilter, page])
+  }, [search, statusFilter, page])
 
   useEffect(() => {
     fetchTeachers()
   }, [fetchTeachers])
+
+  // Client-side filtering for specialization
+  const filteredTeachers = specializationFilter
+    ? teachers.filter(t => t.specialization === specializationFilter)
+    : teachers
 
   const getStatusBadge = (status) => {
     const variants = {
@@ -155,7 +161,7 @@ function TeachersList() {
       {/* Teachers Grid */}
       {loading ? (
         <LoadingSpinner />
-      ) : teachers.length === 0 ? (
+      ) : filteredTeachers.length === 0 ? (
         <EmptyState
           icon={<Users size={48} />}
           title="No teachers found"
@@ -168,7 +174,7 @@ function TeachersList() {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {teachers.map((teacher) => (
+          {filteredTeachers.map((teacher) => (
             <div key={teacher._id} className="card hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
