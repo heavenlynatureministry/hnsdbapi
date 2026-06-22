@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import attendanceAPI from '../../api/attendance'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -12,10 +13,12 @@ import {
   XCircle, AlertTriangle, Clock, TrendingUp 
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { exportToPDF } from '../../utils/exportPDF'
 import toast from 'react-hot-toast'
 
 function AttendanceReport() {
   const navigate = useNavigate()
+  const reportRef = useRef(null)
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
@@ -28,46 +31,49 @@ function AttendanceReport() {
 
   useEffect(() => {
     updatePageTitle('Attendance Report')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Attendance', path: '/attendance' }, { label: 'Report' }])
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Attendance', path: '/attendance' },
+      { label: 'Report' },
+    ])
   }, [])
 
   const handleGenerate = async () => {
     setLoading(true)
-    setTimeout(() => {
-      setReportData({
-        class_name: filters.class_id ? 'P5' : 'All Classes',
-        attendance_rate: 88.5,
-        total_records: 1250,
-        status_summary: {
-          present: { count: 980, percentage: 78.4 },
-          absent: { count: 150, percentage: 12 },
-          excused: { count: 75, percentage: 6 },
-          late: { count: 45, percentage: 3.6 },
-        },
-        daily_trend: [
-          { day: 'Mon', present: 85, absent: 15 },
-          { day: 'Tue', present: 90, absent: 10 },
-          { day: 'Wed', present: 78, absent: 22 },
-          { day: 'Thu', present: 92, absent: 8 },
-          { day: 'Fri', present: 88, absent: 12 },
-        ],
-        by_class: [
-          { class_name: 'P3', rate: 92 }, { class_name: 'P4', rate: 88 },
-          { class_name: 'P5', rate: 85 }, { class_name: 'P6', rate: 90 },
-          { class_name: 'P7', rate: 87 },
-        ],
-        chronic_absentees: [
-          { student_name: 'John Smith', class_name: 'P5', rate: 65, days_missed: 18 },
-          { student_name: 'Mary Jane', class_name: 'P6', rate: 70, days_missed: 15 },
-        ],
-        perfect_attendance: [
-          { student_name: 'Abraham Kuol', class_name: 'P3', days: 50 },
-          { student_name: 'Achol Deng', class_name: 'P2', days: 50 },
-        ],
+    setReportData(null)
+    
+    try {
+      const response = await attendanceAPI.generateReport({
+        class_id: filters.class_id || undefined,
+        academic_year: filters.academic_year,
+        term: filters.term,
       })
+      
+      if (response?.success && response.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else if (response?.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else {
+        toast.error('Failed to generate report')
+      }
+    } catch (error) {
+      console.error('Failed to generate attendance report:', error)
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to generate report')
+      }
+    } finally {
       setLoading(false)
-      setGenerated(true)
-    }, 1000)
+    }
+  }
+
+  const handleExportPDF = () => {
+    if (reportRef.current) {
+      exportToPDF(reportRef.current, `Attendance_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+    }
   }
 
   const classOptions = [
@@ -83,86 +89,114 @@ function AttendanceReport() {
     <div className="space-y-6 max-w-5xl animate-fade-in-up">
       <PageHeader
         title="Attendance Report"
-        actions={<button onClick={() => navigate('/attendance')} className="btn btn-secondary"><ArrowLeft size={18} /> Back</button>}
+        actions={
+          <button onClick={() => navigate('/attendance')} className="btn btn-secondary">
+            <ArrowLeft size={18} /> Back
+          </button>
+        }
       />
 
       <Card>
         <div className="flex flex-col sm:flex-row items-end gap-4">
-          <FormSelect label="Class" value={filters.class_id} onChange={(e) => setFilters(prev => ({ ...prev, class_id: e.target.value }))} options={classOptions} />
-          <FormSelect label="Academic Year" value={filters.academic_year} onChange={(e) => setFilters(prev => ({ ...prev, academic_year: e.target.value }))}
-            options={[{ value: '2024/2025', label: '2024/2025' }]} />
-          <FormSelect label="Term" value={filters.term} onChange={(e) => setFilters(prev => ({ ...prev, term: e.target.value }))}
-            options={[{ value: 'Term 1', label: 'Term 1' }, { value: 'Term 2', label: 'Term 2' }, { value: 'Term 3', label: 'Term 3' }]} />
-          <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<ClipboardCheck size={18} />}>Generate</Button>
-          {generated && <Button variant="secondary" icon={<Download size={18} />}>Export</Button>}
+          <FormSelect
+            label="Class"
+            value={filters.class_id}
+            onChange={(e) => setFilters(prev => ({ ...prev, class_id: e.target.value }))}
+            options={classOptions}
+          />
+          <FormSelect
+            label="Academic Year"
+            value={filters.academic_year}
+            onChange={(e) => setFilters(prev => ({ ...prev, academic_year: e.target.value }))}
+            options={[{ value: '2024/2025', label: '2024/2025' }]}
+          />
+          <FormSelect
+            label="Term"
+            value={filters.term}
+            onChange={(e) => setFilters(prev => ({ ...prev, term: e.target.value }))}
+            options={[
+              { value: 'Term 1', label: 'Term 1' },
+              { value: 'Term 2', label: 'Term 2' },
+              { value: 'Term 3', label: 'Term 3' },
+            ]}
+          />
+          <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<ClipboardCheck size={18} />}>
+            Generate
+          </Button>
+          {generated && (
+            <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>
+              Export
+            </Button>
+          )}
         </div>
       </Card>
 
       {loading && <LoadingSpinner />}
 
       {generated && reportData && (
-        <div className="space-y-6">
+        <div ref={reportRef} className="space-y-6">
           {/* Overall Rate */}
           <Card>
             <div className="text-center">
-              <p className="text-5xl font-bold text-primary-600">{reportData.attendance_rate}%</p>
+              <p className="text-5xl font-bold text-primary-600">{reportData.attendance_rate || reportData.overall_rate}%</p>
               <p className="text-gray-500 mt-1">Overall Attendance Rate</p>
-              <p className="text-xs text-gray-400">{reportData.total_records.toLocaleString()} total records</p>
+              <p className="text-xs text-gray-400">{(reportData.total_records || 0).toLocaleString()} total records</p>
             </div>
-            <div className="grid grid-cols-4 gap-3 mt-6">
-              {[
-                { label: 'Present', value: `${reportData.status_summary.present.percentage}%`, count: reportData.status_summary.present.count, icon: CheckCircle, color: 'text-green-600' },
-                { label: 'Absent', value: `${reportData.status_summary.absent.percentage}%`, count: reportData.status_summary.absent.count, icon: XCircle, color: 'text-red-600' },
-                { label: 'Excused', value: `${reportData.status_summary.excused.percentage}%`, count: reportData.status_summary.excused.count, icon: AlertTriangle, color: 'text-yellow-600' },
-                { label: 'Late', value: `${reportData.status_summary.late.percentage}%`, count: reportData.status_summary.late.count, icon: Clock, color: 'text-blue-600' },
-              ].map((stat, i) => (
-                <div key={i} className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <stat.icon size={20} className={`${stat.color} mx-auto mb-1`} />
-                  <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
-                  <p className="text-xs text-gray-500">{stat.label} ({stat.count})</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Weekly Trend Chart */}
-            <Card title="Weekly Attendance Pattern">
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={reportData.daily_trend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} unit="%" />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="present" name="Present" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-
-            {/* By Class */}
-            <Card title="Attendance by Class">
-              <div className="space-y-3">
-                {reportData.by_class.map((cls, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <span className="text-sm font-medium w-12">{cls.class_name}</span>
-                    <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-4">
-                      <div className="bg-primary-600 h-4 rounded-full transition-all" style={{ width: `${cls.rate}%` }} />
-                    </div>
-                    <span className="text-sm font-bold w-12 text-right">{cls.rate}%</span>
+            {reportData.status_summary && (
+              <div className="grid grid-cols-4 gap-3 mt-6">
+                {[
+                  { label: 'Present', value: `${reportData.status_summary.present?.percentage || 0}%`, count: reportData.status_summary.present?.count || 0, icon: CheckCircle, color: 'text-green-600' },
+                  { label: 'Absent', value: `${reportData.status_summary.absent?.percentage || 0}%`, count: reportData.status_summary.absent?.count || 0, icon: XCircle, color: 'text-red-600' },
+                  { label: 'Excused', value: `${reportData.status_summary.excused?.percentage || 0}%`, count: reportData.status_summary.excused?.count || 0, icon: AlertTriangle, color: 'text-yellow-600' },
+                  { label: 'Late', value: `${reportData.status_summary.late?.percentage || 0}%`, count: reportData.status_summary.late?.count || 0, icon: Clock, color: 'text-blue-600' },
+                ].map((stat, i) => (
+                  <div key={i} className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <stat.icon size={20} className={`${stat.color} mx-auto mb-1`} />
+                    <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
+                    <p className="text-xs text-gray-500">{stat.label} ({stat.count})</p>
                   </div>
                 ))}
               </div>
-            </Card>
-          </div>
+            )}
+          </Card>
 
-          {/* Chronic Absentees & Perfect Attendance */}
+          {reportData.daily_trend && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card title="Weekly Attendance Pattern">
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.daily_trend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} unit="%" />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="present" name="Present" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+
+              <Card title="Attendance by Class">
+                <div className="space-y-3">
+                  {(reportData.by_class || []).map((cls, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="text-sm font-medium w-12">{cls.class_name}</span>
+                      <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+                        <div className="bg-primary-600 h-4 rounded-full transition-all" style={{ width: `${cls.rate}%` }} />
+                      </div>
+                      <span className="text-sm font-bold w-12 text-right">{cls.rate}%</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card title="Chronic Absentees (Below 75%)">
-              {reportData.chronic_absentees.length === 0 ? (
+              {(reportData.chronic_absentees || []).length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-4">No chronic absentees</p>
               ) : (
                 <div className="space-y-2">
@@ -180,7 +214,7 @@ function AttendanceReport() {
             </Card>
 
             <Card title="Perfect Attendance">
-              {reportData.perfect_attendance.length === 0 ? (
+              {(reportData.perfect_attendance || []).length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-4">No students with perfect attendance</p>
               ) : (
                 <div className="space-y-2">
