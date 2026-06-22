@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import PageHeader from '../../components/common/PageHeader'
@@ -8,9 +8,11 @@ import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import Badge from '../../components/common/Badge'
 import { ArrowLeft, Download, ClipboardCheck, TrendingUp, TrendingDown } from 'lucide-react'
+import { exportToPDF } from '../../utils/exportPDF'
 
 function AttendanceReport() {
   const navigate = useNavigate()
+  const reportRef = useRef(null)
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
@@ -56,6 +58,10 @@ function AttendanceReport() {
     }, 1000)
   }
 
+  const handleExportPDF = () => {
+    exportToPDF(reportRef.current, `Attendance_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+  }
+
   return (
     <div className="space-y-6 max-w-4xl animate-fade-in-up">
       <PageHeader
@@ -80,14 +86,14 @@ function AttendanceReport() {
         </div>
         <div className="flex gap-3 mt-4">
           <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<ClipboardCheck size={18} />}>Generate Report</Button>
-          {generated && <Button variant="secondary" icon={<Download size={18} />}>Export PDF</Button>}
+          {generated && <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>Export PDF</Button>}
         </div>
       </Card>
 
       {loading && <LoadingSpinner />}
 
       {generated && reportData && (
-        <div className="space-y-6">
+        <div ref={reportRef} className="space-y-6">
           <Card>
             <div className="text-center mb-4">
               <p className="text-4xl font-bold text-primary-600">{reportData.overall_rate}%</p>
