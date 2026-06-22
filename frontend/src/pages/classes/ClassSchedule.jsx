@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import classesAPI from '../../api/classes'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -25,48 +26,41 @@ function ClassSchedule() {
 
   useEffect(() => {
     updatePageTitle('Class Schedule')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Classes', path: '/classes' }, { label: 'Schedule' }])
-    
-    setTimeout(() => {
-      setClassInfo({ class_name: 'P5', class_level: 'primary' })
-      setSchedule({
-        monday: [
-          { id: '1', subject: 'English', start_time: '08:00', end_time: '08:45' },
-          { id: '2', subject: 'Mathematics', start_time: '08:45', end_time: '09:30' },
-          { id: '3', subject: 'Science', start_time: '09:30', end_time: '10:15' },
-          { id: '4', subject: 'Social Studies', start_time: '10:15', end_time: '11:00' },
-        ],
-        tuesday: [
-          { id: '5', subject: 'Mathematics', start_time: '08:00', end_time: '08:45' },
-          { id: '6', subject: 'English', start_time: '08:45', end_time: '09:30' },
-        ],
-        wednesday: [
-          { id: '7', subject: 'Science', start_time: '08:00', end_time: '08:45' },
-          { id: '8', subject: 'Religious Education', start_time: '08:45', end_time: '09:30' },
-        ],
-        thursday: [
-          { id: '9', subject: 'Creative Arts', start_time: '08:00', end_time: '08:45' },
-          { id: '10', subject: 'Physical Education', start_time: '08:45', end_time: '09:30' },
-        ],
-        friday: [
-          { id: '11', subject: 'Computer Studies', start_time: '08:00', end_time: '08:45' },
-          { id: '12', subject: 'Local Language', start_time: '08:45', end_time: '09:30' },
-        ],
-      })
-      setLoading(false)
-    }, 500)
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Classes', path: '/classes' },
+      { label: 'Schedule' },
+    ])
+    fetchSchedule()
   }, [id])
 
-  const addPeriod = (day) => {
-    const newPeriod = {
-      id: Date.now().toString(),
-      subject: '',
-      start_time: '',
-      end_time: '',
+  const fetchSchedule = async () => {
+    setLoading(true)
+    try {
+      const response = await classesAPI.getSchedule(id)
+      if (response?.success && response.data) {
+        setClassInfo({
+          class_name: response.data.class_name || 'Unknown',
+          class_level: response.data.class_level || '',
+        })
+        setSchedule(response.data.schedule || {})
+      } else {
+        toast.error('Failed to load schedule')
+        navigate('/classes')
+      }
+    } catch (error) {
+      console.error('Failed to fetch schedule:', error)
+      toast.error('Failed to load schedule')
+      navigate('/classes')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  const addPeriod = (day) => {
     setSchedule(prev => ({
       ...prev,
-      [day]: [...(prev[day] || []), newPeriod],
+      [day]: [...(prev[day] || []), { id: Date.now().toString(), subject: '', start_time: '', end_time: '' }],
     }))
   }
 
@@ -87,13 +81,24 @@ function ClassSchedule() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 800))
-      toast.success('Schedule saved successfully')
-    } catch (error) { toast.error('Failed to save schedule') }
-    finally { setSaving(false) }
+      const response = await classesAPI.updateSchedule(id, { schedule })
+      if (response?.success) {
+        toast.success('Schedule saved successfully')
+      } else {
+        toast.error(response?.message || 'Failed to save schedule')
+      }
+    } catch (error) {
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to save schedule')
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const totalPeriods = Object.values(schedule).reduce((sum, periods) => sum + periods.length, 0)
+  const totalPeriods = Object.values(schedule).reduce((sum, periods) => sum + (periods?.length || 0), 0)
 
   if (loading) return <LoadingSpinner fullScreen />
 
@@ -104,8 +109,12 @@ function ClassSchedule() {
         subtitle={`${totalPeriods} total periods per week`}
         actions={
           <div className="flex gap-2">
-            <button onClick={() => navigate('/classes')} className="btn btn-secondary"><ArrowLeft size={18} /> Back</button>
-            <Button onClick={handleSave} variant="primary" loading={saving} icon={<Save size={18} />}>Save Schedule</Button>
+            <button onClick={() => navigate('/classes')} className="btn btn-secondary">
+              <ArrowLeft size={18} /> Back
+            </button>
+            <Button onClick={handleSave} variant="primary" loading={saving} icon={<Save size={18} />}>
+              Save Schedule
+            </Button>
           </div>
         }
       />
@@ -117,7 +126,9 @@ function ClassSchedule() {
             key={day}
             onClick={() => setSelectedDay(day)}
             className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
-              selectedDay === day ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              selectedDay === day
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             {day.charAt(0).toUpperCase() + day.slice(1)}
@@ -135,15 +146,17 @@ function ClassSchedule() {
           </button>
         </div>
 
-        {schedule[selectedDay]?.length === 0 ? (
+        {(schedule[selectedDay] || []).length === 0 ? (
           <div className="text-center py-8">
             <Clock size={32} className="text-gray-300 mx-auto mb-2" />
             <p className="text-sm text-gray-500">No periods scheduled</p>
-            <button onClick={() => addPeriod(selectedDay)} className="btn btn-primary btn-sm mt-3">Add Period</button>
+            <button onClick={() => addPeriod(selectedDay)} className="btn btn-primary btn-sm mt-3">
+              Add Period
+            </button>
           </div>
         ) : (
           <div className="space-y-3">
-            {schedule[selectedDay]?.map((period, index) => (
+            {schedule[selectedDay]?.map((period) => (
               <div key={period.id} className="flex items-end gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div className="flex-1">
                   <label className="text-xs text-gray-500 mb-1 block">Subject</label>
@@ -181,6 +194,7 @@ function ClassSchedule() {
                 <button
                   onClick={() => removePeriod(selectedDay, period.id)}
                   className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                  title="Remove period"
                 >
                   <Trash2 size={16} />
                 </button>
@@ -197,17 +211,17 @@ function ClassSchedule() {
             <div key={day} className="text-center">
               <p className="text-xs font-medium capitalize mb-2">{day.slice(0, 3)}</p>
               <div className="space-y-1">
-                {schedule[day]?.slice(0, 6).map((period) => (
+                {(schedule[day] || []).slice(0, 6).map((period) => (
                   <div
                     key={period.id}
                     className="p-1 bg-primary-100 dark:bg-primary-900/30 rounded text-xs truncate"
                     title={`${period.subject} (${period.start_time}-${period.end_time})`}
                   >
-                    {period.subject?.slice(0, 3)}
+                    {period.subject?.slice(0, 3) || '---'}
                   </div>
                 ))}
-                {(schedule[day]?.length || 0) > 6 && (
-                  <p className="text-xs text-gray-500">+{schedule[day].length - 6} more</p>
+                {(schedule[day] || []).length > 6 && (
+                  <p className="text-xs text-gray-500">+{(schedule[day] || []).length - 6} more</p>
                 )}
               </div>
             </div>
