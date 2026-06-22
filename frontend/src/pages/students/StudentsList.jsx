@@ -24,6 +24,7 @@ function StudentsList() {
   const [classFilter, setClassFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [genderFilter, setGenderFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
@@ -43,9 +44,8 @@ function StudentsList() {
     try {
       const response = await studentsAPI.getAll({
         search: search || undefined,
-        class_name: classFilter || undefined,
-        student_type: typeFilter || undefined,
-        gender: genderFilter || undefined,
+        class_id: classFilter || undefined,
+        status: statusFilter || 'active',
         page,
         limit,
       })
@@ -67,14 +67,23 @@ function StudentsList() {
         toast.error(error.message || 'Failed to fetch students')
       }
       setStudents([])
+      setTotal(0)
+      setTotalPages(0)
     } finally {
       setLoading(false)
     }
-  }, [search, classFilter, typeFilter, genderFilter, page])
+  }, [search, classFilter, statusFilter, page])
 
   useEffect(() => {
     fetchStudents()
   }, [fetchStudents])
+
+  // Client-side filtering for type and gender
+  const filteredStudents = students.filter((s) => {
+    const matchesType = !typeFilter || s.student_type === typeFilter
+    const matchesGender = !genderFilter || s.gender === genderFilter
+    return matchesType && matchesGender
+  })
 
   const getStatusBadge = (status) => {
     const variants = {
@@ -153,7 +162,7 @@ function StudentsList() {
       {/* Table */}
       {loading ? (
         <LoadingSpinner />
-      ) : students.length === 0 ? (
+      ) : filteredStudents.length === 0 ? (
         <EmptyState
           icon={<GraduationCap size={48} />}
           title="No students found"
@@ -177,7 +186,7 @@ function StudentsList() {
                 </tr>
               </thead>
               <tbody>
-                {students.map((student) => (
+                {filteredStudents.map((student) => (
                   <tr key={student._id}>
                     <td>
                       <div className="flex items-center gap-3">
