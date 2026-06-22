@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import studentsAPI from '../../../api/students'
 import { GraduationCap, ArrowRight } from 'lucide-react'
 import Badge from '../../../components/common/Badge'
 
@@ -8,18 +9,25 @@ function RecentStudents() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Simulated data
-    const timer = setTimeout(() => {
-      setStudents([
-        { _id: '1', first_name: 'Abraham', last_name: 'Kuol', class_name: 'P3', enrollment_date: '2024-01-15', status: 'active', student_type: 'street' },
-        { _id: '2', first_name: 'Achol', last_name: 'Deng', class_name: 'P2', enrollment_date: '2024-02-20', status: 'active', student_type: 'abundant' },
-        { _id: '3', first_name: 'Bol', last_name: 'Malek', class_name: 'P4', enrollment_date: '2024-03-10', status: 'active', student_type: 'orphan' },
-        { _id: '4', first_name: 'Aya', last_name: 'Dut', class_name: 'Baby', enrollment_date: '2024-04-05', status: 'active', student_type: 'other' },
-        { _id: '5', first_name: 'Peter', last_name: 'Garang', class_name: 'P5', enrollment_date: '2024-05-12', status: 'active', student_type: 'street' },
-      ])
-      setLoading(false)
-    }, 600)
+    fetchRecentStudents()
   }, [])
+
+  const fetchRecentStudents = async () => {
+    setLoading(true)
+    try {
+      const response = await studentsAPI.getAll({ limit: 5, sort: '-enrollment_date' })
+      if (response?.success) {
+        setStudents(response.data?.students || response.data || [])
+      } else {
+        setStudents([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch recent students:', error)
+      setStudents([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="card">
@@ -45,6 +53,11 @@ function RecentStudents() {
             </div>
           ))}
         </div>
+      ) : students.length === 0 ? (
+        <div className="text-center py-6">
+          <GraduationCap size={32} className="text-gray-300 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">No students enrolled yet</p>
+        </div>
       ) : (
         <div className="space-y-3">
           {students.map((student) => (
@@ -61,7 +74,7 @@ function RecentStudents() {
                   {student.first_name} {student.last_name}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {student.class_name} • {new Date(student.enrollment_date).toLocaleDateString()}
+                  {student.class_name || 'Unassigned'} • {student.enrollment_date ? new Date(student.enrollment_date).toLocaleDateString() : 'N/A'}
                 </p>
               </div>
               <Badge variant="success" className="text-xs">New</Badge>
