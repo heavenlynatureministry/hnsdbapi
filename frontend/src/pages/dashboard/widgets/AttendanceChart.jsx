@@ -1,24 +1,41 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import attendanceAPI from '../../../api/attendance'
 import { ClipboardCheck, ArrowRight } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 function AttendanceChart({ data }) {
   const [chartData, setChartData] = useState([])
+  const [stats, setStats] = useState({ present: 0, absent: 0, late: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setChartData([
-        { day: 'Mon', present: 85, absent: 15 },
-        { day: 'Tue', present: 90, absent: 10 },
-        { day: 'Wed', present: 78, absent: 22 },
-        { day: 'Thu', present: 92, absent: 8 },
-        { day: 'Fri', present: 88, absent: 12 },
-      ])
-      setLoading(false)
-    }, 700)
+    fetchAttendanceData()
   }, [])
+
+  const fetchAttendanceData = async () => {
+    setLoading(true)
+    try {
+      const response = await attendanceAPI.getToday()
+      if (response?.success && response.data) {
+        // Use API data if available
+        if (response.data.daily_trend) {
+          setChartData(response.data.daily_trend)
+        }
+        if (response.data.statistics) {
+          setStats({
+            present: response.data.statistics.present?.percentage || 0,
+            absent: response.data.statistics.absent?.percentage || 0,
+            late: (response.data.statistics.late?.percentage || 0) + (response.data.statistics.excused?.percentage || 0),
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch attendance:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -50,7 +67,7 @@ function AttendanceChart({ data }) {
 
       {loading ? (
         <div className="skeleton h-64 w-full rounded-lg" />
-      ) : (
+      ) : chartData.length > 0 ? (
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} barGap={4}>
@@ -64,20 +81,24 @@ function AttendanceChart({ data }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      ) : (
+        <div className="text-center py-8">
+          <ClipboardCheck size={32} className="text-gray-300 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">No attendance data available</p>
+        </div>
       )}
 
-      {/* Today's Stats */}
       <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
         <div className="text-center">
-          <p className="text-2xl font-bold text-green-600">85%</p>
+          <p className="text-2xl font-bold text-green-600">{stats.present}%</p>
           <p className="text-xs text-gray-500">Present</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-bold text-red-600">10%</p>
+          <p className="text-2xl font-bold text-red-600">{stats.absent}%</p>
           <p className="text-xs text-gray-500">Absent</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-bold text-yellow-600">5%</p>
+          <p className="text-2xl font-bold text-yellow-600">{stats.late}%</p>
           <p className="text-xs text-gray-500">Late/Excused</p>
         </div>
       </div>
