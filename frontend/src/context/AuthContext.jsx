@@ -32,22 +32,29 @@ export function AuthProvider({ children }) {
       const savedUser = getUser()
 
       if (token && savedUser) {
+        // Set user immediately from storage (don't wait for verification)
         setUserState(savedUser)
         setIsAuthenticated(true)
 
-        // Verify token is still valid
+        // Verify token in background
         try {
           const response = await authAPI.verifyToken()
           if (response.success) {
-            setUserState((prev) => ({ ...prev, ...response.data }))
-            setUser({ ...savedUser, ...response.data })
+            const updatedUser = { ...savedUser, ...response.data }
+            setUserState(updatedUser)
+            setUser(updatedUser)
           }
         } catch (error) {
+          console.log('Token verification failed, logging out')
           // Token invalid - silent logout
           clearAll()
           setUserState(null)
           setIsAuthenticated(false)
         }
+      } else {
+        // No token, just stop loading
+        setIsAuthenticated(false)
+        setUserState(null)
       }
 
       setLoading(false)
