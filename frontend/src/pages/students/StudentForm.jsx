@@ -63,18 +63,54 @@ function StudentForm() {
 
   useEffect(() => {
     if (isEdit) {
-      const timer = setTimeout(() => {
-        setFormData(prev => ({
-          ...prev,
-          first_name: 'Abraham', last_name: 'Kuol', gender: 'Male',
-          date_of_birth: '2016-03-10', place_of_birth: 'Juba',
-          student_type: 'street', current_class_id: 'c6',
-          guardians: [{ first_name: 'Michael', last_name: 'Kuol', relationship: 'Father', phone_number: '+211 912 987 654', email: 'michael@example.com', is_primary_contact: true }],
-        }))
-        setFetching(false)
-      }, 500)
+      fetchStudent()
+    } else {
+      setFetching(false)
     }
   }, [id])
+
+  const fetchStudent = async () => {
+    setFetching(true)
+    try {
+      const response = await studentsAPI.getById(id)
+      if (response?.success && response.data) {
+        const s = response.data
+        setFormData({
+          first_name: s.first_name || '',
+          last_name: s.last_name || '',
+          middle_name: s.middle_name || '',
+          gender: s.gender || 'Male',
+          date_of_birth: s.date_of_birth?.split('T')[0] || '',
+          place_of_birth: s.place_of_birth || '',
+          nationality: s.nationality || 'South Sudanese',
+          student_type: s.student_type || 'other',
+          current_class_id: s.current_class_id || '',
+          enrollment_date: s.enrollment_date?.split('T')[0] || new Date().toISOString().split('T')[0],
+          medical_notes: s.medical_notes || '',
+          special_needs: s.special_needs || '',
+          address: s.address || '',
+          guardians: s.guardians?.length > 0
+            ? s.guardians.map(g => ({
+                first_name: g.first_name || '',
+                last_name: g.last_name || '',
+                relationship: g.relationship || '',
+                phone_number: g.phone_number || '',
+                email: g.email || '',
+                is_primary_contact: g.is_primary_contact || false,
+              }))
+            : [{ first_name: '', last_name: '', relationship: '', phone_number: '', email: '', is_primary_contact: true }],
+        })
+      } else {
+        toast.error('Failed to load student data')
+        navigate('/students')
+      }
+    } catch (error) {
+      toast.error('Failed to fetch student')
+      navigate('/students')
+    } finally {
+      setFetching(false)
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -112,6 +148,13 @@ function StudentForm() {
     if (!formData.date_of_birth) newErrors.date_of_birth = 'Date of birth is required'
     if (!formData.gender) newErrors.gender = 'Gender is required'
     if (!formData.student_type) newErrors.student_type = 'Student type is required'
+    
+    // Validate primary guardian has at least name and phone
+    const primaryGuardian = formData.guardians[0]
+    if (primaryGuardian && !primaryGuardian.first_name.trim() && !primaryGuardian.last_name.trim()) {
+      newErrors.guardians = 'Primary guardian name is required'
+    }
+    
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -119,18 +162,43 @@ function StudentForm() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validateForm()) return
+
     setLoading(true)
     try {
       const payload = { ...formData }
-      const response = isEdit
-        ? await studentsAPI.update(id, payload)
-        : await studentsAPI.create(payload)
-      if (response.success) {
+
+      let response
+      if (isEdit) {
+        response = await studentsAPI.update(id, payload)
+      } else {
+        response = await studentsAPI.create(payload)
+      }
+
+      if (response && response.success) {
         toast.success(`Student ${isEdit ? 'updated' : 'enrolled'} successfully`)
         navigate('/students')
+      } else {
+        toast.error(response?.message || 'Failed to save student')
       }
     } catch (error) {
-      toast.error(error.message || 'Failed to save student')
+      // Handle specific error cases
+      if (error.status === 422) {
+        const fieldErrors = error.errors || []
+        const newErrors = {}
+        fieldErrors.forEach(err => {
+          const field = err.loc?.[err.loc.length - 1] || 'general'
+          newErrors[field] = err.msg
+        })
+        setErrors(newErrors)
+        toast.error('Please fix the validation errors')
+      } else if (error.status === 409) {
+        toast.error('A student with this information already exists')
+      } else if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'An error occurred while saving student')
+      }
+      console.error('Student save error:', error)
     } finally {
       setLoading(false)
     }
@@ -199,6 +267,9 @@ function StudentForm() {
             </button>
           }
         >
+          {errors.guardians && (
+            <p className="text-sm text-red-500 mb-3">{errors.guardians}</p>
+          )}
           <div className="space-y-6">
             {formData.guardians.map((guardian, index) => (
               <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg relative">
