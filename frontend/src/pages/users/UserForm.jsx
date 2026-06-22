@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
-import authAPI from '../../api/auth'
+import usersAPI from '../../api/users'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
 import FormInput from '../../components/common/FormInput'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { ArrowLeft, Save, UserPlus, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, Save, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function UserForm() {
@@ -45,13 +45,16 @@ function UserForm() {
   useEffect(() => {
     if (isEdit) {
       fetchUser()
+    } else {
+      setFetching(false)
     }
   }, [id])
 
   const fetchUser = async () => {
+    setFetching(true)
     try {
-      const response = await authAPI.getUser(id)
-      if (response.success && response.data) {
+      const response = await usersAPI.getById(id)
+      if (response?.success && response.data) {
         const user = response.data
         setFormData({
           first_name: user.first_name || '',
@@ -63,9 +66,12 @@ function UserForm() {
           phone_number: user.phone_number || '',
           status: user.status || 'active',
         })
+      } else {
+        toast.error('Failed to fetch user details')
+        navigate('/users')
       }
     } catch (error) {
-      toast.error('Failed to fetch user details')
+      toast.error('Failed to fetch user')
       navigate('/users')
     } finally {
       setFetching(false)
@@ -123,23 +129,37 @@ function UserForm() {
         delete payload.password
       }
 
-      const response = isEdit
-        ? await authAPI.updateUser(id, payload)
-        : await authAPI.createUser(payload)
+      let response
+      if (isEdit) {
+        response = await usersAPI.update(id, payload)
+      } else {
+        response = await usersAPI.create(payload)
+      }
 
-      if (response.success) {
+      if (response && response.success) {
         toast.success(`User ${isEdit ? 'updated' : 'created'} successfully`)
         navigate('/users')
+      } else {
+        toast.error(response?.message || 'Failed to save user')
       }
     } catch (error) {
-      toast.error(error.message || 'Failed to save user')
-      if (error.errors) {
-        const fieldErrors = {}
-        error.errors.forEach((e) => {
-          fieldErrors[e.field] = e.message
+      if (error.status === 422) {
+        const fieldErrors = error.errors || []
+        const newErrors = {}
+        fieldErrors.forEach(err => {
+          const field = err.loc?.[err.loc.length - 1] || 'general'
+          newErrors[field] = err.msg
         })
-        setErrors(fieldErrors)
+        setErrors(newErrors)
+        toast.error('Please fix the validation errors')
+      } else if (error.status === 409) {
+        toast.error('A user with this email already exists')
+      } else if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to save user')
       }
+      console.error('User save error:', error)
     } finally {
       setLoading(false)
     }
@@ -176,34 +196,31 @@ function UserForm() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput
-              label="First Name"
+              label="First Name *"
               name="first_name"
               value={formData.first_name}
               onChange={handleChange}
               error={errors.first_name}
               placeholder="Enter first name"
-              required
             />
             <FormInput
-              label="Last Name"
+              label="Last Name *"
               name="last_name"
               value={formData.last_name}
               onChange={handleChange}
               error={errors.last_name}
               placeholder="Enter last name"
-              required
             />
           </div>
 
           <FormInput
-            label="Email Address"
+            label="Email Address *"
             name="email"
             type="email"
             value={formData.email}
             onChange={handleChange}
             error={errors.email}
             placeholder="Enter email address"
-            required
           />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -249,13 +266,12 @@ function UserForm() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormSelect
-              label="Role"
+              label="Role *"
               name="role"
               value={formData.role}
               onChange={handleChange}
               options={roleOptions}
               error={errors.role}
-              required
             />
             <FormInput
               label="Phone Number"
