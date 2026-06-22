@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import schoolAPI from '../../../api/school'
 import { Calendar, ArrowRight, Clock, MapPin } from 'lucide-react'
 import Badge from '../../../components/common/Badge'
 
@@ -8,32 +9,45 @@ function UpcomingEvents({ data }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setEvents([
-        { _id: '1', title: 'Parent-Teacher Meeting', event_type: 'parent_meeting', start_date: '2024-02-15T09:00:00', location: 'School Hall', status: 'upcoming' },
-        { _id: '2', title: 'Sports Day', event_type: 'sports', start_date: '2024-02-28T08:00:00', location: 'School Field', status: 'upcoming' },
-        { _id: '3', title: 'End of Term Exams', event_type: 'academic', start_date: '2024-03-10T08:00:00', location: 'Classrooms', status: 'upcoming' },
-      ])
-      setLoading(false)
-    }, 400)
+    fetchUpcomingEvents()
   }, [])
+
+  const fetchUpcomingEvents = async () => {
+    setLoading(true)
+    try {
+      // Try to use passed data first
+      if (data && Array.isArray(data) && data.length > 0) {
+        setEvents(data)
+        setLoading(false)
+        return
+      }
+
+      const response = await schoolAPI.getEvents({ status: 'upcoming', limit: 3 })
+      if (response?.success) {
+        setEvents(response.data?.events || response.data || [])
+      } else {
+        setEvents([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch events:', error)
+      setEvents([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const getEventBadge = (type) => {
     const variants = {
-      academic: 'info',
-      sports: 'success',
-      parent_meeting: 'warning',
-      cultural: 'purple',
-      religious: 'gray',
+      academic: 'info', sports: 'success', parent_meeting: 'warning',
+      cultural: 'info', religious: 'gray', graduation: 'success',
+      training: 'info', community: 'info', fundraising: 'warning',
     }
     const labels = {
-      academic: 'Academic',
-      sports: 'Sports',
-      parent_meeting: 'Meeting',
-      cultural: 'Cultural',
-      religious: 'Religious',
+      academic: 'Academic', sports: 'Sports', parent_meeting: 'Meeting',
+      cultural: 'Cultural', religious: 'Religious', graduation: 'Graduation',
+      training: 'Training', community: 'Community', fundraising: 'Fundraising',
     }
-    return <Badge variant={variants[type] || 'gray'}>{labels[type] || type}</Badge>
+    return <Badge variant={variants[type] || 'gray'}>{labels[type] || type?.replace(/_/g, ' ')}</Badge>
   }
 
   return (
@@ -75,16 +89,13 @@ function UpcomingEvents({ data }) {
               <div className="flex items-center gap-3 text-xs text-gray-500">
                 <span className="flex items-center gap-1">
                   <Clock size={12} />
-                  {new Date(event.start_date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {event.start_date ? new Date(event.start_date).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                  }) : 'TBD'}
                 </span>
                 <span className="flex items-center gap-1">
                   <MapPin size={12} />
-                  {event.location}
+                  {event.location || 'TBD'}
                 </span>
               </div>
             </div>
