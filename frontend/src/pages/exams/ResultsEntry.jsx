@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import examsAPI from '../../api/exams'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
 import Badge from '../../components/common/Badge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { ArrowLeft, Save, FileText, CheckCircle, XCircle } from 'lucide-react'
+import { ArrowLeft, Save, CheckCircle, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function ResultsEntry() {
@@ -21,22 +22,44 @@ function ResultsEntry() {
 
   useEffect(() => {
     updatePageTitle('Enter Results')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Exams', path: '/exams' }, { label: 'Results' }])
-    setTimeout(() => {
-      setExam({ exam_name: 'Mid-Term English', class_name: 'P5', subject_name: 'English', max_score: 100, pass_mark: 50 })
-      setResults([
-        { student_id: 's1', student_name: 'Abraham Kuol', score: '', remarks: '' },
-        { student_id: 's2', student_name: 'Achol Deng', score: '', remarks: '' },
-        { student_id: 's3', student_name: 'Bol Malek', score: '', remarks: '' },
-        { student_id: 's4', student_name: 'Aya Dut', score: '', remarks: '' },
-        { student_id: 's5', student_name: 'Peter Garang', score: '', remarks: '' },
-        { student_id: 's6', student_name: 'Mary John', score: '', remarks: '' },
-        { student_id: 's7', student_name: 'James Lual', score: '', remarks: '' },
-        { student_id: 's8', student_name: 'Sarah Nyok', score: '', remarks: '' },
-      ])
-      setLoading(false)
-    }, 500)
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Exams', path: '/exams' },
+      { label: 'Results' },
+    ])
+    fetchExamAndResults()
   }, [id])
+
+  const fetchExamAndResults = async () => {
+    setLoading(true)
+    try {
+      const response = await examsAPI.getResults(id)
+      if (response?.success && response.data) {
+        setExam({
+          exam_name: response.data.exam_name || 'Unknown',
+          class_name: response.data.class_name || '',
+          subject_name: response.data.subject_name || '',
+          max_score: response.data.max_score || 100,
+          pass_mark: response.data.pass_mark || 50,
+        })
+        setResults((response.data.students || []).map(s => ({
+          student_id: s.student_id || s._id,
+          student_name: s.student_name || `${s.first_name || ''} ${s.last_name || ''}`.trim(),
+          score: s.score !== undefined && s.score !== null ? s.score : '',
+          remarks: s.remarks || '',
+        })))
+      } else {
+        toast.error('Failed to load exam data')
+        navigate('/exams')
+      }
+    } catch (error) {
+      console.error('Failed to fetch results:', error)
+      toast.error('Failed to load exam data')
+      navigate('/exams')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const updateScore = (studentId, score) => {
     if (score !== '' && (score < 0 || score > (exam?.max_score || 100))) return
@@ -65,17 +88,36 @@ function ResultsEntry() {
     }
     setSaving(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 800))
-      const entered = results.filter(r => r.score !== '').length
-      toast.success(`Results saved! ${entered} scores entered.`)
-      navigate('/exams')
-    } catch (error) { toast.error('Failed to save results') }
-    finally { setSaving(false) }
+      const response = await examsAPI.bulkRecordResults({
+        exam_id: id,
+        results: results.map(r => ({
+          student_id: r.student_id,
+          score: r.score,
+          remarks: r.remarks || '',
+        })),
+      })
+
+      if (response?.success) {
+        const entered = results.filter(r => r.score !== '').length
+        toast.success(`Results saved! ${entered} scores entered.`)
+        navigate('/exams')
+      } else {
+        toast.error(response?.message || 'Failed to save results')
+      }
+    } catch (error) {
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to save results')
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
   const getGrade = (score) => {
     if (score === '' || score === null) return { grade: '-', variant: 'gray' }
-    const pct = (score / exam.max_score) * 100
+    const pct = (score / (exam?.max_score || 100)) * 100
     if (pct >= 80) return { grade: 'A', variant: 'success' }
     if (pct >= 70) return { grade: 'B', variant: 'info' }
     if (pct >= 60) return { grade: 'C', variant: 'warning' }
@@ -86,7 +128,7 @@ function ResultsEntry() {
   if (loading) return <LoadingSpinner fullScreen />
 
   const enteredCount = results.filter(r => r.score !== '' && r.score !== null).length
-  const passCount = results.filter(r => r.score !== '' && r.score !== null && r.score >= exam.pass_mark).length
+  const passCount = results.filter(r => r.score !== '' && r.score !== null && r.score >= (exam?.pass_mark || 0)).length
 
   return (
     <div className="space-y-6 max-w-3xl animate-fade-in-up">
@@ -96,7 +138,6 @@ function ResultsEntry() {
         actions={<button onClick={() => navigate('/exams')} className="btn btn-secondary"><ArrowLeft size={18} /> Back</button>}
       />
 
-      {/* Summary */}
       <Card>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -120,7 +161,6 @@ function ResultsEntry() {
         </div>
       </Card>
 
-      {/* Results Entry */}
       <Card>
         <div className="space-y-2">
           {results.map((result) => {
@@ -139,7 +179,7 @@ function ResultsEntry() {
                   <Badge variant={grade.variant}>{grade.grade}</Badge>
                   {result.score !== '' && result.score !== null && (
                     <div className="mt-1">
-                      {result.score >= exam?.pass_mark ? <CheckCircle size={14} className="text-green-500 mx-auto" /> : <XCircle size={14} className="text-red-500 mx-auto" />}
+                      {result.score >= (exam?.pass_mark || 0) ? <CheckCircle size={14} className="text-green-500 mx-auto" /> : <XCircle size={14} className="text-red-500 mx-auto" />}
                     </div>
                   )}
                 </div>
