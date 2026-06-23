@@ -8,6 +8,7 @@ from app.core.security import get_current_user, require_role, get_password_hash
 from app.core.database import get_database
 from app.schemas.user import UserCreate
 from app.schemas.common import SuccessResponse
+from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
 
@@ -30,9 +31,13 @@ async def list_users(
     skip = (page - 1) * limit
     total = await db.users.count_documents(filter_query)
     users = await db.users.find(filter_query, {"password_hash": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
-    for u in users: u["_id"] = str(u["_id"])
     
-    return SuccessResponse(success=True, message="Users retrieved", data={"users": users, "total": total, "page": page, "limit": limit})
+    # Convert all ObjectIds to strings
+    users = [parse_mongo_document(u) for u in users]
+    
+    return SuccessResponse(success=True, message="Users retrieved", data={
+        "users": users, "total": total, "page": page, "limit": limit
+    })
 
 
 @router.get("/roles/list", response_model=SuccessResponse)
@@ -57,7 +62,10 @@ async def get_user(
     db = get_database()
     user = await db.users.find_one({"_id": ObjectId(user_id)}, {"password_hash": 0})
     if not user: raise HTTPException(status_code=404, detail="User not found")
-    user["_id"] = str(user["_id"])
+    
+    # Convert all ObjectIds to strings
+    user = parse_mongo_document(user)
+    
     return SuccessResponse(success=True, message="User retrieved", data=user)
 
 
@@ -101,6 +109,11 @@ async def create_user(
     )
     
     if not success: raise HTTPException(status_code=400, detail=message)
+    
+    # Parse result to convert ObjectIds
+    if user:
+        user = parse_mongo_document(user)
+    
     return SuccessResponse(success=True, message=message, data=user)
 
 
@@ -130,6 +143,11 @@ async def update_user(
     )
     
     if not success: raise HTTPException(status_code=400, detail=message)
+    
+    # Parse result to convert ObjectIds
+    if user:
+        user = parse_mongo_document(user)
+    
     return SuccessResponse(success=True, message=message, data=user)
 
 
