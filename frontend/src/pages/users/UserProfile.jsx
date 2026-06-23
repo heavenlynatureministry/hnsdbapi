@@ -62,7 +62,6 @@ function UserProfile() {
     try {
       const response = await api.put('/auth/me', profileData)
       if (response.success) {
-        // Update user in context
         const updatedUser = { ...user, ...profileData }
         setUser(updatedUser)
         localStorage.setItem('hns_user', JSON.stringify(updatedUser))
@@ -147,7 +146,16 @@ function UserProfile() {
       <Card>
         <div className="flex items-center gap-4">
           <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 text-2xl font-bold">
+            <img 
+              src={user?.photo_url || "/logo.png"} 
+              alt="Profile" 
+              className="w-20 h-20 rounded-full object-cover border-2 border-primary-200 bg-primary-100"
+              onError={(e) => { 
+                e.target.style.display = 'none'
+                e.target.nextSibling.style.display = 'flex'
+              }}
+            />
+            <div className="w-20 h-20 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 text-2xl font-bold" style={{ display: 'none' }}>
               {user.first_name?.[0]}{user.last_name?.[0]}
             </div>
             <button className="absolute bottom-0 right-0 w-8 h-8 bg-primary-600 text-white rounded-full flex items-center justify-center hover:bg-primary-700 transition-colors">
