@@ -7,6 +7,7 @@ from bson import ObjectId
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
 from app.schemas.common import SuccessResponse
+from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
 
@@ -32,11 +33,7 @@ async def list_exams(
     total = await db.exams.count_documents(filter_query)
     exams = await db.exams.find(filter_query).sort("exam_date", -1).skip(skip).limit(limit).to_list(length=limit)
     
-    for e in exams:
-        e["_id"] = str(e["_id"])
-        e["class_id"] = str(e["class_id"])
-        e["subject_id"] = str(e["subject_id"])
-        if e.get("created_by"): e["created_by"] = str(e["created_by"])
+    exams = [parse_mongo_document(e) for e in exams]
     
     return SuccessResponse(success=True, message="Exams retrieved", data={
         "exams": exams, "total": total, "page": page, "limit": limit
@@ -48,7 +45,7 @@ async def list_subjects(current_user: Dict[str, Any] = Depends(get_current_user)
     """List available subjects"""
     db = get_database()
     subjects = await db.subjects.find({}).to_list(length=None)
-    for s in subjects: s["_id"] = str(s["_id"])
+    subjects = [parse_mongo_document(s) for s in subjects]
     return SuccessResponse(success=True, message="Subjects retrieved", data={
         "subjects": subjects, "total": len(subjects)
     })
@@ -59,7 +56,7 @@ async def get_grading_systems(current_user: Dict[str, Any] = Depends(get_current
     """Get grading systems"""
     db = get_database()
     systems = await db.grading_systems.find({}).to_list(length=None)
-    for s in systems: s["_id"] = str(s["_id"])
+    systems = [parse_mongo_document(s) for s in systems]
     
     if not systems:
         systems = [{
@@ -90,10 +87,7 @@ async def get_exam(
     exam = await db.exams.find_one({"_id": ObjectId(exam_id)})
     if not exam: raise HTTPException(status_code=404, detail="Exam not found")
     
-    exam["_id"] = str(exam["_id"])
-    exam["class_id"] = str(exam["class_id"])
-    exam["subject_id"] = str(exam["subject_id"])
-    if exam.get("created_by"): exam["created_by"] = str(exam["created_by"])
+    exam = parse_mongo_document(exam)
     
     return SuccessResponse(success=True, message="Exam retrieved", data=exam)
 
@@ -153,10 +147,7 @@ async def create_exam(
     doc = {k: v for k, v in doc.items() if v is not None}
     
     result = await db.exams.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-    doc["class_id"] = str(doc["class_id"])
-    doc["subject_id"] = str(doc["subject_id"])
-    doc["created_by"] = str(doc["created_by"])
+    doc = parse_mongo_document(doc)
     
     return SuccessResponse(success=True, message="Exam created", data=doc)
 
@@ -187,9 +178,7 @@ async def update_exam(
     )
     
     if not result: raise HTTPException(status_code=404, detail="Exam not found")
-    result["_id"] = str(result["_id"])
-    result["class_id"] = str(result["class_id"])
-    result["subject_id"] = str(result["subject_id"])
+    result = parse_mongo_document(result)
     
     return SuccessResponse(success=True, message="Exam updated", data=result)
 
@@ -220,13 +209,9 @@ async def get_results(
     if not exam: raise HTTPException(status_code=404, detail="Exam not found")
     
     results = await db.exam_results.find({"exam_id": ObjectId(exam_id)}).to_list(length=None)
-    for r in results:
-        r["_id"] = str(r["_id"])
-        r["exam_id"] = str(r["exam_id"])
-        r["student_id"] = str(r["student_id"])
-        if r.get("recorded_by"): r["recorded_by"] = str(r["recorded_by"])
+    results = [parse_mongo_document(r) for r in results]
     
-    scores = [r["score"] for r in results]
+    scores = [r["score"] for r in results if r.get("score") is not None]
     stats = {
         "total_students": len(results),
         "highest_score": max(scores) if scores else 0,
@@ -238,9 +223,9 @@ async def get_results(
     return SuccessResponse(success=True, message="Results retrieved", data={
         "exam": {
             "_id": str(exam["_id"]),
-            "exam_name": exam["exam_name"],
-            "max_score": exam["max_score"],
-            "pass_mark": exam["pass_mark"]
+            "exam_name": exam.get("exam_name", ""),
+            "max_score": exam.get("max_score", 100),
+            "pass_mark": exam.get("pass_mark", 50)
         },
         "results": results,
         "statistics": stats
@@ -272,7 +257,7 @@ async def record_results(
     successful = 0
     for r in results:
         score = float(r.get("score", 0))
-        percentage = (score / exam["max_score"]) * 100
+        percentage = (score / exam["max_score"]) * 100 if exam.get("max_score", 0) > 0 else 0
         
         if percentage >= 80: grade = "A"
         elif percentage >= 70: grade = "B"
@@ -287,7 +272,7 @@ async def record_results(
                     "score": score,
                     "grade": grade,
                     "percentage": round(percentage, 2),
-                    "is_passed": score >= exam["pass_mark"],
+                    "is_passed": score >= exam.get("pass_mark", 50),
                     "remarks": r.get("remarks", ""),
                     "recorded_by": ObjectId(current_user["_id"]),
                     "updated_at": datetime.utcnow()
@@ -321,11 +306,7 @@ async def get_student_results(
     db = get_database()
     
     results = await db.exam_results.find({"student_id": ObjectId(student_id)}).to_list(length=None)
-    
-    for r in results:
-        r["_id"] = str(r["_id"])
-        r["exam_id"] = str(r["exam_id"])
-        r["student_id"] = str(r["student_id"])
+    results = [parse_mongo_document(r) for r in results]
     
     student = await db.students.find_one({"_id": ObjectId(student_id)})
     
