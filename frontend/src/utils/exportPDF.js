@@ -101,7 +101,7 @@ export const exportToPDF = (element, filename = 'report') => {
       <body>
         <!-- Letterhead Header -->
         <div class="letterhead">
-          <img src="${window.location.origin}/letter-head.jpg" alt="HNS Letterhead" onerror="this.style.display='none'" />
+          <img src="${window.location.origin}/letter-head.png" alt="HNS Letterhead" onerror="this.style.display='none'" />
           <div class="letterhead-text">
             <h2>Heavenly Nature Nursery & Primary School</h2>
             <p>Juba, South Sudan | +211 922 273 334</p>
