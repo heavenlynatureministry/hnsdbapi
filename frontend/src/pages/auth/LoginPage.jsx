@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { Eye, EyeOff, LogIn, School } from 'lucide-react'
+import { Eye, EyeOff, LogIn } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function LoginPage() {
@@ -53,12 +53,10 @@ function LoginPage() {
         remember_me: formData.remember_me,
       })
       
-      // If login returns error, show it
       if (result && !result.success) {
         toast.error(result.message || 'Login failed')
       }
     } catch (error) {
-      // Only show if not already shown by AuthContext
       if (error.message && error.message !== 'Invalid email or password') {
         toast.error('Connection error. Server may be waking up. Please wait 30 seconds and try again.')
       }
@@ -70,15 +68,26 @@ function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-blue-100 dark:from-gray-900 dark:to-gray-800 px-4 py-12">
       <div className="w-full max-w-md">
+        {/* Logo & Branding */}
         <div className="text-center mb-8 animate-fade-in-up">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-primary-600 text-white shadow-lg mb-4">
-            <School size={40} />
+          <img 
+            src="/logo.png" 
+            alt="Heavenly Nature School Logo" 
+            className="w-24 h-24 rounded-2xl object-cover shadow-lg mx-auto mb-4"
+            onError={(e) => {
+              e.target.style.display = 'none'
+              e.target.nextSibling.style.display = 'flex'
+            }}
+          />
+          <div className="w-24 h-24 rounded-2xl bg-primary-600 text-white shadow-lg mx-auto mb-4 items-center justify-center text-4xl font-bold" style={{ display: 'none' }}>
+            H
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Heavenly Nature School</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">Management System</p>
           <p className="text-sm text-primary-600 dark:text-primary-400 font-medium mt-2">Nurturing Right Leaders</p>
         </div>
 
+        {/* Login Card */}
         <div className="card animate-fade-in-up-delay-1">
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Welcome Back</h2>
