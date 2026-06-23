@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import reportsAPI from '../../api/reports'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import { ArrowLeft, Download, FileText } from 'lucide-react'
 import { exportToPDF } from '../../utils/exportPDF'
+import toast from 'react-hot-toast'
 
 function AnnualReport() {
   const navigate = useNavigate()
@@ -27,39 +29,37 @@ function AnnualReport() {
 
   const handleGenerate = async () => {
     setLoading(true)
-    setTimeout(() => {
-      setReportData({
-        academic_year: '2024/2025',
-        enrollment: { total_students: 180, new_enrollments: 35 },
-        academic: { overall_pass_rate: 85, class_average: 72.5 },
-        attendance: { overall_rate: 88.5 },
-        financial: { total_income: 450000, total_expenses: 320000, balance: 130000 },
-        highlights: {
-          achievements: [
-            'Successfully completed academic year 2024/2025',
-            'Enrolled 180 students across 11 classes',
-            'Maintained 88.5% attendance rate',
-            '85% overall pass rate in examinations',
-          ],
-          challenges: [
-            'Need for additional classroom space',
-            'Teacher recruitment for specialized subjects',
-          ],
-          recommendations: [
-            'Continue improving academic performance',
-            'Enhance teacher professional development',
-            'Strengthen parent-teacher communication',
-            'Upgrade school facilities and resources',
-          ],
-        },
-      })
+    setReportData(null)
+    setGenerated(false)
+    
+    try {
+      const response = await reportsAPI.getAnnualReport()
+      
+      if (response?.success && response.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else if (response?.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else {
+        toast.error('Failed to generate report. No data available.')
+      }
+    } catch (error) {
+      console.error('Failed to generate annual report:', error)
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to generate report')
+      }
+    } finally {
       setLoading(false)
-      setGenerated(true)
-    }, 1200)
+    }
   }
 
   const handleExportPDF = () => {
-    exportToPDF(reportRef.current, `Annual_Report_${reportData.academic_year.replace('/', '_')}`)
+    if (reportRef.current && reportData) {
+      exportToPDF(reportRef.current, `Annual_Report_${(reportData.academic_year || '2024_2025').replace('/', '_')}`)
+    }
   }
 
   return (
@@ -89,15 +89,22 @@ function AnnualReport() {
 
       {loading && <LoadingSpinner />}
 
+      {!loading && !generated && (
+        <div className="text-center py-12">
+          <FileText size={48} className="text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500">Click "Generate Annual Report" to view the comprehensive yearly report.</p>
+        </div>
+      )}
+
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
-          <Card title={`Annual Report - ${reportData.academic_year}`}>
+          <Card title={`Annual Report - ${reportData.academic_year || '2024/2025'}`}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: 'Students', value: reportData.enrollment.total_students },
-                { label: 'Pass Rate', value: `${reportData.academic.overall_pass_rate}%` },
-                { label: 'Attendance', value: `${reportData.attendance.overall_rate}%` },
-                { label: 'Balance', value: `SSP ${reportData.financial.balance.toLocaleString()}` },
+                { label: 'Students', value: reportData.enrollment?.total_students || 0 },
+                { label: 'Pass Rate', value: `${reportData.academic?.overall_pass_rate || 0}%` },
+                { label: 'Attendance', value: `${reportData.attendance?.overall_rate || 0}%` },
+                { label: 'Balance', value: `SSP ${(reportData.financial?.balance || 0).toLocaleString()}` },
               ].map((stat, i) => (
                 <div key={i} className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <p className="text-2xl font-bold text-primary-600">{stat.value}</p>
@@ -107,29 +114,35 @@ function AnnualReport() {
             </div>
           </Card>
 
-          <Card title="Achievements">
-            <ul className="list-disc list-inside space-y-2">
-              {reportData.highlights.achievements.map((item, i) => (
-                <li key={i} className="text-sm text-gray-700 dark:text-gray-300">{item}</li>
-              ))}
-            </ul>
-          </Card>
+          {reportData.highlights?.achievements && reportData.highlights.achievements.length > 0 && (
+            <Card title="Achievements">
+              <ul className="list-disc list-inside space-y-2">
+                {reportData.highlights.achievements.map((item, i) => (
+                  <li key={i} className="text-sm text-gray-700 dark:text-gray-300">{item}</li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
-          <Card title="Challenges">
-            <ul className="list-disc list-inside space-y-2">
-              {reportData.highlights.challenges.map((item, i) => (
-                <li key={i} className="text-sm text-gray-700 dark:text-gray-300">{item}</li>
-              ))}
-            </ul>
-          </Card>
+          {reportData.highlights?.challenges && reportData.highlights.challenges.length > 0 && (
+            <Card title="Challenges">
+              <ul className="list-disc list-inside space-y-2">
+                {reportData.highlights.challenges.map((item, i) => (
+                  <li key={i} className="text-sm text-gray-700 dark:text-gray-300">{item}</li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
-          <Card title="Recommendations">
-            <ul className="list-disc list-inside space-y-2">
-              {reportData.highlights.recommendations.map((item, i) => (
-                <li key={i} className="text-sm text-gray-700 dark:text-gray-300">{item}</li>
-              ))}
-            </ul>
-          </Card>
+          {reportData.highlights?.recommendations && reportData.highlights.recommendations.length > 0 && (
+            <Card title="Recommendations">
+              <ul className="list-disc list-inside space-y-2">
+                {reportData.highlights.recommendations.map((item, i) => (
+                  <li key={i} className="text-sm text-gray-700 dark:text-gray-300">{item}</li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
       )}
     </div>
