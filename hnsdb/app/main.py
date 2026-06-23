@@ -138,6 +138,8 @@ async def seed_default_data():
                 "school_name": settings.SCHOOL_NAME,
                 "short_name": settings.SCHOOL_SHORT_NAME,
                 "motto": settings.SCHOOL_MOTTO,
+                "logo_url": "/logo.png",
+                "letterhead_url": "/letter-head.jpg",
                 "vision": "To be a leading educational institution nurturing righteous leaders for tomorrow",
                 "mission": "To provide quality education in a nurturing environment that develops the whole child",
                 "core_values": [
@@ -166,6 +168,18 @@ async def seed_default_data():
             })
             logger.info("✅ Default school info created")
         else:
+            # Update existing school info with logo_url and letterhead_url if missing
+            updates = {}
+            if not school_info.get("logo_url"):
+                updates["logo_url"] = "/logo.png"
+            if not school_info.get("letterhead_url"):
+                updates["letterhead_url"] = "/letter-head.jpg"
+            if updates:
+                await db.school_info.update_one(
+                    {"_id": school_info["_id"]},
+                    {"$set": updates}
+                )
+                logger.info("✅ Logo and letterhead URLs added to existing school info")
             logger.info("ℹ️  School info already exists")
 
         # Initialize class levels for current academic year
@@ -560,4 +574,4 @@ if __name__ == "__main__":
         reload=settings.is_development,
         log_level=settings.LOG_LEVEL.lower(),
         workers=1  # Single worker for stateful rate limiting
-        )
+    )
