@@ -6,7 +6,7 @@ import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
 import FormInput from '../../components/common/FormInput'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { Save, School, Mail, Phone, MapPin, Globe, Camera } from 'lucide-react'
+import { Save, Mail, Phone, MapPin, Globe, Camera } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function SchoolInfo() {
@@ -93,8 +93,17 @@ function SchoolInfo() {
       <Card>
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <div className="relative">
-            <div className="w-24 h-24 rounded-2xl bg-primary-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg">
-              {formData.school_name?.charAt(0) || 'H'}
+            <img 
+              src="/logo.png" 
+              alt="School Logo" 
+              className="w-24 h-24 rounded-2xl object-cover shadow-lg bg-primary-100"
+              onError={(e) => { 
+                e.target.style.display = 'none'
+                e.target.nextSibling.style.display = 'flex'
+              }}
+            />
+            <div className="w-24 h-24 rounded-2xl bg-primary-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg" style={{ display: 'none' }}>
+              {(formData.school_name || 'H').charAt(0)}
             </div>
             <button className="absolute -bottom-1 -right-1 w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors">
               <Camera size={14} />
