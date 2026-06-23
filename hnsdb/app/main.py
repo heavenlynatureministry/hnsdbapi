@@ -268,7 +268,7 @@ app = FastAPI(
         "name": "Proprietary",
         "url": settings.SCHOOL_WEBSITE
     },
-    redirect_slashes=False  # Don't redirect trailing slashes
+    redirect_slashes=False
 )
 
 
@@ -284,7 +284,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["X-Request-ID", "X-Response-Time"],
-    max_age=3600  # Cache preflight requests for 1 hour
+    max_age=3600
 )
 
 # GZip Compression Middleware
@@ -336,8 +336,9 @@ async def request_middleware(request: Request, call_next):
             exc_info=True
         )
         
-        # Return error response
-        return JSONResponse(
+        # Create error response with CORS headers
+        origin = request.headers.get("origin", "")
+        response = JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "success": False,
@@ -346,6 +347,15 @@ async def request_middleware(request: Request, call_next):
                 "timestamp": datetime.utcnow().isoformat()
             }
         )
+        
+        # Add CORS headers manually for 500 errors
+        if origin in settings.ALLOWED_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+        
+        return response
 
 
 # =========================================================================
@@ -395,7 +405,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
-    Handle all unhandled exceptions
+    Handle all unhandled exceptions with CORS headers
     """
     logger.error(
         f"❌ [{getattr(request.state, 'request_id', 'unknown')}] "
@@ -408,7 +418,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     if settings.is_development or settings.DEBUG:
         error_message = str(exc)
     
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "success": False,
@@ -417,6 +427,16 @@ async def global_exception_handler(request: Request, exc: Exception):
             "timestamp": datetime.utcnow().isoformat()
         }
     )
+    
+    # Add CORS headers so frontend can read the error
+    origin = request.headers.get("origin", "")
+    if origin in settings.ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    
+    return response
 
 
 # =========================================================================
@@ -573,5 +593,5 @@ if __name__ == "__main__":
         port=int(os.getenv("PORT", 8000)),
         reload=settings.is_development,
         log_level=settings.LOG_LEVEL.lower(),
-        workers=1  # Single worker for stateful rate limiting
+        workers=1
     )
