@@ -8,6 +8,7 @@ from app.core.security import get_current_user, require_role
 from app.core.database import get_database
 from app.schemas.student import StudentCreate, StudentUpdate
 from app.schemas.common import SuccessResponse
+from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
 
@@ -38,12 +39,15 @@ async def list_students(
     total = await db.students.count_documents(filter_query)
     students = await db.students.find(filter_query).sort("last_name", 1).skip(skip).limit(limit).to_list(length=limit)
     
+    # Convert all ObjectIds to strings and add class names
     for s in students:
-        s["_id"] = str(s["_id"])
-        if s.get("current_class_id"): s["current_class_id"] = str(s["current_class_id"])
+        s = parse_mongo_document(s)
         if s.get("current_class_id"):
-            cls = await db.classes.find_one({"_id": ObjectId(s["current_class_id"])})
-            if cls: s["class_name"] = cls.get("class_name", "")
+            try:
+                cls = await db.classes.find_one({"_id": ObjectId(s["current_class_id"])})
+                if cls: s["class_name"] = cls.get("class_name", "")
+            except Exception:
+                s["class_name"] = "Unknown"
     
     return SuccessResponse(success=True, message="Students retrieved", data={
         "students": students, "total": total, "page": page, "limit": limit
@@ -81,13 +85,15 @@ async def get_student(
     student = await db.students.find_one({"_id": ObjectId(student_id)})
     if not student: raise HTTPException(status_code=404, detail="Student not found")
     
-    student["_id"] = str(student["_id"])
-    if student.get("current_class_id"): student["current_class_id"] = str(student["current_class_id"])
-    if student.get("created_by"): student["created_by"] = str(student["created_by"])
+    # Convert all ObjectIds to strings
+    student = parse_mongo_document(student)
     
     if student.get("current_class_id"):
-        cls = await db.classes.find_one({"_id": ObjectId(student["current_class_id"])})
-        if cls: student["class_name"] = cls.get("class_name", "")
+        try:
+            cls = await db.classes.find_one({"_id": ObjectId(student["current_class_id"])})
+            if cls: student["class_name"] = cls.get("class_name", "")
+        except Exception:
+            student["class_name"] = "Unknown"
     
     return SuccessResponse(success=True, message="Student retrieved", data=student)
 
@@ -170,9 +176,7 @@ async def create_student(
     
     updated = await db.students.find_one({"_id": ObjectId(result["_id"])})
     if updated:
-        updated["_id"] = str(updated["_id"])
-        if updated.get("current_class_id"):
-            updated["current_class_id"] = str(updated["current_class_id"])
+        updated = parse_mongo_document(updated)
         result = updated
     
     return SuccessResponse(success=True, message=message, data=result)
@@ -204,6 +208,11 @@ async def update_student(
     )
     
     if not success: raise HTTPException(status_code=400, detail=message)
+    
+    # Parse result to convert ObjectIds
+    if result:
+        result = parse_mongo_document(result)
+    
     return SuccessResponse(success=True, message=message, data=result)
 
 
