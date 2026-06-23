@@ -7,6 +7,7 @@ from bson import ObjectId
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
 from app.schemas.common import SuccessResponse
+from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
 
@@ -30,11 +31,7 @@ async def list_attendance(
     total = await db.attendance.count_documents(filter_query)
     records = await db.attendance.find(filter_query).sort("date", -1).skip(skip).limit(limit).to_list(length=limit)
     
-    for r in records:
-        r["_id"] = str(r["_id"])
-        r["student_id"] = str(r["student_id"])
-        r["class_id"] = str(r["class_id"])
-        if r.get("recorded_by"): r["recorded_by"] = str(r["recorded_by"])
+    records = [parse_mongo_document(r) for r in records]
     
     return SuccessResponse(success=True, message="Attendance retrieved", data={
         "records": records, "total": total, "page": page, "limit": limit
@@ -85,9 +82,14 @@ async def get_class_attendance(
     """Get attendance for a class on a specific date"""
     db = get_database()
     attendance_date = date or str(date.today())
+    try:
+        parsed_date = datetime.strptime(attendance_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
     filter_query = {
         "class_id": ObjectId(class_id),
-        "date": datetime.combine(datetime.strptime(attendance_date, "%Y-%m-%d").date(), datetime.min.time())
+        "date": datetime.combine(parsed_date, datetime.min.time())
     }
     
     records = await db.attendance.find(filter_query).to_list(length=None)
@@ -95,14 +97,16 @@ async def get_class_attendance(
         "current_class_id": ObjectId(class_id), "status": "active"
     }).sort("last_name", 1).to_list(length=None)
     
-    attendance_lookup = {str(r["student_id"]): r for r in records}
+    records = [parse_mongo_document(r) for r in records]
+    attendance_lookup = {r["student_id"]: r for r in records}
     
     student_list = []
     present_count = 0
     absent_count = 0
     
     for s in students:
-        sid = str(s["_id"])
+        s = parse_mongo_document(s)
+        sid = s["_id"]
         record = attendance_lookup.get(sid)
         status = record["status"] if record else "unmarked"
         
@@ -111,7 +115,7 @@ async def get_class_attendance(
         
         student_list.append({
             "student_id": sid,
-            "student_name": f"{s['first_name']} {s['last_name']}",
+            "student_name": f"{s.get('first_name', '')} {s.get('last_name', '')}",
             "status": status,
             "gender": s.get("gender"),
             "notes": record.get("notes", "") if record else ""
@@ -150,15 +154,11 @@ async def get_student_attendance(
         filter_query["date"]["$lte"] = datetime.strptime(end_date, "%Y-%m-%d")
     
     records = await db.attendance.find(filter_query).sort("date", -1).limit(100).to_list(length=100)
-    
-    for r in records:
-        r["_id"] = str(r["_id"])
-        r["student_id"] = str(r["student_id"])
-        r["class_id"] = str(r["class_id"])
+    records = [parse_mongo_document(r) for r in records]
     
     total = len(records)
-    present = sum(1 for r in records if r["status"] in ["present", "late"])
-    absent = sum(1 for r in records if r["status"] == "absent")
+    present = sum(1 for r in records if r.get("status") in ["present", "late"])
+    absent = sum(1 for r in records if r.get("status") == "absent")
     
     student = await db.students.find_one({"_id": ObjectId(student_id)})
     
@@ -170,8 +170,8 @@ async def get_student_attendance(
         "summary": {
             "present": present,
             "absent": absent,
-            "excused": sum(1 for r in records if r["status"] == "excused"),
-            "late": sum(1 for r in records if r["status"] == "late"),
+            "excused": sum(1 for r in records if r.get("status") == "excused"),
+            "late": sum(1 for r in records if r.get("status") == "late"),
             "attendance_rate": round((present / total * 100), 2) if total > 0 else 0
         }
     })
