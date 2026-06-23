@@ -30,6 +30,7 @@ function SchoolInfo() {
       setFormData({
         school_name: schoolInfo.school_name || '',
         motto: schoolInfo.motto || '',
+        logo_url: schoolInfo.logo_url || '/logo.png',
         vision: schoolInfo.vision || '',
         mission: schoolInfo.mission || '',
         contact_email: schoolInfo.contact_email || '',
@@ -56,6 +57,11 @@ function SchoolInfo() {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }))
+  }
+
+  const handleLogoUpload = () => {
+    // Placeholder for future file upload implementation
+    toast.success('Logo upload will be available in a future update')
   }
 
   const handleSubmit = async (e) => {
@@ -94,7 +100,7 @@ function SchoolInfo() {
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <div className="relative">
             <img 
-              src="/logo.png" 
+              src={formData.logo_url || "/logo.png"} 
               alt="School Logo" 
               className="w-24 h-24 rounded-2xl object-cover shadow-lg bg-primary-100"
               onError={(e) => { 
@@ -105,9 +111,15 @@ function SchoolInfo() {
             <div className="w-24 h-24 rounded-2xl bg-primary-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg" style={{ display: 'none' }}>
               {(formData.school_name || 'H').charAt(0)}
             </div>
-            <button className="absolute -bottom-1 -right-1 w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors">
-              <Camera size={14} />
-            </button>
+            {editMode && (
+              <button 
+                onClick={handleLogoUpload}
+                className="absolute -bottom-1 -right-1 w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                title="Upload logo"
+              >
+                <Camera size={14} />
+              </button>
+            )}
           </div>
           <div className="text-center sm:text-left">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -132,6 +144,11 @@ function SchoolInfo() {
             <FormInput label="Registration Number" name="registration_number" value={formData.registration_number} onChange={handleChange} disabled={!editMode} />
             <FormInput label="Accreditation Status" name="accreditation_status" value={formData.accreditation_status} onChange={handleChange} disabled={!editMode} />
             <FormInput label="School Type" name="school_type" value={formData.school_type} onChange={handleChange} disabled={!editMode} />
+            {editMode && (
+              <div className="sm:col-span-2">
+                <FormInput label="Logo URL" name="logo_url" value={formData.logo_url} onChange={handleChange} placeholder="/logo.png" helperText="Path to school logo image" />
+              </div>
+            )}
           </div>
         </Card>
 
