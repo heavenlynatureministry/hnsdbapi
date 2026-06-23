@@ -8,10 +8,6 @@ export const exportToPDF = (element, filename = 'report') => {
     return
   }
 
-  // Store original document title
-  const originalTitle = document.title
-  
-  // Create a new window for printing
   const printWindow = window.open('', '_blank', 'width=800,height=600')
   
   if (!printWindow) {
@@ -25,7 +21,7 @@ export const exportToPDF = (element, filename = 'report') => {
   styles.forEach(style => {
     if (style.tagName === 'STYLE') {
       styleContent += style.outerHTML
-    } else if (style.tagName === 'LINK') {
+    } else if (style.tagName === 'LINK' && style.href && !style.href.includes('fonts.googleapis')) {
       styleContent += style.outerHTML
     }
   })
@@ -39,7 +35,8 @@ export const exportToPDF = (element, filename = 'report') => {
         <meta charset="utf-8">
         ${styleContent}
         <style>
-          /* Print-specific styles */
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+          
           @media print {
             body { 
               -webkit-print-color-adjust: exact;
@@ -47,14 +44,48 @@ export const exportToPDF = (element, filename = 'report') => {
             }
             .no-print { display: none !important; }
             .page-break { page-break-after: always; }
+            
+            .letterhead {
+              display: flex !important;
+              align-items: center;
+              justify-content: center;
+              gap: 15px;
+              padding-bottom: 15px;
+              margin-bottom: 20px;
+              border-bottom: 3px double #1a56db;
+            }
+            .letterhead img {
+              width: 65px;
+              height: 65px;
+              object-fit: cover;
+              border-radius: 12px;
+            }
+            .letterhead-text h2 {
+              margin: 0;
+              font-size: 18px;
+              color: #1a56db;
+              font-weight: 700;
+            }
+            .letterhead-text p {
+              margin: 2px 0;
+              font-size: 11px;
+              color: #4b5563;
+            }
+            .letterhead-text .motto {
+              color: #1a56db;
+              font-style: italic;
+              font-weight: 500;
+              margin-top: 4px;
+            }
           }
+          
           body {
             font-family: 'Inter', system-ui, sans-serif;
             padding: 20px;
             color: #1f2937;
             background: white;
           }
-          /* Hide dark mode styles when printing */
+          
           .dark { 
             background: white !important; 
             color: #1f2937 !important;
@@ -68,18 +99,25 @@ export const exportToPDF = (element, filename = 'report') => {
         </style>
       </head>
       <body>
-        <div style="text-align: center; margin-bottom: 20px;">
-          <h2 style="margin: 0; font-size: 18px;">Heavenly Nature Nursery & Primary School</h2>
-          <p style="margin: 4px 0; font-size: 12px; color: #6b7280;">Nurturing Right Leaders</p>
-          <hr style="border: none; border-top: 2px solid #2563eb; margin: 12px 0;" />
+        <!-- Letterhead Header -->
+        <div class="letterhead">
+          <img src="${window.location.origin}/letter-head.jpg" alt="HNS Letterhead" onerror="this.style.display='none'" />
+          <div class="letterhead-text">
+            <h2>Heavenly Nature Nursery & Primary School</h2>
+            <p>Juba, South Sudan | +211 922 273 334</p>
+            <p>info@heavenlynatureschools.com | www.heavenlynatureschools.com</p>
+            <p class="motto">"Nurturing Right Leaders"</p>
+          </div>
         </div>
+        
         ${element.outerHTML}
-        <div style="text-align: center; margin-top: 30px; font-size: 10px; color: #9ca3af;">
+        
+        <div style="text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #9ca3af;">
           <p>Generated on ${new Date().toLocaleDateString('en-US', { 
             year: 'numeric', month: 'long', day: 'numeric', 
             hour: '2-digit', minute: '2-digit' 
           })}</p>
-          <p>© ${new Date().getFullYear()} Heavenly Nature Nursery & Primary School</p>
+          <p>&copy; ${new Date().getFullYear()} Heavenly Nature Nursery & Primary School. All rights reserved.</p>
         </div>
       </body>
     </html>
@@ -87,14 +125,11 @@ export const exportToPDF = (element, filename = 'report') => {
 
   printWindow.document.close()
 
-  // Wait for content to load then print
   printWindow.onload = () => {
     printWindow.focus()
     printWindow.print()
-    // Don't close the window - let user close after print dialog
   }
 
-  // Fallback if onload doesn't fire
   setTimeout(() => {
     printWindow.focus()
     printWindow.print()
