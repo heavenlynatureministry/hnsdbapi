@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import reportsAPI from '../../api/reports'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -9,6 +10,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import Badge from '../../components/common/Badge'
 import { ArrowLeft, Download, ClipboardCheck, TrendingUp, TrendingDown } from 'lucide-react'
 import { exportToPDF } from '../../utils/exportPDF'
+import toast from 'react-hot-toast'
 
 function AttendanceReport() {
   const navigate = useNavigate()
@@ -28,38 +30,49 @@ function AttendanceReport() {
 
   useEffect(() => {
     updatePageTitle('Attendance Report')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Reports', path: '/reports' }, { label: 'Attendance' }])
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Reports', path: '/reports' },
+      { label: 'Attendance' },
+    ])
   }, [])
 
   const handleGenerate = async () => {
     setLoading(true)
-    setTimeout(() => {
-      setReportData({
-        overall_rate: 88.5,
-        total_records: 1250,
-        status_summary: { present: { count: 980, percentage: 78.4 }, absent: { count: 150, percentage: 12 }, excused: { count: 75, percentage: 6 }, late: { count: 45, percentage: 3.6 } },
-        daily_trend: [
-          { date: '2024-01-15', rate: 92 }, { date: '2024-01-16', rate: 88 }, { date: '2024-01-17', rate: 85 },
-          { date: '2024-01-18', rate: 90 }, { date: '2024-01-19', rate: 87 }, { date: '2024-01-22', rate: 91 },
-          { date: '2024-01-23', rate: 86 }, { date: '2024-01-24', rate: 89 }, { date: '2024-01-25', rate: 93 },
-          { date: '2024-01-26', rate: 84 },
-        ],
-        by_class: [
-          { class_name: 'P3', rate: 92 }, { class_name: 'P4', rate: 88 }, { class_name: 'P5', rate: 85 },
-          { class_name: 'P6', rate: 90 }, { class_name: 'P7', rate: 87 },
-        ],
-        chronic_absentees: [
-          { student_name: 'John Smith', class_name: 'P5', rate: 65, days_missed: 18 },
-          { student_name: 'Mary Jane', class_name: 'P6', rate: 70, days_missed: 15 },
-        ],
+    setReportData(null)
+    setGenerated(false)
+    
+    try {
+      const response = await reportsAPI.getAttendanceOverview({
+        academic_year: filters.academic_year,
+        term: filters.term,
       })
+      
+      if (response?.success && response.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else if (response?.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else {
+        toast.error('Failed to generate report. No data available.')
+      }
+    } catch (error) {
+      console.error('Failed to generate attendance report:', error)
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to generate report')
+      }
+    } finally {
       setLoading(false)
-      setGenerated(true)
-    }, 1000)
+    }
   }
 
   const handleExportPDF = () => {
-    exportToPDF(reportRef.current, `Attendance_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+    if (reportRef.current) {
+      exportToPDF(reportRef.current, `Attendance_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+    }
   }
 
   return (
@@ -92,39 +105,50 @@ function AttendanceReport() {
 
       {loading && <LoadingSpinner />}
 
+      {!loading && !generated && (
+        <div className="text-center py-12">
+          <ClipboardCheck size={48} className="text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500">Select filters and click "Generate Report" to view attendance data.</p>
+        </div>
+      )}
+
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
           <Card>
             <div className="text-center mb-4">
-              <p className="text-4xl font-bold text-primary-600">{reportData.overall_rate}%</p>
+              <p className="text-4xl font-bold text-primary-600">{reportData.attendance_rate || reportData.overall_rate || 0}%</p>
               <p className="text-sm text-gray-500">Overall Attendance Rate</p>
-              <p className="text-xs text-gray-400 mt-1">{reportData.total_records.toLocaleString()} total records</p>
+              <p className="text-xs text-gray-400 mt-1">{(reportData.total_records || 0).toLocaleString()} total records</p>
             </div>
-            <div className="grid grid-cols-4 gap-3 text-center">
-              {Object.entries(reportData.status_summary).map(([status, data]) => (
-                <div key={status} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <p className="text-lg font-bold capitalize">{status}</p>
-                  <p className="text-2xl font-bold text-primary-600">{data.percentage}%</p>
-                  <p className="text-xs text-gray-500">{data.count} days</p>
-                </div>
-              ))}
-            </div>
+            {reportData.status_summary && (
+              <div className="grid grid-cols-4 gap-3 text-center">
+                {Object.entries(reportData.status_summary).map(([status, data]) => (
+                  <div key={status} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <p className="text-lg font-bold capitalize">{status}</p>
+                    <p className="text-2xl font-bold text-primary-600">{data.percentage || 0}%</p>
+                    <p className="text-xs text-gray-500">{data.count || 0} days</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
 
-          <Card title="Daily Trend (Last 10 School Days)">
-            <div className="flex items-end gap-1 h-32">
-              {reportData.daily_trend.map((day, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <span className="text-xs font-medium">{day.rate}%</span>
-                  <div className="w-full bg-primary-600 rounded-t" style={{ height: `${day.rate}%` }} />
-                  <span className="text-xs text-gray-500">{new Date(day.date).getDate()}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
+          {reportData.daily_trend && reportData.daily_trend.length > 0 && (
+            <Card title="Daily Trend (Last 10 School Days)">
+              <div className="flex items-end gap-1 h-32">
+                {reportData.daily_trend.map((day, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <span className="text-xs font-medium">{day.rate || 0}%</span>
+                    <div className="w-full bg-primary-600 rounded-t" style={{ height: `${Math.min(day.rate || 0, 100)}%` }} />
+                    <span className="text-xs text-gray-500">{day.date ? new Date(day.date).getDate() : '-'}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           <Card title="Chronic Absentees (Below 75%)">
-            {reportData.chronic_absentees.length === 0 ? (
+            {!reportData.chronic_absentees || reportData.chronic_absentees.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-4">No chronic absentees found.</p>
             ) : (
               <div className="space-y-2">
@@ -132,9 +156,9 @@ function AttendanceReport() {
                   <div key={i} className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
                     <div>
                       <p className="font-medium">{student.student_name}</p>
-                      <p className="text-xs text-gray-500">{student.class_name} • {student.days_missed} days missed</p>
+                      <p className="text-xs text-gray-500">{student.class_name} • {student.days_missed || 0} days missed</p>
                     </div>
-                    <Badge variant="danger">{student.rate}%</Badge>
+                    <Badge variant="danger">{student.rate || 0}%</Badge>
                   </div>
                 ))}
               </div>
