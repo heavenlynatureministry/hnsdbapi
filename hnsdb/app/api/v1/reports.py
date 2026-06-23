@@ -6,10 +6,12 @@ from datetime import datetime
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
 from app.schemas.common import SuccessResponse
+from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
 
 
+@router.get("", response_model=SuccessResponse)
 @router.get("/", response_model=SuccessResponse)
 async def reports_overview(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Reports overview"""
