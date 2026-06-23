@@ -8,6 +8,7 @@ from app.core.security import get_current_user, require_role
 from app.core.database import get_database
 from app.schemas.teacher import TeacherCreate
 from app.schemas.common import SuccessResponse
+from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
 
@@ -34,8 +35,13 @@ async def list_teachers(
     skip = (page - 1) * limit
     total = await db.teachers.count_documents(filter_query)
     teachers = await db.teachers.find(filter_query).sort("last_name", 1).skip(skip).limit(limit).to_list(length=limit)
-    for t in teachers: t["_id"] = str(t["_id"])
-    return SuccessResponse(success=True, message="Teachers retrieved", data={"teachers": teachers, "total": total, "page": page, "limit": limit})
+    
+    # Convert all ObjectIds to strings
+    teachers = [parse_mongo_document(t) for t in teachers]
+    
+    return SuccessResponse(success=True, message="Teachers retrieved", data={
+        "teachers": teachers, "total": total, "page": page, "limit": limit
+    })
 
 
 @router.get("/statistics/overview", response_model=SuccessResponse)
@@ -67,8 +73,10 @@ async def get_teacher(
     db = get_database()
     teacher = await db.teachers.find_one({"_id": ObjectId(teacher_id)})
     if not teacher: raise HTTPException(status_code=404, detail="Teacher not found")
-    teacher["_id"] = str(teacher["_id"])
-    if teacher.get("class_teacher_of"): teacher["class_teacher_of"] = str(teacher["class_teacher_of"])
+    
+    # Convert all ObjectIds to strings
+    teacher = parse_mongo_document(teacher)
+    
     return SuccessResponse(success=True, message="Teacher retrieved", data=teacher)
 
 
@@ -128,6 +136,11 @@ async def create_teacher(
     )
     
     if not success: raise HTTPException(status_code=400, detail=message)
+    
+    # Parse result to convert ObjectIds
+    if result:
+        result = parse_mongo_document(result)
+    
     return SuccessResponse(success=True, message=message, data=result)
 
 
@@ -157,6 +170,11 @@ async def update_teacher(
     )
     
     if not success: raise HTTPException(status_code=400, detail=message)
+    
+    # Parse result to convert ObjectIds
+    if result:
+        result = parse_mongo_document(result)
+    
     return SuccessResponse(success=True, message=message, data=result)
 
 
