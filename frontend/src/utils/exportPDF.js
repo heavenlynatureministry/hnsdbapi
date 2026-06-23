@@ -46,36 +46,16 @@ export const exportToPDF = (element, filename = 'report') => {
             .page-break { page-break-after: always; }
             
             .letterhead {
-              display: flex !important;
-              align-items: center;
-              justify-content: center;
-              gap: 15px;
+              text-align: center;
               padding-bottom: 15px;
               margin-bottom: 20px;
               border-bottom: 3px double #1a56db;
             }
             .letterhead img {
-              width: 65px;
-              height: 65px;
-              object-fit: cover;
-              border-radius: 12px;
-            }
-            .letterhead-text h2 {
-              margin: 0;
-              font-size: 18px;
-              color: #1a56db;
-              font-weight: 700;
-            }
-            .letterhead-text p {
-              margin: 2px 0;
-              font-size: 11px;
-              color: #4b5563;
-            }
-            .letterhead-text .motto {
-              color: #1a56db;
-              font-style: italic;
-              font-weight: 500;
-              margin-top: 4px;
+              max-width: 100%;
+              width: 700px;
+              height: auto;
+              object-fit: contain;
             }
           }
           
@@ -101,13 +81,7 @@ export const exportToPDF = (element, filename = 'report') => {
       <body>
         <!-- Letterhead Header -->
         <div class="letterhead">
-          <img src="${window.location.origin}/letter-head.jpg" alt="HNS Letterhead" onerror="this.style.display='none'" />
-          <div class="letterhead-text">
-            <h2>Heavenly Nature Nursery & Primary School</h2>
-            <p>Juba, South Sudan | +211 922 273 334</p>
-            <p>info@heavenlynatureschools.com | www.heavenlynatureschools.com</p>
-            <p class="motto">"Nurturing Right Leaders"</p>
-          </div>
+          <img src="${window.location.origin}/letter-head.jpg" alt="Heavenly Nature School Letterhead" />
         </div>
         
         ${element.outerHTML}
