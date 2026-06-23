@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import reportsAPI from '../../api/reports'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -10,6 +11,7 @@ import Badge from '../../components/common/Badge'
 import { ArrowLeft, Download, DollarSign, TrendingUp, TrendingDown } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { exportToPDF } from '../../utils/exportPDF'
+import toast from 'react-hot-toast'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 
@@ -30,45 +32,48 @@ function FinancialReport() {
 
   useEffect(() => {
     updatePageTitle('Financial Report')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Reports', path: '/reports' }, { label: 'Financial' }])
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Reports', path: '/reports' },
+      { label: 'Financial' },
+    ])
   }, [])
 
   const handleGenerate = async () => {
     setLoading(true)
-    setTimeout(() => {
-      setReportData({
-        total_income: 450000,
-        total_expenses: 320000,
-        net_income: 130000,
-        profit_margin: 28.9,
-        income_by_category: [
-          { name: 'Tuition Fees', value: 250000 }, { name: 'Registration', value: 50000 },
-          { name: 'Transport', value: 60000 }, { name: 'Donations', value: 45000 },
-          { name: 'Other', value: 45000 },
-        ],
-        expenses_by_category: [
-          { name: 'Salaries', value: 180000 }, { name: 'Utilities', value: 35000 },
-          { name: 'Supplies', value: 40000 }, { name: 'Maintenance', value: 30000 },
-          { name: 'Food Program', value: 20000 }, { name: 'Other', value: 15000 },
-        ],
-        monthly_breakdown: [
-          { month: 'Sep', income: 80000, expense: 55000 },
-          { month: 'Oct', income: 75000, expense: 52000 },
-          { month: 'Nov', income: 70000, expense: 58000 },
-          { month: 'Dec', income: 65000, expense: 48000 },
-          { month: 'Jan', income: 85000, expense: 56000 },
-          { month: 'Feb', income: 75000, expense: 51000 },
-        ],
-        collection_rate: 78,
-        outstanding_fees: 65000,
+    setReportData(null)
+    setGenerated(false)
+    
+    try {
+      const response = await reportsAPI.getFinancialSummary({
+        academic_year: filters.academic_year,
       })
+      
+      if (response?.success && response.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else if (response?.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else {
+        toast.error('Failed to generate report. No data available.')
+      }
+    } catch (error) {
+      console.error('Failed to generate financial report:', error)
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to generate report')
+      }
+    } finally {
       setLoading(false)
-      setGenerated(true)
-    }, 1000)
+    }
   }
 
   const handleExportPDF = () => {
-    exportToPDF(reportRef.current, `Financial_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+    if (reportRef.current) {
+      exportToPDF(reportRef.current, `Financial_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+    }
   }
 
   return (
@@ -99,15 +104,22 @@ function FinancialReport() {
 
       {loading && <LoadingSpinner />}
 
+      {!loading && !generated && (
+        <div className="text-center py-12">
+          <DollarSign size={48} className="text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500">Select filters and click "Generate Report" to view financial data.</p>
+        </div>
+      )}
+
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'Total Income', value: `SSP ${reportData.total_income.toLocaleString()}`, color: 'text-green-600', icon: TrendingUp },
-              { label: 'Total Expenses', value: `SSP ${reportData.total_expenses.toLocaleString()}`, color: 'text-red-600', icon: TrendingDown },
-              { label: 'Net Income', value: `SSP ${reportData.net_income.toLocaleString()}`, color: 'text-primary-600', icon: DollarSign },
-              { label: 'Profit Margin', value: `${reportData.profit_margin}%`, color: 'text-emerald-600', icon: TrendingUp },
+              { label: 'Total Income', value: `SSP ${(reportData.total_income || 0).toLocaleString()}`, color: 'text-green-600', icon: TrendingUp },
+              { label: 'Total Expenses', value: `SSP ${(reportData.total_expenses || 0).toLocaleString()}`, color: 'text-red-600', icon: TrendingDown },
+              { label: 'Net Income', value: `SSP ${(reportData.balance || reportData.net_income || 0).toLocaleString()}`, color: 'text-primary-600', icon: DollarSign },
+              { label: 'Profit Margin', value: `${reportData.profit_margin || 0}%`, color: 'text-emerald-600', icon: TrendingUp },
             ].map((stat, i) => (
               <div key={i} className="stat-card">
                 <div className="flex items-center gap-2 mb-2">
@@ -120,67 +132,75 @@ function FinancialReport() {
           </div>
 
           {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card title="Monthly Income vs Expenses">
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={reportData.monthly_breakdown}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="expense" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-
-            <Card title="Income by Category">
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={reportData.income_by_category} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                      {reportData.income_by_category.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-
-            <Card title="Expenses by Category">
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={reportData.expenses_by_category} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                      {reportData.expenses_by_category.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-
-            <Card title="Fee Collection Status">
-              <div className="space-y-4">
-                <div className="text-center">
-                  <p className="text-4xl font-bold text-primary-600">{reportData.collection_rate}%</p>
-                  <p className="text-sm text-gray-500">Collection Rate</p>
+          {reportData.monthly_breakdown && reportData.income_by_category && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card title="Monthly Income vs Expenses">
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.monthly_breakdown}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="expense" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
-                  <div className="bg-primary-600 h-4 rounded-full" style={{ width: `${reportData.collection_rate}%` }} />
+              </Card>
+
+              <Card title="Income by Category">
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={reportData.income_by_category} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                        {reportData.income_by_category.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-green-600">Collected: SSP {(reportData.total_income * reportData.collection_rate / 100).toLocaleString()}</span>
-                  <span className="text-red-600">Outstanding: SSP {reportData.outstanding_fees.toLocaleString()}</span>
+              </Card>
+            </div>
+          )}
+
+          {reportData.expenses_by_category && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card title="Expenses by Category">
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={reportData.expenses_by_category} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                        {reportData.expenses_by_category.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
-            </Card>
-          </div>
+              </Card>
+
+              {reportData.collection_rate !== undefined && (
+                <Card title="Fee Collection Status">
+                  <div className="space-y-4">
+                    <div className="text-center">
+                      <p className="text-4xl font-bold text-primary-600">{reportData.collection_rate || 0}%</p>
+                      <p className="text-sm text-gray-500">Collection Rate</p>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+                      <div className="bg-primary-600 h-4 rounded-full" style={{ width: `${Math.min(reportData.collection_rate || 0, 100)}%` }} />
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-green-600">Collected: SSP {(((reportData.total_income || 0) * (reportData.collection_rate || 0) / 100)).toLocaleString()}</span>
+                      <span className="text-red-600">Outstanding: SSP {(reportData.outstanding_fees || 0).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
