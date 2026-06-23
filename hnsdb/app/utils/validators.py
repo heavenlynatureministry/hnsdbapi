@@ -269,6 +269,36 @@ def validate_date_range(start_date: date, end_date: date) -> Tuple[bool, str]:
     return True, ""
 
 
+def validate_date_of_birth(dob: date, min_age: int = 3, max_age: int = 25) -> Tuple[bool, str]:
+    """
+    Validate date of birth for students
+    
+    Args:
+        dob: Date of birth
+        min_age: Minimum age allowed
+        max_age: Maximum age allowed
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not dob:
+        return False, "Date of birth is required"
+    
+    today = date.today()
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    
+    if age < min_age:
+        return False, f"Student must be at least {min_age} years old (current age: {age})"
+    
+    if age > max_age:
+        return False, f"Student age ({age}) exceeds maximum allowed ({max_age})"
+    
+    if dob > today:
+        return False, "Date of birth cannot be in the future"
+    
+    return True, ""
+
+
 def validate_academic_year(year_str: str) -> Tuple[bool, str]:
     """
     Validate academic year format
@@ -352,6 +382,24 @@ def validate_student_type(student_type: str) -> Tuple[bool, str]:
     return True, ""
 
 
+def validate_gender(gender: str) -> Tuple[bool, str]:
+    """
+    Validate gender value
+    
+    Args:
+        gender: Gender to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    valid_genders = ['Male', 'Female', 'Other']
+    
+    if gender not in valid_genders:
+        return False, f"Gender must be one of: {', '.join(valid_genders)}"
+    
+    return True, ""
+
+
 def validate_teacher_qualification(qualification: str) -> Tuple[bool, str]:
     """
     Validate teacher qualification
@@ -428,6 +476,64 @@ def validate_transaction_type(trans_type: str) -> Tuple[bool, str]:
     return True, ""
 
 
+def validate_payment_method(method: str) -> Tuple[bool, str]:
+    """
+    Validate payment method
+    
+    Args:
+        method: Payment method to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    valid_methods = ['cash', 'bank_transfer', 'mobile_money', 'cheque']
+    
+    if method not in valid_methods:
+        return False, f"Payment method must be one of: {', '.join(valid_methods)}"
+    
+    return True, ""
+
+
+def validate_user_role(role: str) -> Tuple[bool, str]:
+    """
+    Validate user role
+    
+    Args:
+        role: Role to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    valid_roles = ['admin', 'teacher', 'accountant', 'counselor', 'staff']
+    
+    if role not in valid_roles:
+        return False, f"Role must be one of: {', '.join(valid_roles)}"
+    
+    return True, ""
+
+
+def validate_event_type(event_type: str) -> Tuple[bool, str]:
+    """
+    Validate event type
+    
+    Args:
+        event_type: Event type to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    valid_types = [
+        'academic', 'sports', 'cultural', 'religious',
+        'graduation', 'parent_meeting', 'staff_meeting',
+        'training', 'community', 'fundraising', 'other'
+    ]
+    
+    if event_type not in valid_types:
+        return False, f"Event type must be one of: {', '.join(valid_types)}"
+    
+    return True, ""
+
+
 def validate_grade(grade: str) -> Tuple[bool, str]:
     """
     Validate grade value
@@ -465,5 +571,51 @@ def validate_score(score: float, max_score: float = 100) -> Tuple[bool, str]:
     
     if score > max_score:
         return False, f"Score cannot exceed maximum score of {max_score}"
+    
+    return True, ""
+
+
+def validate_amount(amount: float, field_name: str = "Amount") -> Tuple[bool, str]:
+    """
+    Validate financial amount
+    
+    Args:
+        amount: Amount to validate
+        field_name: Field name for error message
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if amount is None:
+        return False, f"{field_name} is required"
+    
+    if amount <= 0:
+        return False, f"{field_name} must be greater than zero"
+    
+    if amount > 999999999:
+        return False, f"{field_name} is too large"
+    
+    return True, ""
+
+
+def validate_budget_allocation(allocated: float, spent: float) -> Tuple[bool, str]:
+    """
+    Validate budget allocation vs spending
+    
+    Args:
+        allocated: Allocated amount
+        spent: Spent amount
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if allocated is None or spent is None:
+        return False, "Both allocated and spent amounts are required"
+    
+    if allocated <= 0:
+        return False, "Allocated amount must be greater than zero"
+    
+    if spent < 0:
+        return False, "Spent amount cannot be negative"
     
     return True, ""
