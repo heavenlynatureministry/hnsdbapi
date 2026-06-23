@@ -12,6 +12,7 @@ from app.schemas.school import (
     BoardMemberCreate, BoardMemberResponse
 )
 from app.schemas.common import SuccessResponse
+from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
 
@@ -24,7 +25,8 @@ async def get_school_info(current_user: Dict[str, Any] = Depends(get_current_use
     """Get school information"""
     db = get_database()
     school = await db.school_info.find_one({})
-    if school: school["_id"] = str(school["_id"])
+    if school:
+        school = parse_mongo_document(school)
     return SuccessResponse(success=True, message="School info retrieved", data=school)
 
 
@@ -113,8 +115,11 @@ async def list_events(
     if status: filter_query["status"] = status
     
     events = await db.school_events.find(filter_query).sort("start_date", 1).to_list(length=None)
-    for e in events: e["_id"] = str(e["_id"])
-    return SuccessResponse(success=True, message="Events retrieved", data={"events": events, "total": len(events)})
+    events = [parse_mongo_document(e) for e in events]
+    
+    return SuccessResponse(success=True, message="Events retrieved", data={
+        "events": events, "total": len(events)
+    })
 
 
 @router.post("/events", response_model=SuccessResponse, status_code=201)
@@ -132,6 +137,7 @@ async def create_event(
     }
     result = await db.school_events.insert_one(event_doc)
     event_doc["_id"] = str(result.inserted_id)
+    event_doc = parse_mongo_document(event_doc)
     return SuccessResponse(success=True, message="Event created", data=event_doc)
 
 
@@ -152,7 +158,7 @@ async def update_event(
         return_document=True
     )
     if not result: raise HTTPException(status_code=404, detail="Event not found")
-    result["_id"] = str(result["_id"])
+    result = parse_mongo_document(result)
     return SuccessResponse(success=True, message="Event updated", data=result)
 
 
@@ -182,8 +188,11 @@ async def list_board_members(
     """List board members"""
     db = get_database()
     members = await db.board_members.find({"status": status}).to_list(length=None)
-    for m in members: m["_id"] = str(m["_id"])
-    return SuccessResponse(success=True, message="Board members retrieved", data={"members": members, "total": len(members)})
+    members = [parse_mongo_document(m) for m in members]
+    
+    return SuccessResponse(success=True, message="Board members retrieved", data={
+        "members": members, "total": len(members)
+    })
 
 
 @router.post("/board", response_model=SuccessResponse, status_code=201)
@@ -201,6 +210,7 @@ async def add_board_member(
     }
     result = await db.board_members.insert_one(member_doc)
     member_doc["_id"] = str(result.inserted_id)
+    member_doc = parse_mongo_document(member_doc)
     return SuccessResponse(success=True, message="Board member added", data=member_doc)
 
 
@@ -218,7 +228,7 @@ async def update_board_member(
         return_document=True
     )
     if not result: raise HTTPException(status_code=404, detail="Member not found")
-    result["_id"] = str(result["_id"])
+    result = parse_mongo_document(result)
     return SuccessResponse(success=True, message="Board member updated", data=result)
 
 
@@ -245,7 +255,8 @@ async def get_settings(current_user: Dict[str, Any] = Depends(get_current_user))
     """Get school settings"""
     db = get_database()
     settings = await db.settings.find_one({}) or {}
-    if settings.get("_id"): settings["_id"] = str(settings["_id"])
+    if settings:
+        settings = parse_mongo_document(settings)
     return SuccessResponse(success=True, message="Settings retrieved", data=settings)
 
 
