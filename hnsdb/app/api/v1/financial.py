@@ -7,6 +7,7 @@ from bson import ObjectId
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
 from app.schemas.common import SuccessResponse
+from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
 
@@ -28,10 +29,7 @@ async def list_transactions(
     total = await db.financial_records.count_documents(filter_query)
     transactions = await db.financial_records.find(filter_query).sort("transaction_date", -1).skip(skip).limit(limit).to_list(length=limit)
     
-    for t in transactions:
-        t["_id"] = str(t["_id"])
-        if t.get("recorded_by"): t["recorded_by"] = str(t["recorded_by"])
-        if t.get("related_student_id"): t["related_student_id"] = str(t["related_student_id"])
+    transactions = [parse_mongo_document(t) for t in transactions]
     
     return SuccessResponse(success=True, message="Transactions retrieved", data={
         "transactions": transactions, "total": total, "page": page, "limit": limit
@@ -84,8 +82,7 @@ async def create_transaction(
     }
     
     result = await db.financial_records.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-    doc["recorded_by"] = str(doc["recorded_by"])
+    doc = parse_mongo_document(doc)
     
     return SuccessResponse(success=True, message="Transaction recorded", data=doc)
 
@@ -121,7 +118,7 @@ async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current
     summary = summary_data.data if hasattr(summary_data, 'data') else summary_data.get("data", {})
     pending = await db.financial_records.count_documents({"approval_status": "pending"})
     recent = await db.financial_records.find().sort("created_at", -1).limit(5).to_list(length=5)
-    for t in recent: t["_id"] = str(t["_id"])
+    recent = [parse_mongo_document(t) for t in recent]
     
     return SuccessResponse(success=True, message="Dashboard retrieved", data={
         "current_balance": summary.get("balance", 0),
@@ -148,11 +145,7 @@ async def list_payments(
     total = await db.payments.count_documents(filter_query)
     payments = await db.payments.find(filter_query).sort("payment_date", -1).skip(skip).limit(limit).to_list(length=limit)
     
-    for p in payments:
-        p["_id"] = str(p["_id"])
-        if p.get("student_id"): p["student_id"] = str(p["student_id"])
-        if p.get("fee_structure_id"): p["fee_structure_id"] = str(p["fee_structure_id"])
-        if p.get("recorded_by"): p["recorded_by"] = str(p["recorded_by"])
+    payments = [parse_mongo_document(p) for p in payments]
     
     return SuccessResponse(success=True, message="Payments retrieved", data={
         "payments": payments, "total": total, "page": page, "limit": limit
@@ -210,8 +203,6 @@ async def record_payment(
     }
     
     result = await db.payments.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-    doc["student_id"] = str(doc["student_id"])
-    doc["recorded_by"] = str(doc["recorded_by"])
+    doc = parse_mongo_document(doc)
     
     return SuccessResponse(success=True, message="Payment recorded", data=doc)
