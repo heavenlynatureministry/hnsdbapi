@@ -20,6 +20,11 @@ const QUALIFICATIONS = [
   { value: 'Other', label: 'Other' },
 ]
 
+const GENDERS = [
+  { value: 'Male', label: 'Male' },
+  { value: 'Female', label: 'Female' },
+]
+
 const SUBJECTS = [
   'English Language', 'Mathematics', 'Science', 'Social Studies',
   'Religious Education', 'Creative Arts', 'Physical Education',
@@ -72,11 +77,18 @@ function TeacherForm({ initialData = null, onSubmit, onCancel, loading = false }
     if (!formData.first_name.trim()) newErrors.first_name = 'First name is required'
     if (!formData.last_name.trim()) newErrors.last_name = 'Last name is required'
     if (!formData.date_of_birth) newErrors.date_of_birth = 'Date of birth is required'
+    if (!formData.gender) newErrors.gender = 'Gender is required'
     if (!formData.qualification) newErrors.qualification = 'Qualification is required'
     if (!formData.phone_number.trim()) newErrors.phone_number = 'Phone number is required'
-    if (!formData.email.trim()) newErrors.email = 'Email is required'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Invalid email'
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Invalid email format'
+    }
     if (!formData.hire_date) newErrors.hire_date = 'Hire date is required'
+    if (!formData.emergency_contact_name.trim() && !formData.emergency_contact_phone.trim()) {
+      newErrors.emergency_contact = 'Emergency contact is required'
+    }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -95,8 +107,7 @@ function TeacherForm({ initialData = null, onSubmit, onCancel, loading = false }
           <FormInput label="First Name *" name="first_name" value={formData.first_name} onChange={handleChange} error={errors.first_name} />
           <FormInput label="Last Name *" name="last_name" value={formData.last_name} onChange={handleChange} error={errors.last_name} />
           <FormInput label="Middle Name" name="middle_name" value={formData.middle_name} onChange={handleChange} />
-          <FormSelect label="Gender" name="gender" value={formData.gender} onChange={handleChange}
-            options={[{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }]} />
+          <FormSelect label="Gender *" name="gender" value={formData.gender} onChange={handleChange} options={GENDERS} error={errors.gender} />
           <FormInput label="Date of Birth *" name="date_of_birth" type="date" value={formData.date_of_birth} onChange={handleChange} error={errors.date_of_birth} />
           <FormInput label="Nationality" name="nationality" value={formData.nationality} onChange={handleChange} />
         </div>
@@ -109,7 +120,7 @@ function TeacherForm({ initialData = null, onSubmit, onCancel, loading = false }
           <FormInput label="Specialization" name="specialization" value={formData.specialization} onChange={handleChange} placeholder="e.g., Mathematics" />
           <FormInput label="Hire Date *" name="hire_date" type="date" value={formData.hire_date} onChange={handleChange} error={errors.hire_date} />
           <FormInput label="Years of Experience" name="years_of_experience" type="number" value={formData.years_of_experience} onChange={handleChange} min="0" max="50" />
-          <FormInput label="Salary Grade" name="salary_grade" value={formData.salary_grade} onChange={handleChange} />
+          <FormInput label="Salary Grade" name="salary_grade" value={formData.salary_grade} onChange={handleChange} placeholder="e.g., Grade 5" />
         </div>
       </Card>
 
@@ -123,7 +134,7 @@ function TeacherForm({ initialData = null, onSubmit, onCancel, loading = false }
               onClick={() => toggleSubject(subject)}
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 formData.subjects.includes(subject)
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-primary-600 text-white shadow-sm'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
             >
@@ -131,6 +142,14 @@ function TeacherForm({ initialData = null, onSubmit, onCancel, loading = false }
             </button>
           ))}
         </div>
+        {formData.subjects.length > 0 && (
+          <p className="text-sm text-gray-500 mt-3">
+            {formData.subjects.length} subject{formData.subjects.length > 1 ? 's' : ''} selected
+          </p>
+        )}
+        {formData.subjects.length === 0 && (
+          <p className="text-sm text-gray-400 mt-3">No subjects selected</p>
+        )}
       </Card>
 
       {/* Contact Information */}
@@ -139,17 +158,32 @@ function TeacherForm({ initialData = null, onSubmit, onCancel, loading = false }
           <FormInput label="Phone Number *" name="phone_number" value={formData.phone_number} onChange={handleChange} error={errors.phone_number} placeholder="+211 900 000 000" />
           <FormInput label="Email *" name="email" type="email" value={formData.email} onChange={handleChange} error={errors.email} />
           <div className="sm:col-span-2">
-            <FormInput label="Address" name="address" value={formData.address} onChange={handleChange} />
+            <FormInput label="Address" name="address" value={formData.address} onChange={handleChange} placeholder="Enter residential address" />
           </div>
         </div>
       </Card>
 
       {/* Emergency Contact */}
       <Card title="Emergency Contact">
+        {errors.emergency_contact && (
+          <p className="text-sm text-red-500 mb-3">{errors.emergency_contact}</p>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormInput label="Contact Name" name="emergency_contact_name" value={formData.emergency_contact_name} onChange={handleChange} />
-          <FormInput label="Contact Phone" name="emergency_contact_phone" value={formData.emergency_contact_phone} onChange={handleChange} />
+          <FormInput label="Contact Name *" name="emergency_contact_name" value={formData.emergency_contact_name} onChange={handleChange} placeholder="Full name of emergency contact" />
+          <FormInput label="Contact Phone *" name="emergency_contact_phone" value={formData.emergency_contact_phone} onChange={handleChange} placeholder="+211 900 000 000" />
         </div>
+      </Card>
+
+      {/* Notes */}
+      <Card title="Additional Notes">
+        <textarea
+          name="notes"
+          value={formData.notes}
+          onChange={handleChange}
+          rows={3}
+          className="form-input"
+          placeholder="Any additional notes about the teacher..."
+        />
       </Card>
 
       {/* Actions */}
