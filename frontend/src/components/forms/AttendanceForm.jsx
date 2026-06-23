@@ -8,10 +8,17 @@ import { Save, CheckCircle, XCircle, AlertTriangle, Clock } from 'lucide-react'
 
 const CLASSES = [
   { value: '', label: 'Select Class' },
-  { value: 'baby', label: 'Baby (Nursery)' }, { value: 'middle', label: 'Middle (Nursery)' },
-  { value: 'top', label: 'Top (Nursery)' }, { value: 'p1', label: 'P1' },
-  { value: 'p2', label: 'P2' }, { value: 'p3', label: 'P3' }, { value: 'p4', label: 'P4' },
-  { value: 'p5', label: 'P5' }, { value: 'p6', label: 'P6' }, { value: 'p7', label: 'P7' }, { value: 'p8', label: 'P8' },
+  { value: 'c1', label: 'Baby (Nursery)' },
+  { value: 'c2', label: 'Middle (Nursery)' },
+  { value: 'c3', label: 'Top (Nursery)' },
+  { value: 'c4', label: 'P1' },
+  { value: 'c5', label: 'P2' },
+  { value: 'c6', label: 'P3' },
+  { value: 'c7', label: 'P4' },
+  { value: 'c8', label: 'P5' },
+  { value: 'c9', label: 'P6' },
+  { value: 'c10', label: 'P7' },
+  { value: 'c11', label: 'P8' },
 ]
 
 const STATUS_BUTTONS = [
@@ -57,8 +64,17 @@ function AttendanceForm({ students = [], initialDate = new Date().toISOString().
   const handleSubmit = (e) => {
     e.preventDefault()
     const unmarked = students.filter(s => !attendance[s.student_id]?.status)
-    if (unmarked.length > 0) return // Validation handled by parent
-    onSubmit?.({ class_id: selectedClass, date, attendance_data: Object.entries(attendance).map(([id, data]) => ({ student_id: id, ...data })) })
+    if (unmarked.length > 0) {
+      return // Validation handled by parent
+    }
+    onSubmit?.({ 
+      class_id: selectedClass, 
+      date, 
+      attendance_data: Object.entries(attendance).map(([id, data]) => ({ 
+        student_id: id, 
+        ...data 
+      })) 
+    })
   }
 
   return (
@@ -67,19 +83,43 @@ function AttendanceForm({ students = [], initialDate = new Date().toISOString().
       <Card>
         <div className="flex flex-col sm:flex-row items-end gap-4">
           <div className="flex-1 w-full">
-            <FormSelect label="Select Class" value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} options={CLASSES} />
+            <FormSelect 
+              label="Select Class" 
+              value={selectedClass} 
+              onChange={(e) => setSelectedClass(e.target.value)} 
+              options={CLASSES} 
+            />
           </div>
           <div className="w-full sm:w-48">
-            <FormInput label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <FormInput 
+              label="Date" 
+              type="date" 
+              value={date} 
+              onChange={(e) => setDate(e.target.value)} 
+            />
           </div>
-          <button type="button" onClick={markAllPresent} className="btn btn-secondary whitespace-nowrap">Mark All Present</button>
+          <button 
+            type="button" 
+            onClick={markAllPresent} 
+            className="btn btn-secondary whitespace-nowrap"
+          >
+            Mark All Present
+          </button>
         </div>
 
         {/* Status Summary */}
         <div className="flex gap-2 mt-3 flex-wrap">
           {STATUS_BUTTONS.map((btn) => (
             <div key={btn.status} className="flex items-center gap-1 text-sm">
-              <btn.icon size={16} className={btn.status === 'present' ? 'text-green-600' : btn.status === 'absent' ? 'text-red-600' : btn.status === 'excused' ? 'text-yellow-600' : 'text-blue-600'} />
+              <btn.icon 
+                size={16} 
+                className={
+                  btn.status === 'present' ? 'text-green-600' : 
+                  btn.status === 'absent' ? 'text-red-600' : 
+                  btn.status === 'excused' ? 'text-yellow-600' : 
+                  'text-blue-600'
+                } 
+              />
               <span className="capitalize">{btn.status}:</span>
               <span className="font-bold">{counts[btn.status]}</span>
             </div>
@@ -97,14 +137,23 @@ function AttendanceForm({ students = [], initialDate = new Date().toISOString().
           {students.map((student) => {
             const record = attendance[student.student_id]
             const status = record?.status
+            const ringColor = 
+              status === 'present' ? 'ring-green-500' : 
+              status === 'absent' ? 'ring-red-500' : 
+              status === 'excused' ? 'ring-yellow-500' : 
+              status === 'late' ? 'ring-blue-500' : ''
+            
             return (
-              <Card key={student.student_id} className={`transition-all ${status ? 'ring-2 ring-offset-1 ' + (status === 'present' ? 'ring-green-500' : status === 'absent' ? 'ring-red-500' : status === 'excused' ? 'ring-yellow-500' : 'ring-blue-500') : ''}`}>
+              <Card 
+                key={student.student_id} 
+                className={`transition-all ${status ? 'ring-2 ring-offset-1 ' + ringColor : ''}`}
+              >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 font-bold text-sm">
-                    {student.student_name?.charAt(0)}
+                    {student.student_name?.charAt(0) || '?'}
                   </div>
-                  <div>
-                    <p className="font-medium text-sm">{student.student_name}</p>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate">{student.student_name}</p>
                     {student.gender && <p className="text-xs text-gray-500">{student.gender}</p>}
                   </div>
                 </div>
@@ -138,12 +187,31 @@ function AttendanceForm({ students = [], initialDate = new Date().toISOString().
         </div>
       )}
 
+      {/* Empty State */}
+      {students.length === 0 && (
+        <Card>
+          <div className="text-center py-8">
+            <Clock size={32} className="text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">Select a class to load students</p>
+          </div>
+        </Card>
+      )}
+
       {/* Actions */}
       {students.length > 0 && (
         <div className="flex gap-3 justify-end">
           {onCancel && <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>}
-          <Button type="submit" variant="primary" loading={loading} icon={<Save size={18} />} disabled={counts.unmarked > 0}>
-            Save Attendance
+          <Button 
+            type="submit" 
+            variant="primary" 
+            loading={loading} 
+            icon={<Save size={18} />} 
+            disabled={counts.unmarked > 0}
+          >
+            {counts.unmarked > 0 
+              ? `Save Attendance (${students.length - counts.unmarked}/${students.length})` 
+              : 'Save Attendance'
+            }
           </Button>
         </div>
       )}
