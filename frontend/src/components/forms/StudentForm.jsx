@@ -20,13 +20,17 @@ const STUDENT_TYPES = [
 
 const CLASSES = [
   { value: '', label: 'Select Class' },
-  { value: 'baby', label: 'Baby (Nursery)' },
-  { value: 'middle', label: 'Middle (Nursery)' },
-  { value: 'top', label: 'Top (Nursery)' },
-  { value: 'p1', label: 'P1' }, { value: 'p2', label: 'P2' },
-  { value: 'p3', label: 'P3' }, { value: 'p4', label: 'P4' },
-  { value: 'p5', label: 'P5' }, { value: 'p6', label: 'P6' },
-  { value: 'p7', label: 'P7' }, { value: 'p8', label: 'P8' },
+  { value: 'c1', label: 'Baby (Nursery)' },
+  { value: 'c2', label: 'Middle (Nursery)' },
+  { value: 'c3', label: 'Top (Nursery)' },
+  { value: 'c4', label: 'P1' },
+  { value: 'c5', label: 'P2' },
+  { value: 'c6', label: 'P3' },
+  { value: 'c7', label: 'P4' },
+  { value: 'c8', label: 'P5' },
+  { value: 'c9', label: 'P6' },
+  { value: 'c10', label: 'P7' },
+  { value: 'c11', label: 'P8' },
 ]
 
 function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }) {
@@ -86,6 +90,13 @@ function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }
     if (!formData.date_of_birth) newErrors.date_of_birth = 'Date of birth is required'
     if (!formData.gender) newErrors.gender = 'Gender is required'
     if (!formData.student_type) newErrors.student_type = 'Student type is required'
+    
+    // Validate primary guardian
+    const primaryGuardian = guardians[0]
+    if (!primaryGuardian?.first_name?.trim() && !primaryGuardian?.last_name?.trim()) {
+      newErrors.guardians = 'At least one guardian name is required'
+    }
+    
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -145,6 +156,9 @@ function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }
           </button>
         }
       >
+        {errors.guardians && (
+          <p className="text-sm text-red-500 mb-3">{errors.guardians}</p>
+        )}
         <div className="space-y-4">
           {guardians.map((guardian, index) => (
             <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg relative">
