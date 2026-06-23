@@ -1,231 +1,586 @@
 """
-Validators
-Validation functions for data integrity and business rules
+Helper Functions
+Utility functions for formatting, generation, parsing, and data manipulation
 """
-from datetime import datetime, date
-from typing import Optional, Dict, Any, List, Tuple
-import re
+from datetime import datetime, date, timedelta
+from typing import Optional, Dict, Any, List, Tuple, Union
 from bson import ObjectId
-
-
-class ValidationError(Exception):
-    """Custom validation error"""
-    def __init__(self, message: str, field: str = None):
-        self.message = message
-        self.field = field
-        super().__init__(self.message)
+import re
+import random
+import string
+import hashlib
+import math
 
 
 # =========================================================================
-# BASIC VALIDATORS
+# DATE & TIME HELPERS
 # =========================================================================
 
-def validate_required_fields(data: Dict[str, Any], required_fields: List[str]) -> Tuple[bool, List[str]]:
+def format_date(value: Union[date, datetime, str], fmt: str = "%Y-%m-%d") -> str:
     """
-    Validate required fields are present and non-empty
+    Format date to string
     
     Args:
-        data: Data dictionary
-        required_fields: List of required field names
+        value: Date, datetime, or string
+        fmt: Output format
         
     Returns:
-        Tuple of (is_valid, missing_fields)
+        Formatted date string
     """
-    missing = []
-    for field in required_fields:
-        if field not in data or data[field] is None:
-            missing.append(field)
-        elif isinstance(data[field], str) and not data[field].strip():
-            missing.append(field)
-    
-    return len(missing) == 0, missing
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    elif isinstance(value, date):
+        return value.strftime(fmt)
+    elif isinstance(value, str):
+        try:
+            dt = datetime.strptime(value, "%Y-%m-%d")
+            return dt.strftime(fmt)
+        except ValueError:
+            return value
+    return ""
 
 
-def validate_string_length(value: str, min_length: int = 1, max_length: int = 500, field_name: str = "Value") -> Tuple[bool, str]:
+def format_datetime(value: Union[datetime, str], fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
     """
-    Validate string length
+    Format datetime to string
     
     Args:
-        value: String to validate
-        min_length: Minimum length
+        value: Datetime or string
+        fmt: Output format
+        
+    Returns:
+        Formatted datetime string
+    """
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    elif isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value)
+            return dt.strftime(fmt)
+        except (ValueError, TypeError):
+            return value
+    return ""
+
+
+def parse_date(value: Union[str, date, datetime]) -> Optional[date]:
+    """
+    Parse various date formats to date object
+    
+    Args:
+        value: String, date, or datetime
+        
+    Returns:
+        Date object or None
+    """
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    
+    if isinstance(value, datetime):
+        return value.date()
+    
+    if isinstance(value, str):
+        formats = [
+            "%Y-%m-%d",
+            "%d/%m/%Y",
+            "%m/%d/%Y",
+            "%Y/%m/%d",
+            "%d-%m-%Y",
+            "%B %d, %Y",
+            "%d %B %Y"
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(value.strip(), fmt).date()
+            except ValueError:
+                continue
+    
+    return None
+
+
+def time_ago(dt: datetime) -> str:
+    """
+    Get human-readable time ago string
+    
+    Args:
+        dt: Datetime to compare
+        
+    Returns:
+        Time ago string
+    """
+    now = datetime.utcnow()
+    diff = now - dt
+    
+    if diff.days > 365:
+        years = diff.days // 365
+        return f"{years} year{'s' if years > 1 else ''} ago"
+    elif diff.days > 30:
+        months = diff.days // 30
+        return f"{months} month{'s' if months > 1 else ''} ago"
+    elif diff.days > 0:
+        return f"{diff.days} day{'s' if diff.days > 1 else ''} ago"
+    elif diff.seconds > 3600:
+        hours = diff.seconds // 3600
+        return f"{hours} hour{'s' if hours > 1 else ''} ago"
+    elif diff.seconds > 60:
+        minutes = diff.seconds // 60
+        return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+    else:
+        return "just now"
+
+
+def get_term_dates(academic_year: str, term: str) -> Tuple[date, date]:
+    """
+    Get approximate term start and end dates
+    
+    Args:
+        academic_year: Academic year (YYYY/YYYY)
+        term: Term name
+        
+    Returns:
+        Tuple of (start_date, end_date)
+    """
+    year = int(academic_year.split("/")[0])
+    
+    if term == "Term 1":
+        return date(year, 9, 1), date(year, 12, 15)
+    elif term == "Term 2":
+        return date(year + 1, 1, 15), date(year + 1, 4, 15)
+    elif term == "Term 3":
+        return date(year + 1, 5, 1), date(year + 1, 8, 15)
+    
+    return date.today(), date.today()
+
+
+# =========================================================================
+# CALCULATION HELPERS
+# =========================================================================
+
+def calculate_age(dob: Union[date, datetime, str]) -> int:
+    """
+    Calculate age from date of birth
+    
+    Args:
+        dob: Date of birth
+        
+    Returns:
+        Age in years
+    """
+    if isinstance(dob, str):
+        dob = parse_date(dob)
+        if not dob:
+            return 0
+    
+    if isinstance(dob, datetime):
+        dob = dob.date()
+    
+    today = date.today()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+
+def calculate_percentage(value: float, total: float, decimals: int = 2) -> float:
+    """
+    Calculate percentage
+    
+    Args:
+        value: Part value
+        total: Total value
+        decimals: Decimal places
+        
+    Returns:
+        Percentage
+    """
+    if total == 0:
+        return 0.0
+    return round((value / total * 100), decimals)
+
+
+def calculate_grade(percentage: float) -> Dict[str, Any]:
+    """
+    Calculate grade from percentage
+    
+    Args:
+        percentage: Score percentage
+        
+    Returns:
+        Dictionary with grade, remarks, and GPA
+    """
+    if percentage >= 80:
+        return {"grade": "A", "remarks": "Excellent", "gpa": 4.0}
+    elif percentage >= 70:
+        return {"grade": "B", "remarks": "Very Good", "gpa": 3.0}
+    elif percentage >= 60:
+        return {"grade": "C", "remarks": "Good", "gpa": 2.0}
+    elif percentage >= 50:
+        return {"grade": "D", "remarks": "Satisfactory", "gpa": 1.0}
+    else:
+        return {"grade": "F", "remarks": "Fail", "gpa": 0.0}
+
+
+# =========================================================================
+# FORMATTING HELPERS
+# =========================================================================
+
+def format_currency(amount: float, currency: str = "SSP", locale: str = "en") -> str:
+    """
+    Format amount as currency string
+    
+    Args:
+        amount: Amount to format
+        currency: Currency code
+        locale: Locale code
+        
+    Returns:
+        Formatted currency string
+    """
+    if locale == "en":
+        return f"{currency} {amount:,.2f}"
+    return f"{amount:,.2f} {currency}"
+
+
+def sanitize_string(value: str, max_length: int = 500) -> str:
+    """
+    Sanitize string by removing HTML and extra whitespace
+    
+    Args:
+        value: String to sanitize
         max_length: Maximum length
-        field_name: Field name for error message
         
     Returns:
-        Tuple of (is_valid, error_message)
+        Sanitized string
     """
     if not value:
-        return False, f"{field_name} is required"
+        return ""
     
-    if len(value) < min_length:
-        return False, f"{field_name} must be at least {min_length} characters"
+    # Remove HTML tags
+    value = re.sub(r'<[^>]+>', '', value)
     
+    # Remove extra whitespace
+    value = re.sub(r'\s+', ' ', value).strip()
+    
+    # Truncate if too long
     if len(value) > max_length:
-        return False, f"{field_name} must not exceed {max_length} characters"
+        value = value[:max_length] + "..."
     
-    return True, ""
+    return value
 
 
-def validate_numeric_range(value: float, min_value: float = None, max_value: float = None, field_name: str = "Value") -> Tuple[bool, str]:
+def truncate_string(value: str, length: int = 100, suffix: str = "...") -> str:
     """
-    Validate numeric value range
+    Truncate string to specified length
     
     Args:
-        value: Number to validate
-        min_value: Minimum allowed
-        max_value: Maximum allowed
-        field_name: Field name
+        value: String to truncate
+        length: Maximum length
+        suffix: Suffix to add
         
     Returns:
-        Tuple of (is_valid, error_message)
+        Truncated string
     """
-    if min_value is not None and value < min_value:
-        return False, f"{field_name} must be at least {min_value}"
+    if not value:
+        return ""
     
-    if max_value is not None and value > max_value:
-        return False, f"{field_name} must not exceed {max_value}"
+    if len(value) <= length:
+        return value
     
-    return True, ""
+    return value[:length - len(suffix)] + suffix
 
 
-def validate_enum_value(value: str, allowed_values: List[str], field_name: str = "Value") -> Tuple[bool, str]:
+def mask_email(email: str) -> str:
     """
-    Validate value is in allowed list
+    Mask email for privacy
     
     Args:
-        value: Value to check
-        allowed_values: List of allowed values
-        field_name: Field name
+        email: Email address
         
     Returns:
-        Tuple of (is_valid, error_message)
+        Masked email
     """
-    if value not in allowed_values:
-        return False, f"{field_name} must be one of: {', '.join(allowed_values)}"
+    if not email or "@" not in email:
+        return email
     
-    return True, ""
+    name, domain = email.split("@")
+    
+    if len(name) <= 2:
+        masked_name = name[0] + "*" * (len(name) - 1)
+    else:
+        masked_name = name[0] + "*" * (len(name) - 2) + name[-1]
+    
+    return f"{masked_name}@{domain}"
 
 
-# =========================================================================
-# FORMAT VALIDATORS
-# =========================================================================
-
-def validate_email(email: str) -> Tuple[bool, str]:
+def mask_phone(phone: str) -> str:
     """
-    Validate email format
+    Mask phone number for privacy
     
     Args:
-        email: Email to validate
+        phone: Phone number
         
     Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if not email:
-        return False, "Email is required"
-    
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    
-    if not re.match(pattern, email):
-        return False, "Invalid email format"
-    
-    if len(email) > 254:
-        return False, "Email is too long"
-    
-    return True, ""
-
-
-def validate_phone_number(phone: str) -> Tuple[bool, str]:
-    """
-    Validate phone number format
-    
-    Args:
-        phone: Phone number to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
+        Masked phone number
     """
     if not phone:
-        return False, "Phone number is required"
+        return phone
     
-    # Remove common formatting
-    clean_phone = re.sub(r'[\s\-\(\)\.]', '', phone)
+    # Keep last 4 digits visible
+    if len(phone) <= 4:
+        return "*" * len(phone)
     
-    # Check if starts with + or digit
-    if not clean_phone.startswith('+') and not clean_phone[0].isdigit():
-        return False, "Invalid phone number format"
-    
-    # Remove + for length check
-    digits_only = clean_phone.replace('+', '')
-    
-    if not digits_only.isdigit():
-        return False, "Phone number must contain only digits"
-    
-    if len(digits_only) < 7 or len(digits_only) > 15:
-        return False, "Phone number must be between 7 and 15 digits"
-    
-    return True, ""
+    return "*" * (len(phone) - 4) + phone[-4:]
 
 
-def validate_password_strength(password: str) -> Tuple[bool, List[str]]:
+def slugify(value: str) -> str:
     """
-    Validate password strength
+    Convert string to URL-friendly slug
     
     Args:
-        password: Password to validate
+        value: String to convert
         
     Returns:
-        Tuple of (is_valid, list_of_issues)
+        Slug string
     """
-    issues = []
-    
-    if len(password) < 8:
-        issues.append("Password must be at least 8 characters long")
-    
-    if len(password) > 128:
-        issues.append("Password must not exceed 128 characters")
-    
-    if not re.search(r'[A-Z]', password):
-        issues.append("Password must contain at least one uppercase letter")
-    
-    if not re.search(r'[a-z]', password):
-        issues.append("Password must contain at least one lowercase letter")
-    
-    if not re.search(r'\d', password):
-        issues.append("Password must contain at least one digit")
-    
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-        issues.append("Password must contain at least one special character")
-    
-    # Check for common patterns
-    common_patterns = ['123', 'abc', 'password', 'qwerty', 'admin']
-    if any(pattern in password.lower() for pattern in common_patterns):
-        issues.append("Password contains common patterns")
-    
-    return len(issues) == 0, issues
+    value = value.lower().strip()
+    value = re.sub(r'[^\w\s-]', '', value)
+    value = re.sub(r'[-\s]+', '-', value)
+    return value
 
 
-def validate_url(url: str) -> Tuple[bool, str]:
+def get_initials(first_name: str, last_name: str) -> str:
     """
-    Validate URL format
+    Get initials from name
     
     Args:
-        url: URL to validate
+        first_name: First name
+        last_name: Last name
         
     Returns:
-        Tuple of (is_valid, error_message)
+        Initials
     """
-    if not url:
-        return False, "URL is required"
-    
-    pattern = r'^https?:\/\/[\w\-]+(\.[\w\-]+)+[/#?]?.*$'
-    
-    if not re.match(pattern, url):
-        return False, "Invalid URL format"
-    
-    return True, ""
+    first_initial = first_name[0].upper() if first_name else ""
+    last_initial = last_name[0].upper() if last_name else ""
+    return f"{first_initial}{last_initial}"
 
 
-def validate_object_id_format(id_str: str) -> Tuple[bool, str]:
+def generate_color(seed: str = None) -> str:
+    """
+    Generate a hex color
+    
+    Args:
+        seed: Optional seed for consistent color
+        
+    Returns:
+        Hex color string
+    """
+    if seed:
+        hash_val = int(hashlib.md5(seed.encode()).hexdigest(), 16)
+        random.seed(hash_val)
+    
+    r = random.randint(50, 200)
+    g = random.randint(50, 200)
+    b = random.randint(50, 200)
+    
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+# =========================================================================
+# GENERATION HELPERS
+# =========================================================================
+
+def generate_reference_number(prefix: str = "REF", length: int = 8) -> str:
+    """
+    Generate unique reference number
+    
+    Args:
+        prefix: Reference prefix
+        length: Numeric part length
+        
+    Returns:
+        Reference number
+    """
+    date_part = datetime.now().strftime("%Y%m%d")
+    random_part = ''.join(random.choices(string.digits, k=length))
+    return f"{prefix}-{date_part}-{random_part}"
+
+
+def generate_student_id(year: int = None) -> str:
+    """
+    Generate student ID number
+    
+    Args:
+        year: Enrollment year
+        
+    Returns:
+        Student ID
+    """
+    if not year:
+        year = datetime.now().year
+    
+    random_part = ''.join(random.choices(string.digits, k=4))
+    return f"HNS-{year}-{random_part}"
+
+
+def generate_employee_id() -> str:
+    """
+    Generate employee ID number
+    
+    Returns:
+        Employee ID
+    """
+    random_part = ''.join(random.choices(string.digits, k=3))
+    return f"HNS-TCH-{random_part}"
+
+
+def generate_receipt_number() -> str:
+    """
+    Generate receipt number
+    
+    Returns:
+        Receipt number
+    """
+    date_part = datetime.now().strftime("%Y%m%d")
+    random_part = ''.join(random.choices(string.digits, k=4))
+    return f"RCP-{date_part}-{random_part}"
+
+
+def generate_password(length: int = 12, include_special: bool = True) -> str:
+    """
+    Generate strong random password
+    
+    Args:
+        length: Password length
+        include_special: Include special characters
+        
+    Returns:
+        Random password
+    """
+    chars = string.ascii_letters + string.digits
+    if include_special:
+        chars += "!@#$%^&*"
+    
+    # Ensure at least one of each type
+    password = [
+        random.choice(string.ascii_lowercase),
+        random.choice(string.ascii_uppercase),
+        random.choice(string.digits)
+    ]
+    
+    if include_special:
+        password.append(random.choice("!@#$%^&*"))
+    
+    # Fill remaining
+    remaining = length - len(password)
+    password.extend(random.choice(chars) for _ in range(remaining))
+    
+    # Shuffle
+    random.shuffle(password)
+    
+    return ''.join(password)
+
+
+# =========================================================================
+# ACADEMIC HELPERS
+# =========================================================================
+
+def get_academic_year() -> str:
+    """
+    Get current academic year
+    
+    Returns:
+        Academic year string (YYYY/YYYY)
+    """
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    
+    if current_month >= 9:
+        return f"{current_year}/{current_year + 1}"
+    else:
+        return f"{current_year - 1}/{current_year}"
+
+
+def get_current_term() -> str:
+    """
+    Get current academic term
+    
+    Returns:
+        Term name
+    """
+    current_month = datetime.now().month
+    
+    if 1 <= current_month <= 4:
+        return "Term 1"
+    elif 5 <= current_month <= 8:
+        return "Term 2"
+    else:
+        return "Term 3"
+
+
+# =========================================================================
+# MONGO HELPERS
+# =========================================================================
+
+def parse_mongo_document(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse MongoDB document for JSON serialization
+    
+    Args:
+        doc: MongoDB document
+        
+    Returns:
+        Parsed document
+    """
+    if not doc:
+        return doc
+    
+    parsed = {}
+    for key, value in doc.items():
+        if isinstance(value, ObjectId):
+            parsed[key] = str(value)
+        elif isinstance(value, datetime):
+            parsed[key] = value.isoformat()
+        elif isinstance(value, date):
+            parsed[key] = value.isoformat()
+        elif isinstance(value, list):
+            parsed[key] = parse_mongo_list(value)
+        elif isinstance(value, dict):
+            parsed[key] = parse_mongo_document(value)
+        else:
+            parsed[key] = value
+    
+    return parsed
+
+
+def parse_mongo_list(items: List[Any]) -> List[Any]:
+    """
+    Parse MongoDB list for JSON serialization
+    
+    Args:
+        items: List of MongoDB documents/values
+        
+    Returns:
+        Parsed list
+    """
+    if not items:
+        return items
+    
+    parsed = []
+    for item in items:
+        if isinstance(item, ObjectId):
+            parsed.append(str(item))
+        elif isinstance(item, datetime):
+            parsed.append(item.isoformat())
+        elif isinstance(item, date):
+            parsed.append(item.isoformat())
+        elif isinstance(item, dict):
+            parsed.append(parse_mongo_document(item))
+        elif isinstance(item, list):
+            parsed.append(parse_mongo_list(item))
+        else:
+            parsed.append(item)
+    
+    return parsed
+
+
+def validate_object_id(id_str: str) -> bool:
     """
     Validate MongoDB ObjectId format
     
@@ -233,389 +588,169 @@ def validate_object_id_format(id_str: str) -> Tuple[bool, str]:
         id_str: String to validate
         
     Returns:
-        Tuple of (is_valid, error_message)
+        True if valid ObjectId
     """
     if not id_str:
-        return False, "ID is required"
+        return False
     
     try:
         ObjectId(id_str)
-        return True, ""
+        return True
     except Exception:
-        return False, "Invalid ID format (must be 24-character hex string)"
+        return False
+
+
+def build_filter_query(params: Dict[str, Any], 
+                       allowed_fields: List[str],
+                       exact_match: List[str] = None) -> Dict[str, Any]:
+    """
+    Build MongoDB filter query from parameters
+    
+    Args:
+        params: Query parameters
+        allowed_fields: Fields allowed for filtering
+        exact_match: Fields requiring exact match
+        
+    Returns:
+        MongoDB filter query
+    """
+    query = {}
+    
+    for field in allowed_fields:
+        if field in params and params[field] is not None:
+            value = params[field]
+            
+            if exact_match and field in exact_match:
+                query[field] = value
+            elif isinstance(value, str):
+                query[field] = {"$regex": value, "$options": "i"}
+            else:
+                query[field] = value
+    
+    # Date range
+    if "start_date" in params and params["start_date"]:
+        if "date" not in query:
+            query["date"] = {}
+        query["date"]["$gte"] = params["start_date"]
+    
+    if "end_date" in params and params["end_date"]:
+        if "date" not in query:
+            query["date"] = {}
+        query["date"]["$lte"] = params["end_date"]
+    
+    return query
+
+
+def build_sort_query(sort_by: str = "created_at", 
+                     sort_order: int = -1) -> List[Tuple[str, int]]:
+    """
+    Build MongoDB sort query
+    
+    Args:
+        sort_by: Sort field
+        sort_order: Sort direction (1 or -1)
+        
+    Returns:
+        Sort query
+    """
+    return [(sort_by, sort_order)]
 
 
 # =========================================================================
-# DATE VALIDATORS
+# PAGINATION HELPERS
 # =========================================================================
 
-def validate_date_range(start_date: date, end_date: date) -> Tuple[bool, str]:
+def paginate_query(page: int = 1, 
+                   limit: int = 20,
+                   max_limit: int = 100) -> Dict[str, int]:
     """
-    Validate date range
+    Calculate pagination parameters
     
     Args:
-        start_date: Start date
-        end_date: End date
+        page: Page number
+        limit: Items per page
+        max_limit: Maximum items per page
         
     Returns:
-        Tuple of (is_valid, error_message)
+        Dictionary with skip, limit, page
     """
-    if not start_date or not end_date:
-        return False, "Both start and end dates are required"
+    page = max(1, page)
+    limit = min(max(1, limit), max_limit)
+    skip = (page - 1) * limit
     
-    if start_date > end_date:
-        return False, "Start date must be before end date"
-    
-    return True, ""
-
-
-def validate_date_of_birth(dob: date, min_age: int = 3, max_age: int = 25) -> Tuple[bool, str]:
-    """
-    Validate date of birth for students
-    
-    Args:
-        dob: Date of birth
-        min_age: Minimum age allowed
-        max_age: Maximum age allowed
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if not dob:
-        return False, "Date of birth is required"
-    
-    today = date.today()
-    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    
-    if age < min_age:
-        return False, f"Student must be at least {min_age} years old (current age: {age})"
-    
-    if age > max_age:
-        return False, f"Student age ({age}) exceeds maximum allowed ({max_age})"
-    
-    if dob > today:
-        return False, "Date of birth cannot be in the future"
-    
-    return True, ""
-
-
-def validate_academic_year(year_str: str) -> Tuple[bool, str]:
-    """
-    Validate academic year format
-    
-    Args:
-        year_str: Academic year string (YYYY/YYYY)
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if not year_str:
-        return False, "Academic year is required"
-    
-    try:
-        parts = year_str.split('/')
-        
-        if len(parts) != 2:
-            return False, "Academic year must be in format YYYY/YYYY"
-        
-        year1 = int(parts[0])
-        year2 = int(parts[1])
-        
-        if year2 != year1 + 1:
-            return False, "Years must be consecutive"
-        
-        if year1 < 2020 or year1 > 2100:
-            return False, "Year must be between 2020 and 2100"
-        
-        return True, ""
-        
-    except (ValueError, IndexError):
-        return False, "Invalid academic year format"
+    return {
+        "page": page,
+        "limit": limit,
+        "skip": skip
+    }
 
 
 # =========================================================================
-# SCHOOL-SPECIFIC VALIDATORS
+# VALIDATION HELPERS
 # =========================================================================
 
-def validate_class_name(class_name: str, class_level: str = None) -> Tuple[bool, str]:
+def is_valid_email(email: str) -> bool:
     """
-    Validate class name
+    Check if email is valid
     
     Args:
-        class_name: Class name to validate
-        class_level: Optional class level for context
+        email: Email to validate
         
     Returns:
-        Tuple of (is_valid, error_message)
+        True if valid
     """
-    nursery_classes = ['Baby', 'Middle', 'Top']
-    primary_classes = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8']
-    all_classes = nursery_classes + primary_classes
-    
-    if class_name not in all_classes:
-        return False, f"Class name must be one of: {', '.join(all_classes)}"
-    
-    if class_level:
-        if class_level == 'nursery' and class_name not in nursery_classes:
-            return False, f"{class_name} is not a nursery class"
-        if class_level == 'primary' and class_name not in primary_classes:
-            return False, f"{class_name} is not a primary class"
-    
-    return True, ""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return bool(re.match(pattern, email)) if email else False
 
 
-def validate_student_type(student_type: str) -> Tuple[bool, str]:
+def is_valid_phone(phone: str) -> bool:
     """
-    Validate student type
+    Check if phone number is valid
     
     Args:
-        student_type: Student type to validate
+        phone: Phone to validate
         
     Returns:
-        Tuple of (is_valid, error_message)
+        True if valid
     """
-    valid_types = ['street', 'abundant', 'orphan', 'other']
-    
-    if student_type not in valid_types:
-        return False, f"Student type must be one of: {', '.join(valid_types)}"
-    
-    return True, ""
+    pattern = r'^\+?[\d\s\-\(\)]{7,20}$'
+    return bool(re.match(pattern, phone)) if phone else False
 
 
-def validate_gender(gender: str) -> Tuple[bool, str]:
+# =========================================================================
+# COLLECTION HELPERS
+# =========================================================================
+
+def group_by(items: List[Dict[str, Any]], key: str) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Validate gender value
+    Group list of dictionaries by key
     
     Args:
-        gender: Gender to validate
+        items: List of dictionaries
+        key: Key to group by
         
     Returns:
-        Tuple of (is_valid, error_message)
+        Grouped dictionary
     """
-    valid_genders = ['Male', 'Female', 'Other']
+    grouped = {}
+    for item in items:
+        group_key = item.get(key, "unknown")
+        if group_key not in grouped:
+            grouped[group_key] = []
+        grouped[group_key].append(item)
     
-    if gender not in valid_genders:
-        return False, f"Gender must be one of: {', '.join(valid_genders)}"
-    
-    return True, ""
+    return grouped
 
 
-def validate_teacher_qualification(qualification: str) -> Tuple[bool, str]:
+def chunk_list(items: List[Any], chunk_size: int = 100) -> List[List[Any]]:
     """
-    Validate teacher qualification
+    Split list into chunks
     
     Args:
-        qualification: Qualification to validate
+        items: List to split
+        chunk_size: Chunk size
         
     Returns:
-        Tuple of (is_valid, error_message)
+        List of chunks
     """
-    valid_quals = [
-        'Certificate', 'Diploma', 'B.Ed', 'B.Sc', 'B.A',
-        'M.Ed', 'M.Sc', 'M.A', 'PhD', 'PGDE', 'Other'
-    ]
-    
-    if qualification not in valid_quals:
-        return False, f"Qualification must be one of: {', '.join(valid_quals)}"
-    
-    return True, ""
-
-
-def validate_attendance_status(status: str) -> Tuple[bool, str]:
-    """
-    Validate attendance status
-    
-    Args:
-        status: Status to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    valid_statuses = ['present', 'absent', 'excused', 'late']
-    
-    if status not in valid_statuses:
-        return False, f"Status must be one of: {', '.join(valid_statuses)}"
-    
-    return True, ""
-
-
-def validate_exam_type(exam_type: str) -> Tuple[bool, str]:
-    """
-    Validate exam type
-    
-    Args:
-        exam_type: Exam type to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    valid_types = [
-        'mid_term', 'end_term', 'final', 'mock',
-        'quiz', 'assignment', 'project', 'oral', 'practical'
-    ]
-    
-    if exam_type not in valid_types:
-        return False, f"Exam type must be one of: {', '.join(valid_types)}"
-    
-    return True, ""
-
-
-def validate_transaction_type(trans_type: str) -> Tuple[bool, str]:
-    """
-    Validate transaction type
-    
-    Args:
-        trans_type: Transaction type to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if trans_type not in ['income', 'expense']:
-        return False, "Transaction type must be 'income' or 'expense'"
-    
-    return True, ""
-
-
-def validate_payment_method(method: str) -> Tuple[bool, str]:
-    """
-    Validate payment method
-    
-    Args:
-        method: Payment method to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    valid_methods = ['cash', 'bank_transfer', 'mobile_money', 'cheque']
-    
-    if method not in valid_methods:
-        return False, f"Payment method must be one of: {', '.join(valid_methods)}"
-    
-    return True, ""
-
-
-def validate_user_role(role: str) -> Tuple[bool, str]:
-    """
-    Validate user role
-    
-    Args:
-        role: Role to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    valid_roles = ['admin', 'teacher', 'accountant', 'counselor', 'staff']
-    
-    if role not in valid_roles:
-        return False, f"Role must be one of: {', '.join(valid_roles)}"
-    
-    return True, ""
-
-
-def validate_event_type(event_type: str) -> Tuple[bool, str]:
-    """
-    Validate event type
-    
-    Args:
-        event_type: Event type to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    valid_types = [
-        'academic', 'sports', 'cultural', 'religious',
-        'graduation', 'parent_meeting', 'staff_meeting',
-        'training', 'community', 'fundraising', 'other'
-    ]
-    
-    if event_type not in valid_types:
-        return False, f"Event type must be one of: {', '.join(valid_types)}"
-    
-    return True, ""
-
-
-def validate_grade(grade: str) -> Tuple[bool, str]:
-    """
-    Validate grade value
-    
-    Args:
-        grade: Grade to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    valid_grades = ['A', 'B', 'C', 'D', 'F']
-    
-    if grade.upper() not in valid_grades:
-        return False, f"Grade must be one of: {', '.join(valid_grades)}"
-    
-    return True, ""
-
-
-def validate_score(score: float, max_score: float = 100) -> Tuple[bool, str]:
-    """
-    Validate exam score
-    
-    Args:
-        score: Score to validate
-        max_score: Maximum possible score
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if score is None:
-        return False, "Score is required"
-    
-    if score < 0:
-        return False, "Score cannot be negative"
-    
-    if score > max_score:
-        return False, f"Score cannot exceed maximum score of {max_score}"
-    
-    return True, ""
-
-
-def validate_amount(amount: float, field_name: str = "Amount") -> Tuple[bool, str]:
-    """
-    Validate financial amount
-    
-    Args:
-        amount: Amount to validate
-        field_name: Field name for error message
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if amount is None:
-        return False, f"{field_name} is required"
-    
-    if amount <= 0:
-        return False, f"{field_name} must be greater than zero"
-    
-    if amount > 999999999:
-        return False, f"{field_name} is too large"
-    
-    return True, ""
-
-
-def validate_budget_allocation(allocated: float, spent: float) -> Tuple[bool, str]:
-    """
-    Validate budget allocation vs spending
-    
-    Args:
-        allocated: Allocated amount
-        spent: Spent amount
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if allocated is None or spent is None:
-        return False, "Both allocated and spent amounts are required"
-    
-    if allocated <= 0:
-        return False, "Allocated amount must be greater than zero"
-    
-    if spent < 0:
-        return False, "Spent amount cannot be negative"
-    
-    return True, ""
+    return [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
