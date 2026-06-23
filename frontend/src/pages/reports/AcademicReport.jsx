@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import reportsAPI from '../../api/reports'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -9,6 +10,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import Badge from '../../components/common/Badge'
 import { ArrowLeft, Download, BarChart3, GraduationCap, TrendingUp } from 'lucide-react'
 import { exportToPDF } from '../../utils/exportPDF'
+import toast from 'react-hot-toast'
 
 function AcademicReport() {
   const navigate = useNavigate()
@@ -28,37 +30,50 @@ function AcademicReport() {
 
   useEffect(() => {
     updatePageTitle('Academic Report')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Reports', path: '/reports' }, { label: 'Academic' }])
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Reports', path: '/reports' },
+      { label: 'Academic' },
+    ])
   }, [])
 
   const handleGenerate = async () => {
     setLoading(true)
-    setTimeout(() => {
-      setReportData({
-        class_name: 'P5',
-        class_level: 'primary',
-        total_students: 22,
-        overall_pass_rate: 85,
-        class_average: 72.5,
-        subjects: [
-          { subject_name: 'English', average_score: 78, pass_rate: 90, highest: 95, lowest: 45, grade_distribution: { A: 8, B: 7, C: 4, D: 2, F: 1 } },
-          { subject_name: 'Mathematics', average_score: 68, pass_rate: 75, highest: 98, lowest: 30, grade_distribution: { A: 5, B: 6, C: 6, D: 3, F: 2 } },
-          { subject_name: 'Science', average_score: 72, pass_rate: 82, highest: 92, lowest: 40, grade_distribution: { A: 6, B: 8, C: 4, D: 3, F: 1 } },
-          { subject_name: 'Social Studies', average_score: 74, pass_rate: 88, highest: 96, lowest: 42, grade_distribution: { A: 7, B: 7, C: 5, D: 2, F: 1 } },
-        ],
-        top_students: [
-          { student_name: 'Abraham Kuol', overall_percentage: 92, grade: 'A' },
-          { student_name: 'Achol Deng', overall_percentage: 88, grade: 'A' },
-          { student_name: 'Bol Malek', overall_percentage: 85, grade: 'A' },
-        ],
+    setReportData(null)
+    setGenerated(false)
+    
+    try {
+      const response = await reportsAPI.getOverview({
+        class_id: filters.class_id || undefined,
+        academic_year: filters.academic_year,
+        term: filters.term,
       })
+      
+      if (response?.success && response.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else if (response?.data) {
+        setReportData(response.data)
+        setGenerated(true)
+      } else {
+        toast.error('Failed to generate report. No data available.')
+      }
+    } catch (error) {
+      console.error('Failed to generate academic report:', error)
+      if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else {
+        toast.error(error.message || 'Failed to generate report')
+      }
+    } finally {
       setLoading(false)
-      setGenerated(true)
-    }, 1000)
+    }
   }
 
   const handleExportPDF = () => {
-    exportToPDF(reportRef.current, `Academic_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+    if (reportRef.current) {
+      exportToPDF(reportRef.current, `Academic_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+    }
   }
 
   const getGradeColor = (grade) => {
@@ -135,89 +150,105 @@ function AcademicReport() {
       {/* Report Results */}
       {loading && <LoadingSpinner />}
 
+      {!loading && !generated && (
+        <div className="text-center py-12">
+          <BarChart3 size={48} className="text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500">Select filters and click "Generate Report" to view academic data.</p>
+        </div>
+      )}
+
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
           {/* Overview */}
           <Card>
             <div className="text-center mb-4">
-              <h3 className="text-lg font-semibold">{reportData.class_name} ({reportData.class_level})</h3>
+              <h3 className="text-lg font-semibold">
+                {reportData.class_name || 'All Classes'} ({reportData.class_level || 'All Levels'})
+              </h3>
               <p className="text-sm text-gray-500">{filters.academic_year} - {filters.term}</p>
             </div>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-3xl font-bold text-primary-600">{reportData.overall_pass_rate}%</p>
+                <p className="text-3xl font-bold text-primary-600">{reportData.overall_pass_rate || 0}%</p>
                 <p className="text-xs text-gray-500">Pass Rate</p>
               </div>
               <div>
-                <p className="text-3xl font-bold text-green-600">{reportData.class_average}%</p>
+                <p className="text-3xl font-bold text-green-600">{reportData.class_average || 0}%</p>
                 <p className="text-xs text-gray-500">Class Average</p>
               </div>
               <div>
-                <p className="text-3xl font-bold text-purple-600">{reportData.total_students}</p>
+                <p className="text-3xl font-bold text-purple-600">{reportData.total_students || 0}</p>
                 <p className="text-xs text-gray-500">Students</p>
               </div>
             </div>
           </Card>
 
           {/* Subject Breakdown */}
-          <Card title="Subject Performance">
-            <div className="space-y-4">
-              {reportData.subjects.map((subject, i) => (
-                <div key={i} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold">{subject.subject_name}</h4>
-                    <Badge variant={subject.pass_rate >= 80 ? 'success' : subject.pass_rate >= 60 ? 'warning' : 'danger'}>
-                      {subject.pass_rate}% Pass
-                    </Badge>
+          {(reportData.subjects || []).length > 0 && (
+            <Card title="Subject Performance">
+              <div className="space-y-4">
+                {reportData.subjects.map((subject, i) => (
+                  <div key={i} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold">{subject.subject_name}</h4>
+                      <Badge variant={subject.pass_rate >= 80 ? 'success' : subject.pass_rate >= 60 ? 'warning' : 'danger'}>
+                        {subject.pass_rate || 0}% Pass
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 text-center text-sm mb-3">
+                      <div><p className="font-bold">{subject.average_score || 0}%</p><p className="text-xs text-gray-500">Average</p></div>
+                      <div><p className="font-bold text-green-600">{subject.highest || 0}%</p><p className="text-xs text-gray-500">Highest</p></div>
+                      <div><p className="font-bold text-red-600">{subject.lowest || 0}%</p><p className="text-xs text-gray-500">Lowest</p></div>
+                      <div><p className="font-bold">{subject.pass_rate || 0}%</p><p className="text-xs text-gray-500">Pass Rate</p></div>
+                    </div>
+                    {subject.grade_distribution && (
+                      <>
+                        <div className="flex gap-1 h-6 rounded-full overflow-hidden">
+                          {Object.entries(subject.grade_distribution).map(([grade, count]) => (
+                            <div
+                              key={grade}
+                              className={`${getGradeColor(grade)} flex items-center justify-center text-xs text-white font-medium`}
+                              style={{ width: `${(count / (reportData.total_students || 1)) * 100}%` }}
+                              title={`Grade ${grade}: ${count} students`}
+                            >
+                              {count > 2 && grade}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                          {Object.entries(subject.grade_distribution).map(([grade, count]) => (
+                            <span key={grade}>{grade}: {count}</span>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-center text-sm mb-3">
-                    <div><p className="font-bold">{subject.average_score}%</p><p className="text-xs text-gray-500">Average</p></div>
-                    <div><p className="font-bold text-green-600">{subject.highest}%</p><p className="text-xs text-gray-500">Highest</p></div>
-                    <div><p className="font-bold text-red-600">{subject.lowest}%</p><p className="text-xs text-gray-500">Lowest</p></div>
-                    <div><p className="font-bold">{subject.pass_rate}%</p><p className="text-xs text-gray-500">Pass Rate</p></div>
-                  </div>
-                  {/* Grade Distribution */}
-                  <div className="flex gap-1 h-6 rounded-full overflow-hidden">
-                    {Object.entries(subject.grade_distribution).map(([grade, count]) => (
-                      <div
-                        key={grade}
-                        className={`${getGradeColor(grade)} flex items-center justify-center text-xs text-white font-medium`}
-                        style={{ width: `${(count / reportData.total_students) * 100}%` }}
-                        title={`Grade ${grade}: ${count} students`}
-                      >
-                        {count > 2 && grade}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                    {Object.entries(subject.grade_distribution).map(([grade, count]) => (
-                      <span key={grade}>{grade}: {count}</span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Top Students */}
-          <Card title="Top Performers">
-            <div className="space-y-2">
-              {reportData.top_students.map((student, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <span className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 font-bold text-sm">
-                      {i + 1}
-                    </span>
-                    <span className="font-medium">{student.student_name}</span>
+          {(reportData.top_students || []).length > 0 && (
+            <Card title="Top Performers">
+              <div className="space-y-2">
+                {reportData.top_students.map((student, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 font-bold text-sm">
+                        {i + 1}
+                      </span>
+                      <span className="font-medium">{student.student_name}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-primary-600">{student.overall_percentage || 0}%</span>
+                      <Badge variant="success">{student.grade || 'N/A'}</Badge>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-primary-600">{student.overall_percentage}%</span>
-                    <Badge variant="success">{student.grade}</Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
       )}
     </div>
