@@ -7,6 +7,7 @@ from datetime import datetime
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
 from app.schemas.common import SuccessResponse
+from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
 
@@ -31,10 +32,10 @@ async def list_classes(
     total = await db.classes.count_documents(filter_query)
     classes = await db.classes.find(filter_query).sort("class_name", 1).skip(skip).limit(limit).to_list(length=limit)
     
+    classes = [parse_mongo_document(c) for c in classes]
+    
+    # Calculate occupancy
     for c in classes:
-        c["_id"] = str(c["_id"])
-        if c.get("class_teacher_id"): c["class_teacher_id"] = str(c["class_teacher_id"])
-        if c.get("classroom_id"): c["classroom_id"] = str(c["classroom_id"])
         if c.get("max_capacity") and c["max_capacity"] > 0:
             c["occupancy_rate"] = round((c.get("current_enrollment", 0) / c["max_capacity"]) * 100, 1)
             c["available_spots"] = c["max_capacity"] - c.get("current_enrollment", 0)
@@ -102,13 +103,14 @@ async def get_class(
     class_doc = await db.classes.find_one({"_id": ObjectId(class_id)})
     if not class_doc: raise HTTPException(status_code=404, detail="Class not found")
     
-    class_doc["_id"] = str(class_doc["_id"])
-    if class_doc.get("class_teacher_id"): class_doc["class_teacher_id"] = str(class_doc["class_teacher_id"])
-    if class_doc.get("classroom_id"): class_doc["classroom_id"] = str(class_doc["classroom_id"])
+    class_doc = parse_mongo_document(class_doc)
     
     if class_doc.get("class_teacher_id"):
-        teacher = await db.teachers.find_one({"_id": ObjectId(class_doc["class_teacher_id"])})
-        if teacher: class_doc["teacher_name"] = f"{teacher['first_name']} {teacher['last_name']}"
+        try:
+            teacher = await db.teachers.find_one({"_id": ObjectId(class_doc["class_teacher_id"])})
+            if teacher: class_doc["teacher_name"] = f"{teacher['first_name']} {teacher['last_name']}"
+        except Exception:
+            class_doc["teacher_name"] = "Unknown"
     
     class_doc["student_count"] = await db.students.count_documents({
         "current_class_id": ObjectId(class_id), "status": "active"
@@ -128,9 +130,7 @@ async def get_class_students(
         "current_class_id": ObjectId(class_id), "status": "active"
     }).sort("last_name", 1).to_list(length=None)
     
-    for s in students:
-        s["_id"] = str(s["_id"])
-        if s.get("current_class_id"): s["current_class_id"] = str(s["current_class_id"])
+    students = [parse_mongo_document(s) for s in students]
     
     class_doc = await db.classes.find_one({"_id": ObjectId(class_id)})
     class_name = class_doc["class_name"] if class_doc else "Unknown"
@@ -197,9 +197,7 @@ async def create_class(
     doc = {k: v for k, v in doc.items() if v is not None}
     
     result = await db.classes.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-    if doc.get("class_teacher_id"): doc["class_teacher_id"] = str(doc["class_teacher_id"])
-    if doc.get("classroom_id"): doc["classroom_id"] = str(doc["classroom_id"])
+    doc = parse_mongo_document(doc)
     
     return SuccessResponse(success=True, message=f"Class {class_name} created", data=doc)
 
@@ -233,8 +231,6 @@ async def update_class(
     )
     
     if not result: raise HTTPException(status_code=404, detail="Class not found")
-    result["_id"] = str(result["_id"])
-    if result.get("class_teacher_id"): result["class_teacher_id"] = str(result["class_teacher_id"])
-    if result.get("classroom_id"): result["classroom_id"] = str(result["classroom_id"])
+    result = parse_mongo_document(result)
     
     return SuccessResponse(success=True, message="Class updated", data=result)
