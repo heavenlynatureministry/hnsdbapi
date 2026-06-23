@@ -65,7 +65,16 @@ function Sidebar() {
         {/* Logo */}
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-800">
           <div className={`flex items-center gap-3 ${sidebarCollapsed && !sidebarOpen ? 'justify-center w-full' : ''}`}>
-            <div className="w-9 h-9 rounded-lg bg-primary-600 flex items-center justify-center flex-shrink-0">
+            <img 
+              src="/logo.png" 
+              alt="HNS Logo" 
+              className="w-9 h-9 rounded-lg object-cover flex-shrink-0"
+              onError={(e) => { 
+                e.target.style.display = 'none'
+                e.target.parentNode.querySelector('.fallback-icon').style.display = 'flex'
+              }}
+            />
+            <div className="w-9 h-9 rounded-lg bg-primary-600 items-center justify-center flex-shrink-0 hidden fallback-icon" style={{ display: 'none' }}>
               <GraduationCap size={20} className="text-white" />
             </div>
             {(!sidebarCollapsed || sidebarOpen) && (
