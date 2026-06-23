@@ -1,6 +1,3 @@
-
-### README.md
-```markdown
 # 🏫 Heavenly Nature School Management System
 
 > **"Nurturing Right Leaders"**
@@ -50,7 +47,7 @@ A comprehensive, full-stack school management system built for **Heavenly Nature
 - Student type classification (street, abundant, orphan, other)
 - Document management
 
-### 👨‍🏫 Teacher Management
+### 👨🏫 Teacher Management
 - Teacher registration with qualifications
 - Subject assignment
 - Class teacher assignment
