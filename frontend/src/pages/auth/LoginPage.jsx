@@ -173,10 +173,6 @@ function LoginPage() {
             </button>
           </form>
         </div>
-
-        <p className="text-center text-xs text-gray-400 dark:text-gray-600 mt-8">
-          &copy; {new Date().getFullYear()} Heavenly Nature Nursery & Primary School. All rights reserved.
-        </p>
       </div>
     </div>
   )
