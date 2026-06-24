@@ -53,21 +53,47 @@ export const exportToPDF = (element, filename = 'report') => {
             body { 
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
+              position: relative;
             }
             .no-print { display: none !important; }
             .page-break { page-break-after: always; }
+            
+            /* Watermark background on every page */
+            .watermark {
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              z-index: -1;
+              opacity: 0.15;
+              pointer-events: none;
+            }
+            .watermark img {
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+            }
             
             .letterhead {
               text-align: center;
               padding-bottom: 15px;
               margin-bottom: 20px;
               border-bottom: 3px double #1a56db;
+              position: relative;
+              z-index: 1;
+              background: rgba(255, 255, 255, 0.85);
             }
             .letterhead img {
               max-width: 100%;
               width: 700px;
               height: auto;
               object-fit: contain;
+            }
+            
+            .report-content {
+              position: relative;
+              z-index: 1;
             }
             
             .report-footer {
@@ -77,6 +103,9 @@ export const exportToPDF = (element, filename = 'report') => {
               border-top: 1px solid #e5e7eb;
               font-size: 10px;
               color: #9ca3af;
+              position: relative;
+              z-index: 1;
+              background: rgba(255, 255, 255, 0.85);
             }
             .report-footer p {
               margin: 2px 0;
@@ -88,6 +117,24 @@ export const exportToPDF = (element, filename = 'report') => {
             padding: 20px;
             color: #1f2937;
             background: white;
+            position: relative;
+          }
+          
+          /* Watermark for screen preview */
+          .watermark {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.08;
+            pointer-events: none;
+          }
+          .watermark img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
           }
           
           /* Hide dark mode styles when printing */
@@ -104,6 +151,11 @@ export const exportToPDF = (element, filename = 'report') => {
         </style>
       </head>
       <body>
+        <!-- Watermark Background (appears on every page) -->
+        <div class="watermark">
+          <img src="${window.location.origin}/watermark-A4.jpg" alt="Watermark Background" onerror="this.style.display='none';" />
+        </div>
+        
         <!-- Letterhead Header -->
         <div class="letterhead">
           <img src="${window.location.origin}/letter-head.jpg" alt="Heavenly Nature School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
@@ -114,7 +166,9 @@ export const exportToPDF = (element, filename = 'report') => {
         </div>
         
         <!-- Report Content -->
-        ${element.outerHTML}
+        <div class="report-content">
+          ${element.outerHTML}
+        </div>
         
         <!-- Report Footer -->
         <div class="report-footer">
@@ -127,15 +181,18 @@ export const exportToPDF = (element, filename = 'report') => {
 
   printWindow.document.close()
 
-  // Wait for content to load then print
+  // Wait for content and images to load then print
   printWindow.onload = () => {
     printWindow.focus()
-    printWindow.print()
+    // Small delay to ensure watermark image loads
+    setTimeout(() => {
+      printWindow.print()
+    }, 300)
   }
 
   // Fallback if onload doesn't fire
   setTimeout(() => {
     printWindow.focus()
     printWindow.print()
-  }, 800)
+  }, 1000)
 }
