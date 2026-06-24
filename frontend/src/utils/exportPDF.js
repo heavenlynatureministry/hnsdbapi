@@ -15,7 +15,7 @@ export const exportToPDF = (element, filename = 'report') => {
     return
   }
 
-  // Get styles
+  // Get styles from the current document
   const styles = document.querySelectorAll('style, link[rel="stylesheet"]')
   let styleContent = ''
   styles.forEach(style => {
@@ -25,6 +25,18 @@ export const exportToPDF = (element, filename = 'report') => {
       styleContent += style.outerHTML
     }
   })
+
+  // Format current date and time for footer
+  const now = new Date()
+  const formattedDateTime = now.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  })
+  const currentYear = now.getFullYear()
 
   // Build the print content
   printWindow.document.write(`
@@ -57,6 +69,18 @@ export const exportToPDF = (element, filename = 'report') => {
               height: auto;
               object-fit: contain;
             }
+            
+            .report-footer {
+              text-align: center;
+              margin-top: 30px;
+              padding-top: 15px;
+              border-top: 1px solid #e5e7eb;
+              font-size: 10px;
+              color: #9ca3af;
+            }
+            .report-footer p {
+              margin: 2px 0;
+            }
           }
           
           body {
@@ -66,6 +90,7 @@ export const exportToPDF = (element, filename = 'report') => {
             background: white;
           }
           
+          /* Hide dark mode styles when printing */
           .dark { 
             background: white !important; 
             color: #1f2937 !important;
@@ -81,17 +106,20 @@ export const exportToPDF = (element, filename = 'report') => {
       <body>
         <!-- Letterhead Header -->
         <div class="letterhead">
-          <img src="${window.location.origin}/letter-head.jpg" alt="Heavenly Nature School Letterhead" />
+          <img src="${window.location.origin}/letter-head.jpg" alt="Heavenly Nature School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+          <div style="display:none; text-align:center; padding:10px;">
+            <h2 style="margin:0; color:#1a56db;">Heavenly Nature Nursery & Primary School</h2>
+            <p style="margin:4px 0; font-style:italic; color:#4b5563;">"Nurturing Right Leaders"</p>
+          </div>
         </div>
         
+        <!-- Report Content -->
         ${element.outerHTML}
         
-        <div style="text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #9ca3af;">
-          <p>Generated on ${new Date().toLocaleDateString('en-US', { 
-            year: 'numeric', month: 'long', day: 'numeric', 
-            hour: '2-digit', minute: '2-digit' 
-          })}</p>
-          <p>&copy; ${new Date().getFullYear()} Heavenly Nature Nursery & Primary School. All rights reserved.</p>
+        <!-- Report Footer -->
+        <div class="report-footer">
+          <p>Generated on ${formattedDateTime}</p>
+          <p>&copy; ${currentYear} Heavenly Nature Nursery & Primary School. All rights reserved.</p>
         </div>
       </body>
     </html>
@@ -99,13 +127,15 @@ export const exportToPDF = (element, filename = 'report') => {
 
   printWindow.document.close()
 
+  // Wait for content to load then print
   printWindow.onload = () => {
     printWindow.focus()
     printWindow.print()
   }
 
+  // Fallback if onload doesn't fire
   setTimeout(() => {
     printWindow.focus()
     printWindow.print()
-  }, 500)
+  }, 800)
 }
