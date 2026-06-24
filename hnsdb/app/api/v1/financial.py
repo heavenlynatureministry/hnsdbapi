@@ -1,5 +1,5 @@
 """Financial API - Production Ready"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request, Path
 from typing import Optional, Dict, Any
 from datetime import datetime
 from bson import ObjectId
@@ -206,3 +206,49 @@ async def record_payment(
     doc = parse_mongo_document(doc)
     
     return SuccessResponse(success=True, message="Payment recorded", data=doc)
+
+
+@router.delete("/transactions/{transaction_id}", response_model=SuccessResponse)
+async def delete_transaction(
+    transaction_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete a financial transaction (admin only)"""
+    db = get_database()
+    
+    result = await db.financial_records.delete_one({"_id": ObjectId(transaction_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    return SuccessResponse(success=True, message="Transaction deleted")
+
+
+@router.delete("/payments/{payment_id}", response_model=SuccessResponse)
+async def delete_payment(
+    payment_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete a payment record (admin only)"""
+    db = get_database()
+    
+    payment = await db.payments.find_one({"_id": ObjectId(payment_id)})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    await db.payments.delete_one({"_id": ObjectId(payment_id)})
+    
+    # Log the deletion
+    await db.audit_log.insert_one({
+        "table_name": "payments",
+        "record_id": payment_id,
+        "operation": "DELETE",
+        "changed_by": ObjectId(current_user["_id"]) if current_user.get("_id") else None,
+        "details": {
+            "student_name": payment.get("student_name"),
+            "amount": payment.get("amount_paid"),
+            "receipt_number": payment.get("receipt_number")
+        },
+        "changed_at": datetime.utcnow()
+    })
+    
+    return SuccessResponse(success=True, message="Payment deleted")
