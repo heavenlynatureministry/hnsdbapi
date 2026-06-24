@@ -1,5 +1,5 @@
 """Attendance API - Production Ready"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request, path
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request, Path
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 from bson import ObjectId
