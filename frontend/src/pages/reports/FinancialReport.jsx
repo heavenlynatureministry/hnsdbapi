@@ -113,6 +113,15 @@ function FinancialReport() {
 
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
+          {/* Report Title - visible in print only */}
+          <div className="hidden print:block text-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900">Financial Report</h2>
+            <p className="text-sm text-gray-500">
+              {filters.academic_year} • {filters.term} • {filters.report_type === 'summary' ? 'Summary' : filters.report_type === 'income_statement' ? 'Income Statement' : 'Fee Collection'}
+            </p>
+            <hr className="mt-3 border-gray-300" />
+          </div>
+
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
