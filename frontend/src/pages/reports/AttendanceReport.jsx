@@ -114,6 +114,15 @@ function AttendanceReport() {
 
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
+          {/* Report Title - visible in print only */}
+          <div className="hidden print:block text-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900">Attendance Report</h2>
+            <p className="text-sm text-gray-500">
+              {filters.academic_year} • {filters.term} • {filters.report_type === 'overview' ? 'Overview' : filters.report_type === 'by_class' ? 'By Class' : 'Chronic Absentees'}
+            </p>
+            <hr className="mt-3 border-gray-300" />
+          </div>
+
           <Card>
             <div className="text-center mb-4">
               <p className="text-4xl font-bold text-primary-600">{reportData.attendance_rate || reportData.overall_rate || 0}%</p>
