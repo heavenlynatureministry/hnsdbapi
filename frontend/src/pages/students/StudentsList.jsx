@@ -50,15 +50,14 @@ function StudentsList() {
         limit,
       })
       
-      if (response?.success) {
-        setStudents(response.data?.students || response.data || [])
-        setTotal(response.data?.total || 0)
-        setTotalPages(response.data?.total_pages || Math.ceil((response.data?.total || 0) / limit))
-      } else {
-        setStudents([])
-        setTotal(0)
-        setTotalPages(0)
-      }
+      // Defensive: handle different response structures
+      const data = response?.data || response
+      const studentList = data?.students || data?.items || data || []
+      const safeStudents = Array.isArray(studentList) ? studentList : []
+      
+      setStudents(safeStudents)
+      setTotal(data?.total || 0)
+      setTotalPages(data?.total_pages || Math.ceil((data?.total || 0) / limit))
     } catch (error) {
       console.error('Failed to fetch students:', error)
       if (error.status === 0) {
@@ -78,10 +77,13 @@ function StudentsList() {
     fetchStudents()
   }, [fetchStudents])
 
+  // Defensive: ensure students is always an array
+  const safeStudents = Array.isArray(students) ? students : []
+
   // Client-side filtering for type and gender
-  const filteredStudents = students.filter((s) => {
-    const matchesType = !typeFilter || s.student_type === typeFilter
-    const matchesGender = !genderFilter || s.gender === genderFilter
+  const filteredStudents = safeStudents.filter((s) => {
+    const matchesType = !typeFilter || s?.student_type === typeFilter
+    const matchesGender = !genderFilter || s?.gender === genderFilter
     return matchesType && matchesGender
   })
 
@@ -90,16 +92,18 @@ function StudentsList() {
       active: 'success', inactive: 'danger', graduated: 'info',
       transferred: 'warning', suspended: 'danger',
     }
-    return <Badge variant={variants[status] || 'gray'}>{status}</Badge>
+    return <Badge variant={variants[status] || 'gray'}>{status || 'unknown'}</Badge>
   }
 
   const getTypeBadge = (type) => {
     const variants = { street: 'warning', abundant: 'success', orphan: 'info', other: 'gray' }
     const labels = { street: 'Street Child', abundant: 'Abundant', orphan: 'Orphan', other: 'Other' }
-    return <Badge variant={variants[type] || 'gray'}>{labels[type] || type}</Badge>
+    return <Badge variant={variants[type] || 'gray'}>{labels[type] || type || 'unknown'}</Badge>
   }
 
-  const classes = [...new Set(students.map(s => s.class_name).filter(Boolean))]
+  const classes = [...new Set(safeStudents.map(s => s?.class_name).filter(Boolean))]
+
+  if (loading) return <LoadingSpinner />
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -122,9 +126,9 @@ function StudentsList() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: 'Total Students', value: total, icon: Users, color: 'bg-blue-100 text-blue-600' },
-          { label: 'Active', value: students.filter(s => s.status === 'active').length, icon: UserCheck, color: 'bg-green-100 text-green-600' },
+          { label: 'Active', value: safeStudents.filter(s => s?.status === 'active').length, icon: UserCheck, color: 'bg-green-100 text-green-600' },
           { label: 'Classes', value: classes.length, icon: School, color: 'bg-purple-100 text-purple-600' },
-          { label: 'Graduated', value: students.filter(s => s.status === 'graduated').length, icon: GraduationCap, color: 'bg-yellow-100 text-yellow-600' },
+          { label: 'Graduated', value: safeStudents.filter(s => s?.status === 'graduated').length, icon: GraduationCap, color: 'bg-yellow-100 text-yellow-600' },
         ].map((stat, i) => (
           <div key={i} className="stat-card">
             <div className={`stat-card-icon ${stat.color}`}><stat.icon size={20} /></div>
@@ -160,9 +164,7 @@ function StudentsList() {
       </div>
 
       {/* Table */}
-      {loading ? (
-        <LoadingSpinner />
-      ) : filteredStudents.length === 0 ? (
+      {filteredStudents.length === 0 ? (
         <EmptyState
           icon={<GraduationCap size={48} />}
           title="No students found"
@@ -187,36 +189,36 @@ function StudentsList() {
               </thead>
               <tbody>
                 {filteredStudents.map((student) => (
-                  <tr key={student._id}>
+                  <tr key={student?._id || Math.random()}>
                     <td>
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 font-medium text-sm">
-                          {student.first_name?.[0]}{student.last_name?.[0]}
+                          {student?.first_name?.[0]}{student?.last_name?.[0]}
                         </div>
-                        <Link to={`/students/${student._id}`} className="font-medium text-primary-600 hover:text-primary-700">
-                          {student.first_name} {student.last_name}
+                        <Link to={`/students/${student?._id}`} className="font-medium text-primary-600 hover:text-primary-700">
+                          {student?.first_name || ''} {student?.last_name || ''}
                         </Link>
                       </div>
                     </td>
-                    <td className="text-sm font-mono">{student.student_id_number}</td>
-                    <td className="text-sm">{student.gender}</td>
-                    <td className="text-sm">{student.age || 'N/A'} yrs</td>
-                    <td className="text-sm">{student.class_name || 'N/A'}</td>
-                    <td>{getTypeBadge(student.student_type)}</td>
-                    <td>{getStatusBadge(student.status)}</td>
+                    <td className="text-sm font-mono">{student?.student_id_number || 'N/A'}</td>
+                    <td className="text-sm">{student?.gender || 'N/A'}</td>
+                    <td className="text-sm">{student?.age || 'N/A'} yrs</td>
+                    <td className="text-sm">{student?.class_name || 'N/A'}</td>
+                    <td>{getTypeBadge(student?.student_type)}</td>
+                    <td>{getStatusBadge(student?.status)}</td>
                     <td className="text-right">
                       <div className="relative">
-                        <button onClick={() => setOpenDropdown(openDropdown === student._id ? null : student._id)} className="btn btn-ghost btn-sm btn-icon">
+                        <button onClick={() => setOpenDropdown(openDropdown === student?._id ? null : student?._id)} className="btn btn-ghost btn-sm btn-icon">
                           <MoreVertical size={16} />
                         </button>
-                        {openDropdown === student._id && (
+                        {openDropdown === student?._id && (
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
                             <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border z-20 py-1">
-                              <Link to={`/students/${student._id}`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
+                              <Link to={`/students/${student?._id}`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <Eye size={14} /> View
                               </Link>
-                              <Link to={`/students/${student._id}/edit`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
+                              <Link to={`/students/${student?._id}/edit`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <Edit size={14} /> Edit
                               </Link>
                             </div>
