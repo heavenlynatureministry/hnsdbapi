@@ -188,7 +188,7 @@ async def cancel_exam(
     exam_id: str = Path(...),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Cancel an exam"""
+    """Cancel an exam (soft delete)"""
     db = get_database()
     result = await db.exams.update_one(
         {"_id": ObjectId(exam_id)},
@@ -196,6 +196,51 @@ async def cancel_exam(
     )
     if result.modified_count == 0: raise HTTPException(status_code=404, detail="Exam not found")
     return SuccessResponse(success=True, message="Exam cancelled")
+
+
+@router.delete("/{exam_id}/permanent", response_model=SuccessResponse)
+async def permanently_delete_exam(
+    exam_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Permanently delete an exam and all its results (admin only)"""
+    db = get_database()
+    
+    # Check exam exists
+    exam = await db.exams.find_one({"_id": ObjectId(exam_id)})
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    
+    exam_name = exam.get("exam_name", "Unknown")
+    
+    try:
+        # Delete all exam results
+        results_deleted = await db.exam_results.delete_many({"exam_id": ObjectId(exam_id)})
+        
+        # Delete the exam
+        await db.exams.delete_one({"_id": ObjectId(exam_id)})
+        
+        # Log the deletion
+        await db.audit_log.insert_one({
+            "table_name": "exams",
+            "record_id": exam_id,
+            "operation": "DELETE_PERMANENT",
+            "changed_by": ObjectId(current_user["_id"]) if current_user.get("_id") else None,
+            "details": {
+                "exam_name": exam_name,
+                "exam_type": exam.get("exam_type"),
+                "results_deleted": results_deleted.deleted_count
+            },
+            "changed_at": datetime.utcnow()
+        })
+        
+        return SuccessResponse(
+            success=True,
+            message=f"Exam '{exam_name}' permanently deleted with {results_deleted.deleted_count} results"
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete exam: {str(e)}")
 
 
 @router.get("/results/{exam_id}", response_model=SuccessResponse)
@@ -230,6 +275,29 @@ async def get_results(
         "results": results,
         "statistics": stats
     })
+
+
+@router.delete("/results/{exam_id}", response_model=SuccessResponse)
+async def delete_exam_results(
+    exam_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete all results for an exam (admin only)"""
+    db = get_database()
+    
+    result = await db.exam_results.delete_many({"exam_id": ObjectId(exam_id)})
+    
+    # Update exam status back to scheduled
+    await db.exams.update_one(
+        {"_id": ObjectId(exam_id)},
+        {"$set": {
+            "results_entered": 0,
+            "status": "scheduled",
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    return SuccessResponse(success=True, message=f"Deleted {result.deleted_count} results, exam reset to scheduled")
 
 
 @router.post("/results", response_model=SuccessResponse, status_code=201)
