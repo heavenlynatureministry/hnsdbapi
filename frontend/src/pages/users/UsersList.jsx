@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useApp } from '../../context/AppContext'
 import authAPI from '../../api/auth'
+import api from '../../api/axios'
 import PageHeader from '../../components/common/PageHeader'
 import SearchBar from '../../components/common/SearchBar'
 import Pagination from '../../components/common/Pagination'
@@ -41,9 +42,13 @@ function UsersList() {
   const [totalPages, setTotalPages] = useState(0)
   const limit = 20
 
-  // Delete confirmation
+  // Soft delete (deactivate) confirmation
   const [deleteUser, setDeleteUser] = useState(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+
+  // Permanent delete confirmation
+  const [permanentDeleteUser, setPermanentDeleteUser] = useState(null)
+  const [showPermanentDeleteDialog, setShowPermanentDeleteDialog] = useState(false)
 
   // Status change confirmation
   const [statusUser, setStatusUser] = useState(null)
@@ -103,14 +108,25 @@ function UsersList() {
       const response = await authAPI.deactivateUser(deleteUser._id)
       if (response?.success) {
         toast.success('User deactivated successfully')
-      } else {
-        toast.success('User deactivated successfully')
       }
       setShowDeleteDialog(false)
       setDeleteUser(null)
       fetchUsers()
     } catch (error) {
       toast.error(error.message || 'Failed to deactivate user')
+    }
+  }
+
+  const handlePermanentDelete = async () => {
+    if (!permanentDeleteUser) return
+    try {
+      await api.delete(`/users/${permanentDeleteUser._id}/permanent`)
+      toast.success(`User ${permanentDeleteUser.first_name} ${permanentDeleteUser.last_name} permanently deleted`)
+      setShowPermanentDeleteDialog(false)
+      setPermanentDeleteUser(null)
+      fetchUsers()
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete user')
     }
   }
 
@@ -126,8 +142,6 @@ function UsersList() {
       }
       
       if (response?.success) {
-        toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`)
-      } else {
         toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`)
       }
       setShowStatusDialog(false)
@@ -146,7 +160,7 @@ function UsersList() {
       counselor: 'success',
       staff: 'gray',
     }
-    return <Badge variant={variants[role] || 'gray'}>{role}</Badge>
+    return <Badge variant={variants[role] || 'gray'}>{role || 'unknown'}</Badge>
   }
 
   const getStatusBadge = (status) => {
@@ -155,8 +169,10 @@ function UsersList() {
       inactive: 'danger',
       suspended: 'warning',
     }
-    return <Badge variant={variants[status] || 'gray'}>{status}</Badge>
+    return <Badge variant={variants[status] || 'gray'}>{status || 'unknown'}</Badge>
   }
+
+  const safeUsers = Array.isArray(users) ? users : []
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -209,7 +225,7 @@ function UsersList() {
       {/* Users Table */}
       {loading ? (
         <LoadingSpinner />
-      ) : users.length === 0 ? (
+      ) : safeUsers.length === 0 ? (
         <EmptyState
           icon={<Users size={48} />}
           title="No users found"
@@ -236,16 +252,16 @@ function UsersList() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
-                  <tr key={user._id}>
+                {safeUsers.map((user) => (
+                  <tr key={user?._id || Math.random()}>
                     <td>
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 font-medium text-sm">
-                          {user.first_name?.[0]}{user.last_name?.[0]}
+                          {user?.first_name?.[0]}{user?.last_name?.[0]}
                         </div>
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">
-                            {user.first_name} {user.last_name}
+                            {user?.first_name || ''} {user?.last_name || ''}
                           </p>
                         </div>
                       </div>
@@ -253,31 +269,31 @@ function UsersList() {
                     <td>
                       <div className="flex items-center gap-1 text-sm">
                         <Mail size={14} className="text-gray-400" />
-                        {user.email}
+                        {user?.email || 'N/A'}
                       </div>
                     </td>
-                    <td>{getRoleBadge(user.role)}</td>
+                    <td>{getRoleBadge(user?.role)}</td>
                     <td>
                       <div className="flex items-center gap-1 text-sm">
                         <Phone size={14} className="text-gray-400" />
-                        {user.phone_number || 'N/A'}
+                        {user?.phone_number || 'N/A'}
                       </div>
                     </td>
-                    <td>{getStatusBadge(user.status)}</td>
+                    <td>{getStatusBadge(user?.status)}</td>
                     <td className="text-sm text-gray-500">
-                      {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                      {user?.created_at ? new Date(user?.created_at).toLocaleDateString() : 'N/A'}
                     </td>
                     <td className="text-right">
                       <div className="relative">
                         <button
                           onClick={() =>
-                            setOpenDropdown(openDropdown === user._id ? null : user._id)
+                            setOpenDropdown(openDropdown === user?._id ? null : user?._id)
                           }
                           className="btn btn-ghost btn-sm btn-icon"
                         >
                           <MoreVertical size={16} />
                         </button>
-                        {openDropdown === user._id && (
+                        {openDropdown === user?._id && (
                           <>
                             <div
                               className="fixed inset-0 z-10"
@@ -285,7 +301,7 @@ function UsersList() {
                             />
                             <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-20 py-1">
                               <Link
-                                to={`/users/${user._id}/edit`}
+                                to={`/users/${user?._id}/edit`}
                                 className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                                 onClick={() => setOpenDropdown(null)}
                               >
@@ -300,7 +316,7 @@ function UsersList() {
                                 }}
                                 className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
                               >
-                                {user.status === 'active' ? (
+                                {user?.status === 'active' ? (
                                   <>
                                     <UserX size={14} />
                                     Deactivate
@@ -312,18 +328,31 @@ function UsersList() {
                                   </>
                                 )}
                               </button>
-                              {user._id !== currentUser?._id && (
-                                <button
-                                  onClick={() => {
-                                    setDeleteUser(user)
-                                    setShowDeleteDialog(true)
-                                    setOpenDropdown(null)
-                                  }}
-                                  className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left"
-                                >
-                                  <Trash2 size={14} />
-                                  Delete
-                                </button>
+                              {user?._id !== currentUser?._id && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setDeleteUser(user)
+                                      setShowDeleteDialog(true)
+                                      setOpenDropdown(null)
+                                    }}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left"
+                                  >
+                                    <Trash2 size={14} />
+                                    Deactivate
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setPermanentDeleteUser(user)
+                                      setShowPermanentDeleteDialog(true)
+                                      setOpenDropdown(null)
+                                    }}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left"
+                                  >
+                                    <Trash2 size={14} />
+                                    Delete Permanently
+                                  </button>
+                                </>
                               )}
                             </div>
                           </>
@@ -347,7 +376,7 @@ function UsersList() {
         </div>
       )}
 
-      {/* Delete Confirmation */}
+      {/* Deactivate Confirmation */}
       <ConfirmDialog
         open={showDeleteDialog}
         onClose={() => {
@@ -358,6 +387,20 @@ function UsersList() {
         title="Deactivate User"
         message={`Are you sure you want to deactivate ${deleteUser?.first_name} ${deleteUser?.last_name}? This will prevent them from accessing the system.`}
         confirmText="Deactivate"
+        variant="danger"
+      />
+
+      {/* Permanent Delete Confirmation */}
+      <ConfirmDialog
+        open={showPermanentDeleteDialog}
+        onClose={() => {
+          setShowPermanentDeleteDialog(false)
+          setPermanentDeleteUser(null)
+        }}
+        onConfirm={handlePermanentDelete}
+        title="Permanently Delete User"
+        message={`Are you sure you want to permanently delete ${permanentDeleteUser?.first_name} ${permanentDeleteUser?.last_name}? This action cannot be undone.`}
+        confirmText="Delete Permanently"
         variant="danger"
       />
 
