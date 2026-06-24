@@ -261,3 +261,55 @@ async def attendance_analytics(
         "status_summary": summary,
         "attendance_rate": round((present / total * 100), 2) if total > 0 else 0
     })
+
+
+@router.delete("/records/{record_id}", response_model=SuccessResponse)
+async def delete_attendance_record(
+    record_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete a single attendance record (admin only)"""
+    db = get_database()
+    
+    result = await db.attendance.delete_one({"_id": ObjectId(record_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Attendance record not found")
+    
+    return SuccessResponse(success=True, message="Attendance record deleted")
+
+
+@router.delete("/class/{class_id}/date/{attendance_date}", response_model=SuccessResponse)
+async def delete_class_attendance_by_date(
+    class_id: str = Path(...),
+    attendance_date: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete all attendance records for a class on a specific date (admin only)"""
+    db = get_database()
+    
+    try:
+        parsed_date = datetime.strptime(attendance_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    date_obj = datetime.combine(parsed_date, datetime.min.time())
+    
+    result = await db.attendance.delete_many({
+        "class_id": ObjectId(class_id),
+        "date": date_obj
+    })
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="No attendance records found for this class and date")
+    
+    # Log the deletion
+    await db.audit_log.insert_one({
+        "table_name": "attendance",
+        "record_id": f"{class_id}_{attendance_date}",
+        "operation": "DELETE_BULK",
+        "changed_by": ObjectId(current_user["_id"]) if current_user.get("_id") else None,
+        "details": {"class_id": class_id, "date": attendance_date, "deleted_count": result.deleted_count},
+        "changed_at": datetime.utcnow()
+    })
+    
+    return SuccessResponse(success=True, message=f"Deleted {result.deleted_count} attendance records")
