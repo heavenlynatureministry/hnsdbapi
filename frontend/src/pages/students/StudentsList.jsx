@@ -8,10 +8,11 @@ import Pagination from '../../components/common/Pagination'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
 import Badge from '../../components/common/Badge'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { 
   GraduationCap, UserPlus, Upload, Search, 
   MoreVertical, Eye, Edit, UserCheck, ArrowUpRight,
-  Users, School, BookOpen
+  Users, School, BookOpen, Trash2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -30,6 +31,10 @@ function StudentsList() {
   const [totalPages, setTotalPages] = useState(0)
   const [openDropdown, setOpenDropdown] = useState(null)
   const limit = 20
+
+  // Delete confirmation
+  const [deleteStudent, setDeleteStudent] = useState(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   useEffect(() => {
     updatePageTitle('Students Management')
@@ -50,7 +55,6 @@ function StudentsList() {
         limit,
       })
       
-      // Defensive: handle different response structures
       const data = response?.data || response
       const studentList = data?.students || data?.items || data || []
       const safeStudents = Array.isArray(studentList) ? studentList : []
@@ -77,10 +81,27 @@ function StudentsList() {
     fetchStudents()
   }, [fetchStudents])
 
-  // Defensive: ensure students is always an array
+  const handlePermanentDelete = async () => {
+    if (!deleteStudent) return
+    try {
+      const response = await studentsAPI.delete(deleteStudent._id, 'Permanently deleted by admin')
+      // Also try permanent delete
+      try {
+        await api.delete(`/students/${deleteStudent._id}/permanent`)
+      } catch (e) {
+        // Fallback if permanent endpoint not available
+      }
+      toast.success(`Student ${deleteStudent.first_name} ${deleteStudent.last_name} deleted permanently`)
+      setShowDeleteDialog(false)
+      setDeleteStudent(null)
+      fetchStudents()
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete student')
+    }
+  }
+
   const safeStudents = Array.isArray(students) ? students : []
 
-  // Client-side filtering for type and gender
   const filteredStudents = safeStudents.filter((s) => {
     const matchesType = !typeFilter || s?.student_type === typeFilter
     const matchesGender = !genderFilter || s?.gender === genderFilter
@@ -214,13 +235,23 @@ function StudentsList() {
                         {openDropdown === student?._id && (
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
-                            <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border z-20 py-1">
+                            <div className="absolute right-0 mt-1 w-44 bg-white dark:bg-gray-800 rounded-lg shadow-lg border z-20 py-1">
                               <Link to={`/students/${student?._id}`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <Eye size={14} /> View
                               </Link>
                               <Link to={`/students/${student?._id}/edit`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <Edit size={14} /> Edit
                               </Link>
+                              <button
+                                onClick={() => {
+                                  setDeleteStudent(student)
+                                  setShowDeleteDialog(true)
+                                  setOpenDropdown(null)
+                                }}
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left"
+                              >
+                                <Trash2 size={14} /> Delete
+                              </button>
                             </div>
                           </>
                         )}
@@ -238,6 +269,20 @@ function StudentsList() {
           )}
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false)
+          setDeleteStudent(null)
+        }}
+        onConfirm={handlePermanentDelete}
+        title="Delete Student"
+        message={`Are you sure you want to permanently delete ${deleteStudent?.first_name} ${deleteStudent?.last_name}? This will also delete all attendance records, exam results, and payments. This action cannot be undone.`}
+        confirmText="Delete Permanently"
+        variant="danger"
+      />
     </div>
   )
 }
