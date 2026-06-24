@@ -98,6 +98,15 @@ function AnnualReport() {
 
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
+          {/* Report Title - visible in print only */}
+          <div className="hidden print:block text-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900">Annual School Report</h2>
+            <p className="text-sm text-gray-500">
+              {reportData.academic_year || '2024/2025'} Academic Year
+            </p>
+            <hr className="mt-3 border-gray-300" />
+          </div>
+
           <Card title={`Annual Report - ${reportData.academic_year || '2024/2025'}`}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
