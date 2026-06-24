@@ -72,11 +72,11 @@ function TransactionsList() {
     if (!showDelete) return
     try {
       await api.delete(`/financial/transactions/${showDelete._id}`)
-      toast.success('Transaction deleted')
+      toast.success('Transaction deleted permanently')
       setShowDelete(null)
       fetchTransactions()
     } catch (error) {
-      toast.error(error.message || 'Failed to delete')
+      toast.error(error.message || 'Failed to delete transaction')
     }
   }
 
@@ -212,7 +212,15 @@ function TransactionsList() {
         </div>
       )}
 
-      <ConfirmDialog open={!!showDelete} onClose={() => setShowDelete(null)} onConfirm={handleDelete} title="Delete Transaction" message="Are you sure you want to delete this transaction? This action cannot be undone." confirmText="Delete" variant="danger" />
+      <ConfirmDialog 
+        open={!!showDelete} 
+        onClose={() => setShowDelete(null)} 
+        onConfirm={handleDelete} 
+        title="Delete Transaction" 
+        message="Are you sure you want to permanently delete this transaction? This action cannot be undone." 
+        confirmText="Delete Permanently" 
+        variant="danger" 
+      />
     </div>
   )
 }
