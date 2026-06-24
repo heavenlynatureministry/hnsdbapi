@@ -156,9 +156,55 @@ async def deactivate_user(
     user_id: str = Path(...),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Deactivate user"""
+    """Deactivate user (soft delete)"""
     db = get_database()
     from app.models.user import UserModel
     success, message = await UserModel.deactivate_user(db, user_id)
     if not success: raise HTTPException(status_code=404, detail="User not found")
     return SuccessResponse(success=True, message=message)
+
+
+@router.delete("/{user_id}/permanent", response_model=SuccessResponse)
+async def permanently_delete_user(
+    user_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Permanently delete a user (admin only) - Cannot delete yourself"""
+    db = get_database()
+    
+    # Prevent self-deletion
+    if current_user.get("_id") == user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+    
+    # Check user exists
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent deleting the last admin
+    if user.get("role") == "admin":
+        admin_count = await db.users.count_documents({"role": "admin", "status": "active"})
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last admin account")
+    
+    user_name = f"{user.get('first_name', '')} {user.get('last_name', '')}"
+    user_email = user.get('email', '')
+    
+    try:
+        # Delete the user record
+        await db.users.delete_one({"_id": ObjectId(user_id)})
+        
+        # Log the deletion
+        await db.audit_log.insert_one({
+            "table_name": "users",
+            "record_id": user_id,
+            "operation": "DELETE_PERMANENT",
+            "changed_by": ObjectId(current_user["_id"]) if current_user.get("_id") else None,
+            "details": {"user_name": user_name, "email": user_email, "role": user.get("role")},
+            "changed_at": datetime.utcnow()
+        })
+        
+        return SuccessResponse(success=True, message=f"User '{user_name}' permanently deleted")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
