@@ -10,6 +10,7 @@ import FormSelect from '../../components/common/FormSelect'
 import Badge from '../../components/common/Badge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { Calendar, Plus, Edit, Trash2, MapPin, Clock, Users, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -22,6 +23,10 @@ function EventsPage() {
   const [saving, setSaving] = useState(false)
   const [filter, setFilter] = useState('upcoming')
   const [errors, setErrors] = useState({})
+
+  // Delete confirmation
+  const [deleteEvent, setDeleteEvent] = useState(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const [formData, setFormData] = useState({
     title: '', event_type: 'other', description: '',
@@ -43,12 +48,11 @@ function EventsPage() {
   const fetchEvents = async () => {
     setLoading(true)
     try {
-      const response = await schoolAPI.getEvents()
-      if (response?.success) {
-        setEvents(response.data?.events || response.data || [])
-      } else {
-        setEvents([])
-      }
+      const response = await schoolAPI.listEvents()
+      const data = response?.data || response
+      const eventList = data?.events || data || []
+      const safeEvents = Array.isArray(eventList) ? eventList : []
+      setEvents(safeEvents)
     } catch (error) {
       console.error('Failed to fetch events:', error)
       toast.error('Failed to load events')
@@ -74,16 +78,16 @@ function EventsPage() {
     setEditingEvent(event)
     setErrors({})
     setFormData({
-      title: event.title || '',
-      event_type: event.event_type || 'other',
-      description: event.description || '',
-      start_date: event.start_date?.split('T')[0] || '',
-      end_date: event.end_date?.split('T')[0] || '',
-      location: event.location || 'School Premises',
-      organizer: event.organizer || 'School Administration',
-      target_audience: event.target_audience || ['all'],
-      max_participants: event.max_participants || '',
-      budget: event.budget || '',
+      title: event?.title || '',
+      event_type: event?.event_type || 'other',
+      description: event?.description || '',
+      start_date: event?.start_date?.split('T')[0] || '',
+      end_date: event?.end_date?.split('T')[0] || '',
+      location: event?.location || 'School Premises',
+      organizer: event?.organizer || 'School Administration',
+      target_audience: event?.target_audience || ['all'],
+      max_participants: event?.max_participants || '',
+      budget: event?.budget || '',
     })
     setShowModal(true)
   }
@@ -149,13 +153,14 @@ function EventsPage() {
     }
   }
 
-  const handleCancel = async (eventId) => {
-    if (!confirm('Are you sure you want to cancel this event?')) return
-    
+  const handleCancel = async () => {
+    if (!deleteEvent) return
     try {
-      const response = await schoolAPI.cancelEvent(eventId, 'Cancelled by admin')
+      const response = await schoolAPI.cancelEvent(deleteEvent._id, 'Cancelled by admin')
       if (response?.success) {
         toast.success('Event cancelled')
+        setShowDeleteDialog(false)
+        setDeleteEvent(null)
         fetchEvents()
       } else {
         toast.error(response?.message || 'Failed to cancel event')
@@ -172,7 +177,7 @@ function EventsPage() {
       other: 'gray', graduation: 'success', community: 'info',
       fundraising: 'warning', staff_meeting: 'info' 
     }
-    return <Badge variant={variants[type] || 'gray'}>{type?.replace(/_/g, ' ')}</Badge>
+    return <Badge variant={variants[type] || 'gray'}>{type?.replace(/_/g, ' ') || 'unknown'}</Badge>
   }
 
   const getStatusBadge = (status) => {
@@ -180,12 +185,13 @@ function EventsPage() {
       upcoming: 'info', ongoing: 'success', completed: 'gray', 
       cancelled: 'danger', postponed: 'warning' 
     }
-    return <Badge variant={variants[status] || 'gray'}>{status}</Badge>
+    return <Badge variant={variants[status] || 'gray'}>{status || 'unknown'}</Badge>
   }
 
-  const filteredEvents = events.filter(e => {
-    if (filter === 'upcoming') return e.status === 'upcoming'
-    if (filter === 'completed') return e.status === 'completed'
+  const safeEvents = Array.isArray(events) ? events : []
+  const filteredEvents = safeEvents.filter(e => {
+    if (filter === 'upcoming') return e?.status === 'upcoming'
+    if (filter === 'completed') return e?.status === 'completed'
     return true
   })
 
@@ -193,7 +199,7 @@ function EventsPage() {
     <div className="space-y-6 animate-fade-in-up">
       <PageHeader
         title="School Events"
-        subtitle={`${events.length} total events`}
+        subtitle={`${safeEvents.length} total events`}
         actions={
           <Button onClick={openCreateModal} variant="primary" icon={<Plus size={18} />}>
             Add Event
@@ -234,39 +240,39 @@ function EventsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredEvents.map((event) => (
-            <Card key={event._id} className="hover:shadow-md transition-shadow">
+            <Card key={event?._id || Math.random()} className="hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
-                <h3 className="font-semibold text-gray-900 dark:text-white">{event.title}</h3>
-                {getStatusBadge(event.status)}
+                <h3 className="font-semibold text-gray-900 dark:text-white">{event?.title || 'N/A'}</h3>
+                {getStatusBadge(event?.status)}
               </div>
               <div className="space-y-2 text-sm mb-3">
                 <div className="flex items-center gap-2 text-gray-500">
                   <Calendar size={14} />
-                  {new Date(event.start_date).toLocaleDateString('en-US', {
+                  {event?.start_date ? new Date(event.start_date).toLocaleDateString('en-US', {
                     month: 'short', day: 'numeric', year: 'numeric',
-                  })}
+                  }) : 'N/A'}
                 </div>
                 <div className="flex items-center gap-2 text-gray-500">
                   <Clock size={14} />
-                  {new Date(event.start_date).toLocaleTimeString('en-US', {
+                  {event?.start_date ? new Date(event.start_date).toLocaleTimeString('en-US', {
                     hour: '2-digit', minute: '2-digit',
-                  })}{' '}
+                  }) : 'N/A'}{' '}
                   -{' '}
-                  {new Date(event.end_date).toLocaleTimeString('en-US', {
+                  {event?.end_date ? new Date(event.end_date).toLocaleTimeString('en-US', {
                     hour: '2-digit', minute: '2-digit',
-                  })}
+                  }) : 'N/A'}
                 </div>
                 <div className="flex items-center gap-2 text-gray-500">
-                  <MapPin size={14} /> {event.location}
+                  <MapPin size={14} /> {event?.location || 'N/A'}
                 </div>
                 <div className="flex items-center gap-2 text-gray-500">
-                  <Users size={14} /> {(event.target_audience || []).join(', ')}
+                  <Users size={14} /> {(event?.target_audience || []).join(', ') || 'N/A'}
                 </div>
               </div>
               <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
-                {getEventBadge(event.event_type)}
+                {getEventBadge(event?.event_type)}
                 <div className="flex gap-1">
-                  {event.status === 'upcoming' && (
+                  {event?.status === 'upcoming' && (
                     <>
                       <button
                         onClick={() => openEditModal(event)}
@@ -276,7 +282,10 @@ function EventsPage() {
                         <Edit size={14} />
                       </button>
                       <button
-                        onClick={() => handleCancel(event._id)}
+                        onClick={() => {
+                          setDeleteEvent(event)
+                          setShowDeleteDialog(true)
+                        }}
                         className="btn btn-ghost btn-sm btn-icon text-red-600"
                         title="Cancel event"
                       >
@@ -360,58 +369,38 @@ function EventsPage() {
               error={errors.end_date}
             />
           </div>
-          <FormInput
-            label="Location"
-            name="location"
-            value={formData.location}
-            onChange={handleChange}
-          />
-          <FormInput
-            label="Organizer"
-            name="organizer"
-            value={formData.organizer}
-            onChange={handleChange}
-          />
+          <FormInput label="Location" name="location" value={formData.location} onChange={handleChange} />
+          <FormInput label="Organizer" name="organizer" value={formData.organizer} onChange={handleChange} />
           <div>
             <label className="form-label">Description</label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              rows={3}
-              className="form-input"
-              placeholder="Event description..."
-            />
+            <textarea name="description" value={formData.description} onChange={handleChange} rows={3} className="form-input" placeholder="Event description..." />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <FormInput
-              label="Max Participants"
-              name="max_participants"
-              type="number"
-              value={formData.max_participants}
-              onChange={handleChange}
-              min="0"
-            />
-            <FormInput
-              label="Budget (SSP)"
-              name="budget"
-              type="number"
-              value={formData.budget}
-              onChange={handleChange}
-              min="0"
-              step="0.01"
-            />
+            <FormInput label="Max Participants" name="max_participants" type="number" value={formData.max_participants} onChange={handleChange} min="0" />
+            <FormInput label="Budget (SSP)" name="budget" type="number" value={formData.budget} onChange={handleChange} min="0" step="0.01" />
           </div>
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
             <Button type="submit" variant="primary" loading={saving} icon={<Save size={18} />}>
               {editingEvent ? 'Update Event' : 'Create Event'}
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>
-              Cancel
-            </Button>
+            <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
           </div>
         </form>
       </Modal>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false)
+          setDeleteEvent(null)
+        }}
+        onConfirm={handleCancel}
+        title="Cancel Event"
+        message={`Are you sure you want to cancel "${deleteEvent?.title}"?`}
+        confirmText="Cancel Event"
+        variant="danger"
+      />
     </div>
   )
 }
