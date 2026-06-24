@@ -183,7 +183,7 @@ async def deactivate_teacher(
     teacher_id: str = Path(...),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Deactivate teacher"""
+    """Deactivate teacher (soft delete)"""
     db = get_database()
     from app.models.teacher import TeacherModel
     success, message, _ = await TeacherModel.update_teacher(
@@ -193,3 +193,53 @@ async def deactivate_teacher(
     )
     if not success: raise HTTPException(status_code=404, detail="Teacher not found")
     return SuccessResponse(success=True, message="Teacher deactivated")
+
+
+@router.delete("/{teacher_id}/permanent", response_model=SuccessResponse)
+async def permanently_delete_teacher(
+    teacher_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Permanently delete a teacher and all related records (admin only)"""
+    db = get_database()
+    
+    # Check teacher exists
+    teacher = await db.teachers.find_one({"_id": ObjectId(teacher_id)})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    
+    teacher_name = f"{teacher.get('first_name', '')} {teacher.get('last_name', '')}"
+    
+    try:
+        # Remove teacher from any classes they were assigned to
+        await db.classes.update_many(
+            {"class_teacher_id": ObjectId(teacher_id)},
+            {"$set": {"class_teacher_id": None, "updated_at": datetime.utcnow()}}
+        )
+        
+        # Delete performance reviews
+        await db.teacher_performance_reviews.delete_many({"teacher_id": ObjectId(teacher_id)})
+        
+        # Delete leave records
+        await db.teacher_leaves.delete_many({"teacher_id": ObjectId(teacher_id)})
+        
+        # Delete training records
+        await db.teacher_training.delete_many({"teacher_id": ObjectId(teacher_id)})
+        
+        # Delete the teacher record
+        await db.teachers.delete_one({"_id": ObjectId(teacher_id)})
+        
+        # Log the deletion
+        await db.audit_log.insert_one({
+            "table_name": "teachers",
+            "record_id": teacher_id,
+            "operation": "DELETE_PERMANENT",
+            "changed_by": ObjectId(current_user["_id"]) if current_user.get("_id") else None,
+            "details": {"teacher_name": teacher_name, "employee_id": teacher.get("employee_id")},
+            "changed_at": datetime.utcnow()
+        })
+        
+        return SuccessResponse(success=True, message=f"Teacher '{teacher_name}' permanently deleted with all related records")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete teacher: {str(e)}")
