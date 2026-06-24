@@ -222,7 +222,7 @@ async def deactivate_student(
     reason: Optional[str] = Query(None),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Deactivate student"""
+    """Deactivate student (soft delete)"""
     db = get_database()
     from app.models.student import StudentModel
     success, message, _ = await StudentModel.update_student(
@@ -232,3 +232,55 @@ async def deactivate_student(
     )
     if not success: raise HTTPException(status_code=404, detail="Student not found")
     return SuccessResponse(success=True, message="Student deactivated")
+
+
+@router.delete("/{student_id}/permanent", response_model=SuccessResponse)
+async def permanently_delete_student(
+    student_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Permanently delete a student and all related records (admin only)"""
+    db = get_database()
+    
+    # Check student exists
+    student = await db.students.find_one({"_id": ObjectId(student_id)})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}"
+    
+    # Delete related records
+    try:
+        # Delete attendance records
+        await db.attendance.delete_many({"student_id": ObjectId(student_id)})
+        
+        # Delete exam results
+        await db.exam_results.delete_many({"student_id": ObjectId(student_id)})
+        
+        # Delete payments
+        await db.payments.delete_many({"student_id": ObjectId(student_id)})
+        
+        # Update class enrollment count if student was in a class
+        if student.get("current_class_id"):
+            await db.classes.update_one(
+                {"_id": student["current_class_id"]},
+                {"$inc": {"current_enrollment": -1}}
+            )
+        
+        # Delete the student record
+        await db.students.delete_one({"_id": ObjectId(student_id)})
+        
+        # Log the deletion
+        await db.audit_log.insert_one({
+            "table_name": "students",
+            "record_id": student_id,
+            "operation": "DELETE_PERMANENT",
+            "changed_by": ObjectId(current_user["_id"]) if current_user.get("_id") else None,
+            "details": {"student_name": student_name, "student_id_number": student.get("student_id_number")},
+            "changed_at": datetime.utcnow()
+        })
+        
+        return SuccessResponse(success=True, message=f"Student '{student_name}' permanently deleted with all related records")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete student: {str(e)}")
