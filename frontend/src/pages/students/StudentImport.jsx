@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import studentsAPI from '../../api/students'
@@ -19,10 +19,14 @@ function StudentImport() {
   const [results, setResults] = useState(null)
   const [step, setStep] = useState(1)
 
-    useEffect(() => {
+  useEffect(() => {
     updatePageTitle('Import Students')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Students', path: '/students' }, { label: 'Import' }])
-  }, [])
+    updateBreadcrumbs([
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Students', path: '/students' },
+      { label: 'Import' },
+    ])
+  }, [updatePageTitle, updateBreadcrumbs])
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files?.[0]
@@ -33,17 +37,28 @@ function StudentImport() {
     // Parse CSV preview
     const reader = new FileReader()
     reader.onload = (event) => {
-      const text = event.target.result
-      const lines = text.split('\n').filter(line => line.trim())
-      const headers = lines[0].split(',').map(h => h.trim())
-      const rows = lines.slice(1, 5).map(line => {
-        const values = line.split(',').map(v => v.trim())
-        const obj = {}
-        headers.forEach((h, i) => { obj[h] = values[i] || '' })
-        return obj
-      })
-      setPreview({ headers, rows, totalRows: lines.length - 1 })
-      setStep(2)
+      try {
+        const text = event.target.result || ''
+        const lines = text.split('\n').filter(line => line.trim())
+        if (lines.length === 0) {
+          toast.error('CSV file is empty')
+          return
+        }
+        const headers = lines[0].split(',').map(h => h.trim())
+        const rows = lines.slice(1, 5).map(line => {
+          const values = line.split(',').map(v => v.trim())
+          const obj = {}
+          headers.forEach((h, i) => { obj[h] = values[i] || '' })
+          return obj
+        })
+        setPreview({ headers, rows, totalRows: lines.length - 1 })
+        setStep(2)
+      } catch (error) {
+        toast.error('Failed to parse CSV file')
+      }
+    }
+    reader.onerror = () => {
+      toast.error('Failed to read file')
     }
     reader.readAsText(selectedFile)
   }
@@ -54,35 +69,60 @@ function StudentImport() {
     try {
       const reader = new FileReader()
       reader.onload = async (event) => {
-        const text = event.target.result
-        const lines = text.split('\n').filter(line => line.trim())
-        const headers = lines[0].split(',').map(h => h.trim())
-        const students = lines.slice(1).map(line => {
-          const values = line.split(',').map(v => v.trim())
-          const obj = {}
-          headers.forEach((h, i) => { obj[h] = values[i] || '' })
-          return {
-            first_name: obj['First Name'] || obj['first_name'] || '',
-            last_name: obj['Last Name'] || obj['last_name'] || '',
-            gender: obj['Gender'] || obj['gender'] || 'Male',
-            date_of_birth: obj['Date of Birth'] || obj['date_of_birth'] || '',
-            student_type: obj['Student Type'] || obj['student_type'] || 'other',
-            enrollment_date: obj['Enrollment Date'] || obj['enrollment_date'] || new Date().toISOString().split('T')[0],
-          }
-        }).filter(s => s.first_name && s.last_name)
-
         try {
-          const response = await studentsAPI.bulkImport(students)
-          setResults(response.data || { successful: students.length, failed: 0, errors: [] })
-          setStep(3)
-          if (response.success) {
-            toast.success(`Successfully imported ${response.data?.successful || students.length} students`)
+          const text = event.target.result || ''
+          const lines = text.split('\n').filter(line => line.trim())
+          if (lines.length === 0) {
+            toast.error('CSV file is empty')
+            setImporting(false)
+            return
+          }
+          const headers = lines[0].split(',').map(h => h.trim())
+          const students = lines.slice(1).map(line => {
+            const values = line.split(',').map(v => v.trim())
+            const obj = {}
+            headers.forEach((h, i) => { obj[h] = values[i] || '' })
+            return {
+              first_name: obj['First Name'] || obj['first_name'] || '',
+              last_name: obj['Last Name'] || obj['last_name'] || '',
+              gender: obj['Gender'] || obj['gender'] || 'Male',
+              date_of_birth: obj['Date of Birth'] || obj['date_of_birth'] || '',
+              student_type: obj['Student Type'] || obj['student_type'] || 'other',
+              enrollment_date: obj['Enrollment Date'] || obj['enrollment_date'] || new Date().toISOString().split('T')[0],
+            }
+          }).filter(s => s.first_name && s.last_name)
+
+          if (students.length === 0) {
+            toast.error('No valid students found in CSV')
+            setImporting(false)
+            return
+          }
+
+          try {
+            const response = await studentsAPI.bulkImport(students)
+            const safeData = response?.data || {}
+            setResults({
+              successful: safeData?.successful || students.length,
+              failed: safeData?.failed || 0,
+              errors: safeData?.errors || [],
+            })
+            setStep(3)
+            if (response?.success) {
+              toast.success(`Successfully imported ${safeData?.successful || students.length} students`)
+            }
+          } catch (error) {
+            toast.error(error.message || 'Import failed')
+            setResults({ successful: 0, failed: students.length, errors: [error.message || 'Import failed'] })
+            setStep(3)
           }
         } catch (error) {
-          toast.error(error.message || 'Import failed')
-          setResults({ successful: 0, failed: students.length, errors: [error.message] })
-          setStep(3)
+          toast.error('Failed to process CSV data')
+          setImporting(false)
         }
+      }
+      reader.onerror = () => {
+        toast.error('Failed to read file')
+        setImporting(false)
       }
       reader.readAsText(file)
     } catch (error) {
@@ -153,33 +193,35 @@ function StudentImport() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-semibold">File Preview</h3>
-                <p className="text-sm text-gray-500">{file?.name} • {preview.totalRows} students found</p>
+                <p className="text-sm text-gray-500">{file?.name} • {preview.totalRows || 0} students found</p>
               </div>
               <button onClick={() => { setStep(1); setFile(null); setPreview(null) }} className="text-sm text-red-600">Change File</button>
             </div>
-            <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    {preview.headers.map((h, i) => <th key={i}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.rows.map((row, i) => (
-                    <tr key={i}>
-                      {preview.headers.map((h, j) => <td key={j} className="text-sm">{row[h]}</td>)}
+            {(preview.headers || []).length > 0 && (
+              <div className="table-container">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      {preview.headers.map((h, i) => <th key={i}>{h}</th>)}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {preview.totalRows > 4 && (
-              <p className="text-sm text-gray-500 mt-2 text-center">... and {preview.totalRows - 4} more rows</p>
+                  </thead>
+                  <tbody>
+                    {(preview.rows || []).map((row, i) => (
+                      <tr key={i}>
+                        {preview.headers.map((h, j) => <td key={j} className="text-sm">{row[h] || ''}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {(preview.totalRows || 0) > 4 && (
+              <p className="text-sm text-gray-500 mt-2 text-center">... and {(preview.totalRows || 0) - 4} more rows</p>
             )}
           </Card>
           <div className="flex gap-3">
             <Button onClick={handleImport} variant="primary" loading={importing} icon={<Upload size={18} />}>
-              Import {preview.totalRows} Students
+              Import {preview.totalRows || 0} Students
             </Button>
             <Button onClick={() => { setStep(1); setFile(null); setPreview(null) }} variant="secondary">
               Cancel
@@ -192,7 +234,7 @@ function StudentImport() {
       {step === 3 && results && (
         <Card>
           <div className="text-center mb-6">
-            {results.failed === 0 ? (
+            {(results.failed || 0) === 0 ? (
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-3">
                 <CheckCircle size={32} className="text-green-600" />
               </div>
@@ -201,15 +243,15 @@ function StudentImport() {
                 <AlertTriangle size={32} className="text-yellow-600" />
               </div>
             )}
-            <h3 className="text-lg font-semibold">Import {results.failed === 0 ? 'Complete' : 'Completed with Errors'}</h3>
+            <h3 className="text-lg font-semibold">Import {(results.failed || 0) === 0 ? 'Complete' : 'Completed with Errors'}</h3>
           </div>
           <div className="grid grid-cols-3 gap-4 text-center mb-6">
             <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <p className="text-2xl font-bold text-green-600">{results.successful}</p>
+              <p className="text-2xl font-bold text-green-600">{results.successful || 0}</p>
               <p className="text-xs text-gray-500">Successful</p>
             </div>
             <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <p className="text-2xl font-bold text-red-600">{results.failed}</p>
+              <p className="text-2xl font-bold text-red-600">{results.failed || 0}</p>
               <p className="text-xs text-gray-500">Failed</p>
             </div>
             <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -217,11 +259,11 @@ function StudentImport() {
               <p className="text-xs text-gray-500">Total</p>
             </div>
           </div>
-          {results.errors?.length > 0 && (
+          {(results.errors || []).length > 0 && (
             <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
               <h4 className="font-medium text-red-700 dark:text-red-400 mb-2">Errors</h4>
               <ul className="list-disc list-inside text-sm text-red-600 dark:text-red-400 space-y-1">
-                {results.errors.map((err, i) => <li key={i}>{err}</li>)}
+                {results.errors.map((err, i) => <li key={i}>{err || 'Unknown error'}</li>)}
               </ul>
             </div>
           )}
