@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import attendanceAPI from '../../api/attendance'
+import api from '../../api/axios'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -9,9 +10,10 @@ import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
 import Badge from '../../components/common/Badge'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { 
   ClipboardCheck, Users, CheckCircle, XCircle, 
-  Clock, AlertTriangle, Calendar, ArrowRight, BarChart3
+  Clock, AlertTriangle, Calendar, ArrowRight, BarChart3, Trash2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -21,6 +23,10 @@ function AttendancePage() {
   const [selectedClass, setSelectedClass] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   const [attendanceData, setAttendanceData] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // Delete confirmation
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const classes = [
     { value: 'c1', label: 'Baby (Nursery)' }, { value: 'c2', label: 'Middle (Nursery)' },
@@ -72,6 +78,22 @@ function AttendancePage() {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDeleteAttendance = async () => {
+    if (!selectedClass || !selectedDate) return
+    setDeleting(true)
+    try {
+      const dateFormatted = selectedDate
+      await api.delete(`/attendance/class/${selectedClass}/date/${dateFormatted}`)
+      toast.success('Attendance records deleted for this date')
+      setShowDeleteDialog(false)
+      setAttendanceData(null)
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete attendance')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -127,6 +149,16 @@ function AttendancePage() {
           >
             Load Attendance
           </Button>
+          {attendanceData && (
+            <Button
+              onClick={() => setShowDeleteDialog(true)}
+              variant="danger"
+              loading={deleting}
+              icon={<Trash2 size={18} />}
+            >
+              Delete Records
+            </Button>
+          )}
         </div>
       </Card>
 
@@ -195,6 +227,17 @@ function AttendancePage() {
           description="Choose a class and date to view attendance."
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={handleDeleteAttendance}
+        title="Delete Attendance Records"
+        message={`Are you sure you want to delete ALL attendance records for this class on ${new Date(selectedDate).toLocaleDateString()}? This action cannot be undone.`}
+        confirmText="Delete All Records"
+        variant="danger"
+      />
     </div>
   )
 }
