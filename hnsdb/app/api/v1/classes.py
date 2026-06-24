@@ -234,3 +234,84 @@ async def update_class(
     result = parse_mongo_document(result)
     
     return SuccessResponse(success=True, message="Class updated", data=result)
+
+
+@router.delete("/{class_id}", response_model=SuccessResponse)
+async def delete_class(
+    class_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Soft delete a class (mark as inactive)"""
+    db = get_database()
+    
+    # Check if class has active students
+    active_students = await db.students.count_documents({
+        "current_class_id": ObjectId(class_id),
+        "status": "active"
+    })
+    
+    if active_students > 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete class with {active_students} active students. Transfer or deactivate students first."
+        )
+    
+    result = await db.classes.update_one(
+        {"_id": ObjectId(class_id)},
+        {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    return SuccessResponse(success=True, message="Class deactivated")
+
+
+@router.delete("/{class_id}/permanent", response_model=SuccessResponse)
+async def permanently_delete_class(
+    class_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Permanently delete a class (admin only) - Only if no students enrolled"""
+    db = get_database()
+    
+    # Check class exists
+    class_doc = await db.classes.find_one({"_id": ObjectId(class_id)})
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    # Check for active students
+    active_students = await db.students.count_documents({
+        "current_class_id": ObjectId(class_id),
+        "status": "active"
+    })
+    
+    if active_students > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot permanently delete class with {active_students} active students"
+        )
+    
+    class_name = class_doc.get("class_name", "Unknown")
+    
+    try:
+        # Delete schedule records if any
+        await db.class_schedules.delete_many({"class_id": ObjectId(class_id)})
+        
+        # Delete the class
+        await db.classes.delete_one({"_id": ObjectId(class_id)})
+        
+        # Log the deletion
+        await db.audit_log.insert_one({
+            "table_name": "classes",
+            "record_id": class_id,
+            "operation": "DELETE_PERMANENT",
+            "changed_by": ObjectId(current_user["_id"]) if current_user.get("_id") else None,
+            "details": {"class_name": class_name, "class_level": class_doc.get("class_level")},
+            "changed_at": datetime.utcnow()
+        })
+        
+        return SuccessResponse(success=True, message=f"Class '{class_name}' permanently deleted")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete class: {str(e)}")
