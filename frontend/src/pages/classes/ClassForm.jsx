@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import classesAPI from '../../api/classes'
+import teachersAPI from '../../api/teachers'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -18,15 +19,16 @@ function ClassForm() {
   const { id } = useParams()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
-  const { updatePageTitle, updateBreadcrumbs } = useApp()
+  const { updatePageTitle, updateBreadcrumbs, currentAcademicYear } = useApp()
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
+  const [teachers, setTeachers] = useState([])
 
   const [formData, setFormData] = useState({
     class_name: '',
     class_level: 'primary',
-    academic_year: '2024/2025',
+    academic_year: currentAcademicYear || '2024/2025',
     max_capacity: '25',
     class_teacher_id: '',
     classroom_id: '',
@@ -41,6 +43,7 @@ function ClassForm() {
       { label: 'Classes', path: '/classes' },
       { label: isEdit ? 'Edit' : 'Add' },
     ])
+    fetchTeachers()
     
     if (isEdit) {
       fetchClass()
@@ -48,6 +51,18 @@ function ClassForm() {
       setFetching(false)
     }
   }, [id])
+
+  const fetchTeachers = async () => {
+    try {
+      const response = await teachersAPI.getAll({ status: 'active', limit: 100 })
+      const teacherList = response?.data?.teachers || response?.teachers || response?.data || []
+      const safeTeachers = Array.isArray(teacherList) ? teacherList : []
+      setTeachers(safeTeachers)
+    } catch (error) {
+      console.error('Failed to fetch teachers:', error)
+      setTeachers([])
+    }
+  }
 
   const fetchClass = async () => {
     setFetching(true)
@@ -58,7 +73,7 @@ function ClassForm() {
         setFormData({
           class_name: c.class_name || '',
           class_level: c.class_level || 'primary',
-          academic_year: c.academic_year || '2024/2025',
+          academic_year: c.academic_year || currentAcademicYear || '2024/2025',
           max_capacity: c.max_capacity?.toString() || '25',
           class_teacher_id: c.class_teacher_id || '',
           classroom_id: c.classroom_id || '',
@@ -153,6 +168,15 @@ function ClassForm() {
     }))
   }, [formData.class_level])
 
+  // Build teacher options from API data
+  const teacherOptions = [
+    { value: '', label: 'Select Teacher' },
+    ...teachers.map(t => ({
+      value: t._id || t.teacher_id || '',
+      label: `${t.first_name || ''} ${t.last_name || ''}`.trim() || t.email || 'Unknown',
+    })),
+  ]
+
   return (
     <div className="space-y-6 max-w-2xl animate-fade-in-up">
       <PageHeader
@@ -213,12 +237,7 @@ function ClassForm() {
               name="class_teacher_id"
               value={formData.class_teacher_id}
               onChange={handleChange}
-              options={[
-                { value: '', label: 'Select Teacher' },
-                { value: 't1', label: 'John Doe' },
-                { value: 't2', label: 'Mary Smith' },
-                { value: 't3', label: 'James Johnson' },
-              ]}
+              options={teacherOptions}
             />
             <FormSelect
               label="Classroom"
@@ -229,6 +248,11 @@ function ClassForm() {
                 { value: '', label: 'Select Classroom' },
                 { value: 'r1', label: 'Room 1' },
                 { value: 'r2', label: 'Room 2' },
+                { value: 'r3', label: 'Room 3' },
+                { value: 'r4', label: 'Room 4' },
+                { value: 'r5', label: 'Room 5' },
+                { value: 'r6', label: 'Room 6' },
+                { value: 'r7', label: 'Room 7' },
                 { value: 'r8', label: 'Room 8' },
               ]}
             />
