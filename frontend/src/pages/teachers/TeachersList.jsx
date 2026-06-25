@@ -53,36 +53,14 @@ function TeachersList() {
         limit,
       })
       
-      // Debug: log the response structure
-      console.log('Teachers API response:', JSON.stringify(response).substring(0, 200))
-      
-      // Handle ALL possible response structures from axios interceptor
-      let teacherList = []
-      let totalCount = 0
-      
-      // The axios interceptor returns response.data
-      // So response is already { success, data: { teachers, total }, ... }
-      // or just { teachers, total }
-      if (response?.data?.teachers) {
-        teacherList = response.data.teachers
-        totalCount = response.data.total || 0
-      } else if (response?.teachers) {
-        teacherList = response.teachers
-        totalCount = response.total || 0
-      } else if (Array.isArray(response?.data)) {
-        teacherList = response.data
-      } else if (Array.isArray(response)) {
-        teacherList = response
-      }
-      
+      const data = response?.data || response
+      const teacherList = data?.teachers || data || []
       const safeTeachers = Array.isArray(teacherList) ? teacherList : []
-      console.log('Parsed teachers:', safeTeachers.length, 'Total:', totalCount)
       
       setTeachers(safeTeachers)
-      setTotal(totalCount)
-      setTotalPages(Math.ceil(totalCount / limit))
+      setTotal(data?.total || 0)
+      setTotalPages(data?.total_pages || Math.ceil((data?.total || 0) / limit))
     } catch (error) {
-      console.error('Failed to fetch teachers:', error)
       if (error.status === 0) {
         toast.error('Server is starting up. Please try again in 30 seconds.')
       } else {
@@ -128,7 +106,8 @@ function TeachersList() {
       active: 'Active', inactive: 'Inactive', on_leave: 'On Leave',
       suspended: 'Suspended', resigned: 'Resigned', retired: 'Retired',
     }
-    return <Badge variant={variants[status] || 'gray'}>{labels[status] || status || 'unknown'}</Badge>
+    const safeStatus = typeof status === 'string' ? status : ''
+    return <Badge variant={variants[safeStatus] || 'gray'}>{labels[safeStatus] || status || 'N/A'}</Badge>
   }
 
   const specializations = [...new Set(safeTeachers.map(t => t?.specialization).filter(Boolean))]
@@ -154,7 +133,7 @@ function TeachersList() {
           { label: 'Total Teachers', value: total, icon: Users, color: 'bg-blue-100 text-blue-600' },
           { label: 'Active', value: safeTeachers.filter(t => t?.status === 'active').length, icon: UserCheck, color: 'bg-green-100 text-green-600' },
           { label: 'On Leave', value: safeTeachers.filter(t => t?.status === 'on_leave').length, icon: Clock, color: 'bg-yellow-100 text-yellow-600' },
-          { label: 'Subjects', value: [...new Set(safeTeachers.flatMap(t => t?.subjects || []))].length, icon: BookOpen, color: 'bg-purple-100 text-purple-600' },
+          { label: 'Subjects', value: [...new Set(safeTeachers.flatMap(t => Array.isArray(t?.subjects) ? t.subjects : []))].length, icon: BookOpen, color: 'bg-purple-100 text-purple-600' },
         ].map((stat, index) => (
           <div key={index} className="stat-card">
             <div className={`stat-card-icon ${stat.color}`}>
@@ -202,7 +181,7 @@ function TeachersList() {
       {/* Teachers Grid */}
       {filteredTeachers.length === 0 ? (
         <EmptyState
-          icon={<Users size={48} />}
+          icon={Users}
           title="No teachers found"
           description="No teachers match your search criteria."
           action={
@@ -280,7 +259,7 @@ function TeachersList() {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <BookOpen size={14} />
-                  <span>{teacher?.subjects?.length || 0} subjects</span>
+                  <span>{Array.isArray(teacher?.subjects) ? teacher.subjects.length : 0} subjects</span>
                 </div>
               </div>
 
