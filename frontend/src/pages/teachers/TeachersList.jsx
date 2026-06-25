@@ -53,13 +53,34 @@ function TeachersList() {
         limit,
       })
       
-      const data = response?.data || response
-      const teacherList = data?.teachers || data || []
+      // Debug: log the response structure
+      console.log('Teachers API response:', JSON.stringify(response).substring(0, 200))
+      
+      // Handle ALL possible response structures from axios interceptor
+      let teacherList = []
+      let totalCount = 0
+      
+      // The axios interceptor returns response.data
+      // So response is already { success, data: { teachers, total }, ... }
+      // or just { teachers, total }
+      if (response?.data?.teachers) {
+        teacherList = response.data.teachers
+        totalCount = response.data.total || 0
+      } else if (response?.teachers) {
+        teacherList = response.teachers
+        totalCount = response.total || 0
+      } else if (Array.isArray(response?.data)) {
+        teacherList = response.data
+      } else if (Array.isArray(response)) {
+        teacherList = response
+      }
+      
       const safeTeachers = Array.isArray(teacherList) ? teacherList : []
+      console.log('Parsed teachers:', safeTeachers.length, 'Total:', totalCount)
       
       setTeachers(safeTeachers)
-      setTotal(data?.total || 0)
-      setTotalPages(data?.total_pages || Math.ceil((data?.total || 0) / limit))
+      setTotal(totalCount)
+      setTotalPages(Math.ceil(totalCount / limit))
     } catch (error) {
       console.error('Failed to fetch teachers:', error)
       if (error.status === 0) {
@@ -111,6 +132,8 @@ function TeachersList() {
   }
 
   const specializations = [...new Set(safeTeachers.map(t => t?.specialization).filter(Boolean))]
+
+  if (loading) return <LoadingSpinner />
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -177,9 +200,7 @@ function TeachersList() {
       </div>
 
       {/* Teachers Grid */}
-      {loading ? (
-        <LoadingSpinner />
-      ) : filteredTeachers.length === 0 ? (
+      {filteredTeachers.length === 0 ? (
         <EmptyState
           icon={<Users size={48} />}
           title="No teachers found"
