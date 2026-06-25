@@ -40,14 +40,14 @@ async def list_students(
     students = await db.students.find(filter_query).sort("last_name", 1).skip(skip).limit(limit).to_list(length=limit)
     
     # Convert all ObjectIds to strings and add class names
-    for s in students:
-        s = parse_mongo_document(s)
-        if s.get("current_class_id"):
+    for i, s in enumerate(students):
+        students[i] = parse_mongo_document(s)
+        if students[i].get("current_class_id"):
             try:
-                cls = await db.classes.find_one({"_id": ObjectId(s["current_class_id"])})
-                if cls: s["class_name"] = cls.get("class_name", "")
+                cls = await db.classes.find_one({"_id": ObjectId(students[i]["current_class_id"])})
+                if cls: students[i]["class_name"] = cls.get("class_name", "")
             except Exception:
-                s["class_name"] = "Unknown"
+                students[i]["class_name"] = "Unknown"
     
     return SuccessResponse(success=True, message="Students retrieved", data={
         "students": students, "total": total, "page": page, "limit": limit
