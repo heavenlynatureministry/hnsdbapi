@@ -13,7 +13,7 @@ import Badge from '../../components/common/Badge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { 
   ClipboardCheck, Users, CheckCircle, XCircle, 
-  Clock, AlertTriangle, Calendar, ArrowRight, BarChart3, Trash2
+  Clock, AlertTriangle, BarChart3, Trash2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -85,8 +85,7 @@ function AttendancePage() {
     if (!selectedClass || !selectedDate) return
     setDeleting(true)
     try {
-      const dateFormatted = selectedDate
-      await api.delete(`/attendance/class/${selectedClass}/date/${dateFormatted}`)
+      await api.delete(`/attendance/class/${selectedClass}/date/${selectedDate}`)
       toast.success('Attendance records deleted for this date')
       setShowDeleteDialog(false)
       setAttendanceData(null)
@@ -100,7 +99,8 @@ function AttendancePage() {
   const getStatusBadge = (status) => {
     const variants = { present: 'success', absent: 'danger', excused: 'warning', late: 'info', unmarked: 'gray' }
     const labels = { present: 'Present', absent: 'Absent', excused: 'Excused', late: 'Late', unmarked: 'Not Marked' }
-    return <Badge variant={variants[status] || 'gray'}>{labels[status] || status}</Badge>
+    const safeStatus = typeof status === 'string' ? status : ''
+    return <Badge variant={variants[safeStatus] || 'gray'}>{labels[safeStatus] || status || 'N/A'}</Badge>
   }
 
   return (
@@ -145,7 +145,7 @@ function AttendancePage() {
             variant="primary"
             disabled={!selectedClass}
             loading={loading}
-            icon={<ClipboardCheck size={18} />}
+            icon={ClipboardCheck}
           >
             Load Attendance
           </Button>
@@ -154,7 +154,7 @@ function AttendancePage() {
               onClick={() => setShowDeleteDialog(true)}
               variant="danger"
               loading={deleting}
-              icon={<Trash2 size={18} />}
+              icon={Trash2}
             >
               Delete Records
             </Button>
@@ -194,7 +194,7 @@ function AttendancePage() {
           >
             {attendanceData.students.length === 0 ? (
               <EmptyState
-                icon={<Users size={48} />}
+                icon={Users}
                 title="No Students"
                 description="No students found in this class."
               />
@@ -222,7 +222,7 @@ function AttendancePage() {
 
       {!loading && !attendanceData && (
         <EmptyState
-          icon={<ClipboardCheck size={48} />}
+          icon={ClipboardCheck}
           title="Select a Class"
           description="Choose a class and date to view attendance."
         />
