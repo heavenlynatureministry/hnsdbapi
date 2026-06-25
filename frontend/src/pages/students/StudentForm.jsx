@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import studentsAPI from '../../api/students'
+import classesAPI from '../../api/classes'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -10,20 +11,6 @@ import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import { ArrowLeft, Save, UserPlus, Users, Phone } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-const CLASSES = [
-  { value: 'c1', label: 'Baby (Nursery)' },
-  { value: 'c2', label: 'Middle (Nursery)' },
-  { value: 'c3', label: 'Top (Nursery)' },
-  { value: 'c4', label: 'P1 (Primary)' },
-  { value: 'c5', label: 'P2 (Primary)' },
-  { value: 'c6', label: 'P3 (Primary)' },
-  { value: 'c7', label: 'P4 (Primary)' },
-  { value: 'c8', label: 'P5 (Primary)' },
-  { value: 'c9', label: 'P6 (Primary)' },
-  { value: 'c10', label: 'P7 (Primary)' },
-  { value: 'c11', label: 'P8 (Primary)' },
-]
 
 function StudentForm() {
   const { id } = useParams()
@@ -34,6 +21,8 @@ function StudentForm() {
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
+  const [classOptions, setClassOptions] = useState([])
+  const [loadingClasses, setLoadingClasses] = useState(false)
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -62,12 +51,32 @@ function StudentForm() {
   }, [isEdit])
 
   useEffect(() => {
+    fetchClasses()
     if (isEdit) {
       fetchStudent()
     } else {
       setFetching(false)
     }
   }, [id])
+
+  const fetchClasses = async () => {
+    setLoadingClasses(true)
+    try {
+      const response = await classesAPI.getAll({ active: true })
+      if (response?.success && response.data) {
+        const options = response.data.map(cls => ({
+          value: cls._id || cls.id,
+          label: cls.name || `${cls.level} (${cls.section || ''})`.trim(),
+        }))
+        setClassOptions(options)
+      }
+    } catch (error) {
+      console.error('Failed to fetch classes:', error)
+      toast.error('Failed to load class options')
+    } finally {
+      setLoadingClasses(false)
+    }
+  }
 
   const fetchStudent = async () => {
     setFetching(true)
@@ -237,7 +246,15 @@ function StudentForm() {
               { value: 'street', label: 'Street Child' }, { value: 'abundant', label: 'Abundant Family' },
               { value: 'orphan', label: 'Orphan' }, { value: 'other', label: 'Other' },
             ]} error={errors.student_type} />
-            <FormSelect label="Assign to Class" name="current_class_id" value={formData.current_class_id} onChange={handleChange} options={CLASSES} />
+            <FormSelect 
+              label="Assign to Class" 
+              name="current_class_id" 
+              value={formData.current_class_id} 
+              onChange={handleChange} 
+              options={classOptions} 
+              disabled={loadingClasses}
+              placeholder={loadingClasses ? 'Loading classes...' : 'Select a class'}
+            />
             <FormInput label="Enrollment Date" name="enrollment_date" type="date" value={formData.enrollment_date} onChange={handleChange} />
             <FormInput label="Address" name="address" value={formData.address} onChange={handleChange} />
           </div>
