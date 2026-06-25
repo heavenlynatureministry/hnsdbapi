@@ -26,16 +26,18 @@ function Header() {
 
       {/* Page Title & Breadcrumbs */}
       <div className="flex-1 min-w-0">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-white truncate">{pageTitle}</h1>
-        {breadcrumbs.length > 0 && (
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-white truncate">{pageTitle || 'Dashboard'}</h1>
+        {Array.isArray(breadcrumbs) && breadcrumbs.length > 0 && (
           <nav className="hidden sm:flex items-center gap-1 text-xs text-gray-500 mt-0.5">
             {breadcrumbs.map((crumb, i) => (
               <span key={i} className="flex items-center gap-1">
                 {i > 0 && <span>/</span>}
-                {crumb.path ? (
-                  <Link to={crumb.path} className="hover:text-primary-600 transition-colors">{crumb.label}</Link>
+                {crumb?.path ? (
+                  <Link to={crumb.path} className="hover:text-primary-600 transition-colors">
+                    {crumb?.label || ''}
+                  </Link>
                 ) : (
-                  <span className="text-gray-400">{crumb.label}</span>
+                  <span className="text-gray-400">{crumb?.label || ''}</span>
                 )}
               </span>
             ))}
@@ -71,19 +73,19 @@ function Header() {
                   <button onClick={markAllNotificationsRead} className="text-xs text-primary-600 hover:text-primary-700">Mark all read</button>
                 </div>
                 <div className="max-h-72 overflow-y-auto">
-                  {notifications.length === 0 ? (
+                  {!Array.isArray(notifications) || notifications.length === 0 ? (
                     <div className="text-center py-8 text-sm text-gray-500">No notifications</div>
                   ) : (
                     notifications.slice(0, 5).map((notif) => (
-                      <div key={notif.id} className={`px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${!notif.read ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''}`}>
-                        <p className="text-sm font-medium">{notif.title || 'Notification'}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{notif.message || ''}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{new Date(notif.timestamp).toLocaleString()}</p>
+                      <div key={notif?.id || Math.random()} className={`px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${!notif?.read ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''}`}>
+                        <p className="text-sm font-medium">{notif?.title || 'Notification'}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{notif?.message || ''}</p>
+                        <p className="text-[10px] text-gray-400 mt-1">{notif?.timestamp ? new Date(notif.timestamp).toLocaleString() : ''}</p>
                       </div>
                     ))
                   )}
                 </div>
-                {notifications.length > 5 && (
+                {Array.isArray(notifications) && notifications.length > 5 && (
                   <div className="p-3 text-center border-t border-gray-200 dark:border-gray-700">
                     <button className="text-xs text-primary-600 hover:text-primary-700">View all notifications</button>
                   </div>
@@ -112,10 +114,10 @@ function Header() {
               <div className="fixed inset-0 z-10" onClick={() => setShowProfile(false)} />
               <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-20 py-1 animate-scale-in">
                 <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                  <p className="font-medium text-sm">{user?.first_name} {user?.last_name}</p>
-                  <p className="text-xs text-gray-500">{user?.email}</p>
+                  <p className="font-medium text-sm">{user?.first_name || ''} {user?.last_name || ''}</p>
+                  <p className="text-xs text-gray-500">{user?.email || ''}</p>
                   <span className="inline-block mt-1 text-[10px] font-medium bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full capitalize">
-                    {user?.role}
+                    {user?.role || ''}
                   </span>
                 </div>
                 <Link to="/profile" onClick={() => setShowProfile(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
