@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import teachersAPI from '../../api/teachers'
+import schoolAPI from '../../api/school'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -10,17 +11,6 @@ import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import { ArrowLeft, Save, UserPlus, GraduationCap, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-const SUBJECTS = [
-  'English Language', 'Mathematics', 'Science', 'Social Studies',
-  'Religious Education', 'Creative Arts', 'Physical Education',
-  'Local Language', 'Computer Studies',
-]
-
-const QUALIFICATIONS = [
-  'Certificate', 'Diploma', 'B.Ed', 'B.Sc', 'B.A',
-  'M.Ed', 'M.Sc', 'M.A', 'PhD', 'PGDE', 'Other',
-]
 
 function TeacherForm() {
   const { id } = useParams()
@@ -31,6 +21,13 @@ function TeacherForm() {
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
+  const [subjectsList, setSubjectsList] = useState([])
+  const [loadingSubjects, setLoadingSubjects] = useState(false)
+
+  const QUALIFICATIONS = [
+    'Certificate', 'Diploma', 'B.Ed', 'B.Sc', 'B.A',
+    'M.Ed', 'M.Sc', 'M.A', 'PhD', 'PGDE', 'Other',
+  ]
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -63,12 +60,46 @@ function TeacherForm() {
   }, [isEdit, updatePageTitle, updateBreadcrumbs])
 
   useEffect(() => {
+    fetchSubjects()
     if (isEdit) {
       fetchTeacher()
     } else {
       setFetching(false)
     }
   }, [id])
+
+  const fetchSubjects = async () => {
+    setLoadingSubjects(true)
+    try {
+      // Try to fetch subjects from the school settings/subjects endpoint
+      // Adjust the API call based on your actual endpoint for fetching subjects
+      const response = await schoolAPI.getSettings({ category: 'subjects' })
+      if (response?.success && response.data?.subjects) {
+        setSubjectsList(response.data.subjects)
+      } else if (response?.success && Array.isArray(response.data)) {
+        setSubjectsList(response.data)
+      } else {
+        // Fallback: try fetching from a dedicated subjects endpoint if it exists
+        // or use a reasonable default list
+        console.warn('Could not fetch subjects from settings, using defaults')
+        setSubjectsList([
+          'English Language', 'Mathematics', 'Science', 'Social Studies',
+          'Religious Education', 'Creative Arts', 'Physical Education',
+          'Local Language', 'Computer Studies',
+        ])
+      }
+    } catch (error) {
+      console.error('Failed to fetch subjects:', error)
+      // Fallback to default subjects if API fails
+      setSubjectsList([
+        'English Language', 'Mathematics', 'Science', 'Social Studies',
+        'Religious Education', 'Creative Arts', 'Physical Education',
+        'Local Language', 'Computer Studies',
+      ])
+    } finally {
+      setLoadingSubjects(false)
+    }
+  }
 
   const fetchTeacher = async () => {
     setFetching(true)
@@ -234,26 +265,38 @@ function TeacherForm() {
 
         {/* Subjects */}
         <Card title="Subjects" icon={<BookOpen size={20} />}>
-          <div className="flex flex-wrap gap-2">
-            {SUBJECTS.map((subject) => (
-              <button
-                key={subject}
-                type="button"
-                onClick={() => handleSubjectsChange(subject)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  formData.subjects.includes(subject)
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
-              >
-                {subject}
-              </button>
-            ))}
-          </div>
-          {formData.subjects.length > 0 && (
-            <p className="text-sm text-gray-500 mt-2">
-              {formData.subjects.length} subject{formData.subjects.length > 1 ? 's' : ''} selected
-            </p>
+          {loadingSubjects ? (
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+              <span className="ml-2 text-sm text-gray-500">Loading subjects...</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                {subjectsList.map((subject) => (
+                  <button
+                    key={subject}
+                    type="button"
+                    onClick={() => handleSubjectsChange(subject)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      formData.subjects.includes(subject)
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    {subject}
+                  </button>
+                ))}
+                {subjectsList.length === 0 && (
+                  <p className="text-sm text-gray-500 py-2">No subjects available</p>
+                )}
+              </div>
+              {formData.subjects.length > 0 && (
+                <p className="text-sm text-gray-500 mt-2">
+                  {formData.subjects.length} subject{formData.subjects.length > 1 ? 's' : ''} selected
+                </p>
+              )}
+            </>
           )}
         </Card>
 
