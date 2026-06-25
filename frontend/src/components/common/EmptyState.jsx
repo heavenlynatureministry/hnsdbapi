@@ -1,18 +1,24 @@
 import { Inbox } from 'lucide-react'
 
 function EmptyState({ 
-  icon, 
+  icon: IconComponent, 
   title = 'No data found', 
   description = '', 
   action,
   className = ''
 }) {
-  const Icon = icon || Inbox
+  // Handle both component references and JSX elements
+  const isComponent = typeof IconComponent === 'function'
+  const Icon = isComponent ? IconComponent : Inbox
 
   return (
     <div className={`flex flex-col items-center justify-center py-12 px-4 text-center ${className}`}>
       <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
-        <Icon size={36} className="text-gray-400 dark:text-gray-500" />
+        {isComponent ? (
+          <Icon size={36} className="text-gray-400 dark:text-gray-500" />
+        ) : (
+          IconComponent || <Inbox size={36} className="text-gray-400 dark:text-gray-500" />
+        )}
       </div>
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
         {title}
