@@ -53,17 +53,20 @@ export const exportToPDF = (element, filename = 'report') => {
           /* Reset and base */
           * { margin: 0; padding: 0; box-sizing: border-box; }
           
-          body {
+          html, body {
             font-family: 'Inter', system-ui, sans-serif;
             color: #1f2937;
-            background: white;
+            background: transparent;
             position: relative;
+            width: 100%;
+            min-height: 100%;
           }
           
           @media print {
-            body { 
+            html, body { 
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
+              background: transparent !important;
             }
             .no-print { display: none !important; }
             .page-break { page-break-after: always; }
@@ -71,6 +74,7 @@ export const exportToPDF = (element, filename = 'report') => {
             @page {
               margin: 0;
               size: A4;
+              background: transparent;
             }
             
             /* Main container with margins matching watermark */
@@ -80,7 +84,7 @@ export const exportToPDF = (element, filename = 'report') => {
               min-height: 297mm;
               margin: 0 auto;
               padding: 20mm 15mm 20mm 15mm;
-              background: white;
+              background: rgba(255, 255, 255, 0.92);
             }
             
             /* Watermark background on every page */
@@ -96,8 +100,8 @@ export const exportToPDF = (element, filename = 'report') => {
             .watermark img {
               width: 100%;
               height: 100%;
-              object-fit: contain;
-              opacity: 0.12;
+              object-fit: cover;
+              opacity: 0.15;
             }
             
             /* Letterhead - positioned inside the watermark margins */
@@ -108,6 +112,7 @@ export const exportToPDF = (element, filename = 'report') => {
               border-bottom: 3px double #1a56db;
               position: relative;
               z-index: 1;
+              background: transparent;
             }
             .letterhead img {
               max-width: 100%;
@@ -126,7 +131,7 @@ export const exportToPDF = (element, filename = 'report') => {
             .report-content {
               position: relative;
               z-index: 1;
-              min-height: calc(297mm - 180mm);
+              background: transparent;
             }
             
             /* Footer - positioned at the bottom of the content area */
@@ -139,6 +144,7 @@ export const exportToPDF = (element, filename = 'report') => {
               border-top: 1px solid #d1d5db;
               font-size: 9px;
               color: #6b7280;
+              background: transparent;
             }
             .report-footer p {
               margin: 1px 0;
@@ -169,8 +175,8 @@ export const exportToPDF = (element, filename = 'report') => {
             .watermark img {
               width: 100%;
               height: 100%;
-              object-fit: contain;
-              opacity: 0.06;
+              object-fit: cover;
+              opacity: 0.08;
             }
             .letterhead img {
               max-width: 100%;
@@ -191,12 +197,12 @@ export const exportToPDF = (element, filename = 'report') => {
           
           /* Hide dark mode styles when printing */
           .dark { 
-            background: white !important; 
+            background: transparent !important; 
             color: #1f2937 !important;
           }
           .dark .text-white { color: #1f2937 !important; }
-          .dark .bg-gray-800 { background: #f9fafb !important; }
-          .dark .bg-gray-900 { background: #f3f4f6 !important; }
+          .dark .bg-gray-800 { background: rgba(249, 250, 251, 0.9) !important; }
+          .dark .bg-gray-900 { background: rgba(243, 244, 246, 0.9) !important; }
           .dark .text-gray-300 { color: #374151 !important; }
           .dark .text-gray-400 { color: #4b5563 !important; }
           .dark .border-gray-700 { border-color: #e5e7eb !important; }
