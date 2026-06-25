@@ -47,6 +47,13 @@ function FinancialSummary({ data }) {
     )
   }
 
+  // Map backend field names to expected values
+  const balance = summary?.balance || 0
+  const totalIncome = summary?.income?.total || summary?.total_income || 0
+  const totalExpenses = summary?.expense?.total || summary?.total_expenses || 0
+  const collectionRate = summary?.collection_rate || 0
+  const pendingPayments = summary?.pending_payments || 0
+
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-4">
@@ -63,22 +70,22 @@ function FinancialSummary({ data }) {
         <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
           <p className="text-xs text-gray-500 dark:text-gray-400">Current Balance</p>
           <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-            SSP {(summary?.balance || 0).toLocaleString()}
+            SSP {balance.toLocaleString()}
           </p>
         </div>
 
         <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <div>
-            <p className="text-xs text-gray-500">Income This Month</p>
-            <p className="font-semibold text-green-600">SSP {(summary?.income_this_month || 0).toLocaleString()}</p>
+            <p className="text-xs text-gray-500">Total Income</p>
+            <p className="font-semibold text-green-600">SSP {totalIncome.toLocaleString()}</p>
           </div>
           <TrendingUp size={20} className="text-green-500" />
         </div>
 
         <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <div>
-            <p className="text-xs text-gray-500">Expenses This Month</p>
-            <p className="font-semibold text-red-600">SSP {(summary?.expenses_this_month || 0).toLocaleString()}</p>
+            <p className="text-xs text-gray-500">Total Expenses</p>
+            <p className="font-semibold text-red-600">SSP {totalExpenses.toLocaleString()}</p>
           </div>
           <TrendingDown size={20} className="text-red-500" />
         </div>
@@ -86,16 +93,16 @@ function FinancialSummary({ data }) {
         <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs text-gray-500">Fee Collection Rate</p>
-            <span className="text-sm font-semibold text-primary-600">{summary?.collection_rate || 0}%</span>
+            <span className="text-sm font-semibold text-primary-600">{collectionRate}%</span>
           </div>
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
             <div
               className="bg-primary-600 h-2 rounded-full transition-all"
-              style={{ width: `${Math.min(summary?.collection_rate || 0, 100)}%` }}
+              style={{ width: `${Math.min(collectionRate, 100)}%` }}
             />
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            SSP {(summary?.pending_payments || 0).toLocaleString()} pending
+            SSP {pendingPayments.toLocaleString()} pending
           </p>
         </div>
       </div>
