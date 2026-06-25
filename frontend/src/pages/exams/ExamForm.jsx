@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import examsAPI from '../../api/exams'
+import classesAPI from '../../api/classes'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -15,16 +16,18 @@ function ExamForm() {
   const { id } = useParams()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
-  const { updatePageTitle, updateBreadcrumbs } = useApp()
+  const { updatePageTitle, updateBreadcrumbs, currentAcademicYear, currentTerm } = useApp()
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
+  const [classes, setClasses] = useState([])
+  const [subjects, setSubjects] = useState([])
 
   const [formData, setFormData] = useState({
     exam_name: '', exam_type: 'mid_term', class_id: '', subject_id: '',
     exam_date: '', start_time: '', end_time: '', max_score: 100,
-    pass_mark: 50, weight: 1.0, academic_year: '2024/2025',
-    term: 'Term 1', instructions: '',
+    pass_mark: 50, weight: 1.0, academic_year: currentAcademicYear || '2024/2025',
+    term: currentTerm || 'Term 1', instructions: '',
   })
 
   useEffect(() => {
@@ -34,6 +37,8 @@ function ExamForm() {
       { label: 'Exams', path: '/exams' },
       { label: isEdit ? 'Edit' : 'Create' },
     ])
+    fetchClasses()
+    fetchSubjects()
     
     if (isEdit) {
       fetchExam()
@@ -41,6 +46,30 @@ function ExamForm() {
       setFetching(false)
     }
   }, [id])
+
+  const fetchClasses = async () => {
+    try {
+      const response = await classesAPI.getAll({ status: 'active', limit: 100 })
+      const classList = response?.data?.classes || response?.classes || response?.data || []
+      const safeClasses = Array.isArray(classList) ? classList : []
+      setClasses(safeClasses)
+    } catch (error) {
+      console.error('Failed to fetch classes:', error)
+      setClasses([])
+    }
+  }
+
+  const fetchSubjects = async () => {
+    try {
+      const response = await examsAPI.listSubjects()
+      const subjectList = response?.data?.subjects || response?.subjects || response?.data || []
+      const safeSubjects = Array.isArray(subjectList) ? subjectList : []
+      setSubjects(safeSubjects)
+    } catch (error) {
+      console.error('Failed to fetch subjects:', error)
+      setSubjects([])
+    }
+  }
 
   const fetchExam = async () => {
     setFetching(true)
@@ -59,8 +88,8 @@ function ExamForm() {
           max_score: exam.max_score || 100,
           pass_mark: exam.pass_mark || 50,
           weight: exam.weight || 1.0,
-          academic_year: exam.academic_year || '2024/2025',
-          term: exam.term || 'Term 1',
+          academic_year: exam.academic_year || currentAcademicYear || '2024/2025',
+          term: exam.term || currentTerm || 'Term 1',
           instructions: exam.instructions || '',
         })
       } else {
@@ -138,6 +167,23 @@ function ExamForm() {
 
   if (fetching) return <LoadingSpinner fullScreen />
 
+  // Build dynamic options from API data
+  const classOptions = [
+    { value: '', label: 'Select Class' },
+    ...classes.map(c => ({
+      value: c._id || c.class_id || '',
+      label: c.class_name || `${c.class_name || ''} (${c.class_level || ''})`.trim() || 'Unknown',
+    })),
+  ]
+
+  const subjectOptions = [
+    { value: '', label: 'Select Subject' },
+    ...subjects.map(s => ({
+      value: s._id || s.subject_id || '',
+      label: s.subject_name || s.name || 'Unknown',
+    })),
+  ]
+
   return (
     <div className="space-y-6 max-w-2xl animate-fade-in-up">
       <PageHeader
@@ -158,12 +204,12 @@ function ExamForm() {
                 { value: 'project', label: 'Project' }, { value: 'oral', label: 'Oral' },
               ]} />
             <FormSelect label="Class *" name="class_id" value={formData.class_id} onChange={handleChange} error={errors.class_id}
-              options={[{ value: '', label: 'Select Class' }, { value: 'c8', label: 'P5' }, { value: 'c9', label: 'P6' }]} />
+              options={classOptions} />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormSelect label="Subject *" name="subject_id" value={formData.subject_id} onChange={handleChange} error={errors.subject_id}
-              options={[{ value: '', label: 'Select Subject' }, { value: 's1', label: 'English' }, { value: 's2', label: 'Mathematics' }]} />
+              options={subjectOptions} />
             <FormInput label="Exam Date *" name="exam_date" type="date" value={formData.exam_date} onChange={handleChange} error={errors.exam_date} />
           </div>
 
@@ -179,8 +225,7 @@ function ExamForm() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange}
-              options={[{ value: '2024/2025', label: '2024/2025' }]} />
+            <FormInput label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange} />
             <FormSelect label="Term" name="term" value={formData.term} onChange={handleChange}
               options={[{ value: 'Term 1', label: 'Term 1' }, { value: 'Term 2', label: 'Term 2' }, { value: 'Term 3', label: 'Term 3' }]} />
           </div>
