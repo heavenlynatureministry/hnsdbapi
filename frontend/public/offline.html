@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - HNS School Management</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: #f8fafc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #1e293b;
+        }
+        .offline-container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 500px;
+        }
+        .offline-icon {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 2rem;
+            background: #e0e7ff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .offline-icon svg {
+            width: 60px;
+            height: 60px;
+            color: #4f46e5;
+        }
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+        p {
+            color: #64748b;
+            margin-bottom: 0.5rem;
+            line-height: 1.6;
+        }
+        .status {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: #fef2f2;
+            color: #dc2626;
+            border-radius: 2rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin: 1rem 0;
+        }
+        .retry-btn {
+            display: inline-block;
+            padding: 0.75rem 2rem;
+            background: #4f46e5;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 1rem;
+            text-decoration: none;
+        }
+        .retry-btn:hover {
+            background: #4338ca;
+        }
+        .info {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #f0fdf4;
+            border-radius: 0.5rem;
+            border: 1px solid #bbf7d0;
+        }
+        .info p {
+            color: #166534;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m-2.829-2.829a5 5 0 000-7.07m-5.657 0a5 5 0 000 7.07m-2.829 2.829a9 9 0 010-12.728" />
+            </svg>
+        </div>
+        <h1>You're Offline</h1>
+        <p>Don't worry! The HNS School Management System works offline.</p>
+        <p>You can continue working and your data will sync automatically when you're back online.</p>
+        <div class="status">● No Internet Connection</div>
+        <br>
+        <button class="retry-btn" onclick="window.location.reload()">
+            Try Again
+        </button>
+        <div class="info">
+            <p>✅ You can still view previously loaded data</p>
+            <p>✅ New entries will be saved locally and synced later</p>
+            <p>🔄 The system will auto-sync when connection is restored</p>
+        </div>
+    </div>
+</body>
+</html>
