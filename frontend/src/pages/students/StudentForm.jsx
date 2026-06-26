@@ -62,17 +62,80 @@ function StudentForm() {
   const fetchClasses = async () => {
     setLoadingClasses(true)
     try {
-      const response = await classesAPI.getAll({ active: true })
-      if (response?.success && response.data) {
-        const options = response.data.map(cls => ({
-          value: cls._id || cls.id,
-          label: cls.name || `${cls.level} (${cls.section || ''})`.trim(),
-        }))
+      console.log('Fetching classes...')
+      const response = await classesAPI.getAll()
+      console.log('Classes API raw response:', response)
+
+      // Extract classes array from various possible response formats
+      let classesArray = null
+
+      if (Array.isArray(response)) {
+        classesArray = response
+      } else if (response?.data && Array.isArray(response.data)) {
+        classesArray = response.data
+      } else if (response?.data?.data && Array.isArray(response.data.data)) {
+        classesArray = response.data.data
+      } else if (response?.data?.success && Array.isArray(response.data.data)) {
+        classesArray = response.data.data
+      } else if (response?.success && Array.isArray(response.data)) {
+        classesArray = response.data
+      } else if (response?.data?.classes && Array.isArray(response.data.classes)) {
+        classesArray = response.data.classes
+      } else if (response?.classes && Array.isArray(response.classes)) {
+        classesArray = response.classes
+      } else if (response?.data?.results && Array.isArray(response.data.results)) {
+        classesArray = response.data.results
+      }
+
+      if (classesArray && classesArray.length > 0) {
+        console.log('Classes array found:', classesArray)
+        const options = classesArray.map(cls => {
+          // Try multiple possible field names for ID and name
+          const id = cls._id || cls.id || cls.class_id || cls.classId || ''
+          const name = cls.name || cls.class_name || cls.className || 
+                      (cls.level ? `${cls.level} ${cls.section || ''}`.trim() : '') ||
+                      cls.label || cls.title || 'Unknown Class'
+          
+          return {
+            value: id,
+            label: name,
+          }
+        }).filter(option => option.value && option.label)
+        
+        console.log('Processed class options:', options)
         setClassOptions(options)
+        
+        if (options.length === 0) {
+          toast.error('No valid classes found in response')
+        }
+      } else {
+        console.warn('No classes found in response. Full response:', response)
+        toast.error('No classes found. Please create classes first.')
+        setClassOptions([])
       }
     } catch (error) {
       console.error('Failed to fetch classes:', error)
-      toast.error('Failed to load class options')
+      
+      // Try without params as fallback
+      try {
+        console.log('Retrying classes fetch without params...')
+        const retryResponse = await classesAPI.getAll()
+        console.log('Retry response:', retryResponse)
+        
+        if (Array.isArray(retryResponse?.data)) {
+          const options = retryResponse.data.map(cls => ({
+            value: cls._id || cls.id || cls.class_id || '',
+            label: cls.name || cls.class_name || `${cls.level || ''} ${cls.section || ''}`.trim() || 'Unknown Class',
+          })).filter(option => option.value)
+          setClassOptions(options)
+          return
+        }
+      } catch (retryError) {
+        console.error('Retry also failed:', retryError)
+      }
+      
+      toast.error('Failed to load classes. Please check your connection and try again.')
+      setClassOptions([])
     } finally {
       setLoadingClasses(false)
     }
@@ -253,7 +316,7 @@ function StudentForm() {
               onChange={handleChange} 
               options={classOptions} 
               disabled={loadingClasses}
-              placeholder={loadingClasses ? 'Loading classes...' : 'Select a class'}
+              placeholder={loadingClasses ? 'Loading classes...' : classOptions.length === 0 ? 'No classes available - Create classes first' : 'Select a class'}
             />
             <FormInput label="Enrollment Date" name="enrollment_date" type="date" value={formData.enrollment_date} onChange={handleChange} />
             <FormInput label="Address" name="address" value={formData.address} onChange={handleChange} />
