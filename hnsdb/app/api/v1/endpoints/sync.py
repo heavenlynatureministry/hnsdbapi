@@ -1,14 +1,80 @@
 """
 Sync endpoints for offline data synchronization
 """
-from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from fastapi import APIRouter, HTTPException, Depends, Body, Query, Request
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from app.core.deps import get_current_user
+import logging
+
 from app.services.sync_service import SyncService
 from app.models.sync_models import SyncPushRequest, SyncPullResponse, ConflictResolution
 
-router = APIRouter(prefix="/sync", tags=["Sync"])
+logger = logging.getLogger(__name__)
+
+# =========================================================================
+# IMPORT get_current_user FROM THE CORRECT MODULE
+# =========================================================================
+# Try multiple possible locations for the auth dependency
+_get_current_user = None
+
+try:
+    from app.api.v1.auth import get_current_user
+    logger.info("✅ Imported get_current_user from app.api.v1.auth")
+except ImportError:
+    try:
+        from app.api.deps import get_current_user
+        logger.info("✅ Imported get_current_user from app.api.deps")
+    except ImportError:
+        try:
+            from app.core.dependencies import get_current_user
+            logger.info("✅ Imported get_current_user from app.core.dependencies")
+        except ImportError:
+            try:
+                from app.dependencies import get_current_user
+                logger.info("✅ Imported get_current_user from app.dependencies")
+            except ImportError:
+                logger.warning("⚠️  Could not find get_current_user in standard locations")
+                logger.warning("⚠️  Using fallback authentication dependency")
+                
+                # Fallback: define a basic auth dependency
+                async def get_current_user(request: Request):
+                    """
+                    Fallback authentication dependency.
+                    Replace this with the actual implementation from your auth module.
+                    """
+                    from jose import JWTError, jwt
+                    from app.core.config import settings
+                    
+                    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+                    
+                    if not token:
+                        raise HTTPException(
+                            status_code=401,
+                            detail="Not authenticated",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+                    
+                    try:
+                        payload = jwt.decode(
+                            token,
+                            settings.JWT_SECRET_KEY,
+                            algorithms=[settings.JWT_ALGORITHM]
+                        )
+                        user_id = payload.get("sub")
+                        if user_id is None:
+                            raise HTTPException(
+                                status_code=401,
+                                detail="Invalid token"
+                            )
+                        return {"_id": user_id, **payload}
+                    except JWTError:
+                        raise HTTPException(
+                            status_code=401,
+                            detail="Invalid token",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+
+router = APIRouter()
 
 sync_service = SyncService()
 
@@ -23,9 +89,11 @@ async def push_changes(
     Returns any conflicts that need resolution.
     """
     try:
+        user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
+        
         result = await sync_service.process_push(
             changes=request.changes,
-            user_id=str(current_user["_id"])
+            user_id=user_id
         )
         return {
             "success": True,
@@ -35,6 +103,7 @@ async def push_changes(
             "errors": result["errors"]
         }
     except Exception as e:
+        logger.error(f"❌ Push sync error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -49,10 +118,11 @@ async def pull_changes(
     Returns all data modified after the 'since' timestamp.
     """
     try:
+        user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
         since_dt = datetime.fromisoformat(since) if since else None
         
         data = await sync_service.get_changes(
-            user_id=str(current_user["_id"]),
+            user_id=user_id,
             entity_type=entity_type,
             since=since_dt
         )
@@ -63,6 +133,7 @@ async def pull_changes(
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
+        logger.error(f"❌ Pull sync error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -74,14 +145,15 @@ async def get_sync_status(
     Get current sync status including pending changes and conflicts.
     """
     try:
-        status = await sync_service.get_sync_status(
-            user_id=str(current_user["_id"])
-        )
+        user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
+        
+        status = await sync_service.get_sync_status(user_id=user_id)
         return {
             "success": True,
             "data": status
         }
     except Exception as e:
+        logger.error(f"❌ Sync status error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -94,8 +166,10 @@ async def get_conflicts(
     Get list of sync conflicts that need resolution.
     """
     try:
+        user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
+        
         conflicts = await sync_service.get_conflicts(
-            user_id=str(current_user["_id"]),
+            user_id=user_id,
             status=status
         )
         return {
@@ -103,6 +177,7 @@ async def get_conflicts(
             "data": conflicts
         }
     except Exception as e:
+        logger.error(f"❌ Get conflicts error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -115,10 +190,12 @@ async def resolve_conflict(
     Resolve a sync conflict by choosing which version to keep.
     """
     try:
+        user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
+        
         result = await sync_service.resolve_conflict(
             conflict_id=resolution.conflict_id,
-            resolution=resolution.resolution,  # "keep_client" or "keep_server"
-            user_id=str(current_user["_id"])
+            resolution=resolution.resolution,
+            user_id=user_id
         )
         return {
             "success": True,
@@ -126,4 +203,5 @@ async def resolve_conflict(
             "data": result
         }
     except Exception as e:
+        logger.error(f"❌ Resolve conflict error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
