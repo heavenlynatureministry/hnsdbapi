@@ -595,3 +595,16 @@ if __name__ == "__main__":
         log_level=settings.LOG_LEVEL.lower(),
         workers=1
     )
+
+
+
+update the main with offline capability 
+# Add this import
+from app.api.v1.endpoints import sync
+
+# Add this to your app initialization
+app.include_router(
+    sync.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["Sync"]
+)
