@@ -187,3 +187,14 @@ settings = Settings()
 
 def get_settings() -> Settings:
     return settings
+
+
+update the config with this new feature offline
+# In your Settings class, add:
+
+# Sync Configuration
+SYNC_ENABLED: bool = True
+SYNC_BATCH_SIZE: int = 50
+SYNC_RETRY_MAX: int = 5
+SYNC_CONFLICT_RESOLUTION: str = "manual"  # manual, auto_client, auto_server
+OFFLINE_DATA_EXPIRY_HOURS: int = 72
