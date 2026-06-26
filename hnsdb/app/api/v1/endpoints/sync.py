@@ -6,7 +6,6 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
 
-from app.services.sync_service import SyncService
 from app.models.sync_models import SyncPushRequest, ConflictResolution
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,6 @@ except ImportError:
             try:
                 from app.dependencies import get_current_user
             except ImportError:
-                # Fallback auth dependency
                 async def get_current_user(request: Request):
                     from jose import JWTError, jwt
                     from app.core.config import settings
@@ -59,7 +57,17 @@ except ImportError:
 
 router = APIRouter()
 
-sync_service = SyncService()
+# Lazy initialization - don't create at module level
+_sync_service = None
+
+
+def get_sync_service():
+    """Lazy getter for SyncService - only initializes when first called"""
+    global _sync_service
+    if _sync_service is None:
+        from app.services.sync_service import SyncService
+        _sync_service = SyncService()
+    return _sync_service
 
 
 @router.post("/push")
@@ -69,6 +77,7 @@ async def push_changes(
 ):
     """Receive offline changes from client and apply them to the database."""
     try:
+        sync_service = get_sync_service()
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
         
         result = await sync_service.process_push(
@@ -95,6 +104,7 @@ async def pull_changes(
 ):
     """Send latest data to client for offline sync."""
     try:
+        sync_service = get_sync_service()
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
         since_dt = datetime.fromisoformat(since) if since else None
         
@@ -120,6 +130,7 @@ async def get_sync_status(
 ):
     """Get current sync status including pending changes and conflicts."""
     try:
+        sync_service = get_sync_service()
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
         status = await sync_service.get_sync_status(user_id=user_id)
         return {"success": True, "data": status}
@@ -135,6 +146,7 @@ async def get_conflicts(
 ):
     """Get list of sync conflicts that need resolution."""
     try:
+        sync_service = get_sync_service()
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
         conflicts = await sync_service.get_conflicts(user_id=user_id, status=status)
         return {"success": True, "data": conflicts}
@@ -150,6 +162,7 @@ async def resolve_conflict(
 ):
     """Resolve a sync conflict by choosing which version to keep."""
     try:
+        sync_service = get_sync_service()
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
         result = await sync_service.resolve_conflict(
             conflict_id=resolution.conflict_id,
