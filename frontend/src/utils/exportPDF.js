@@ -77,14 +77,15 @@ export const exportToPDF = (element, filename = 'report') => {
               background: transparent;
             }
             
-            /* Main container with margins matching watermark */
+            /* Main container - reduced white background opacity for better watermark visibility */
             .page-container {
               position: relative;
               width: 210mm;
               min-height: 297mm;
               margin: 0 auto;
               padding: 20mm 15mm 20mm 15mm;
-              background: rgba(255, 255, 255, 0.92);
+              background: rgba(255, 255, 255, 0.85);
+              backdrop-filter: none;
             }
             
             /* Watermark background on every page */
@@ -94,14 +95,14 @@ export const exportToPDF = (element, filename = 'report') => {
               left: 0;
               width: 100%;
               height: 100%;
-              z-index: -2;
+              z-index: -1;
               pointer-events: none;
             }
             .watermark img {
               width: 100%;
               height: 100%;
               object-fit: cover;
-              opacity: 0.15;
+              opacity: 0.25;
             }
             
             /* Letterhead - positioned inside the watermark margins */
@@ -112,7 +113,9 @@ export const exportToPDF = (element, filename = 'report') => {
               border-bottom: 3px double #1a56db;
               position: relative;
               z-index: 1;
-              background: transparent;
+              background: rgba(255, 255, 255, 0.7);
+              border-radius: 4px;
+              padding: 12px;
             }
             .letterhead img {
               max-width: 100%;
@@ -127,14 +130,37 @@ export const exportToPDF = (element, filename = 'report') => {
               padding: 8px 0;
             }
             
-            /* Report content area */
+            /* Report content area with semi-transparent background */
             .report-content {
               position: relative;
               z-index: 1;
-              background: transparent;
+              background: rgba(255, 255, 255, 0.75);
+              border-radius: 6px;
+              padding: 16px;
+              margin: 8px 0;
             }
             
-            /* Footer - positioned at the bottom of the content area */
+            /* Tables and cards with semi-transparent backgrounds */
+            .report-content table {
+              background: rgba(255, 255, 255, 0.85);
+            }
+            .report-content table thead {
+              background: rgba(26, 86, 219, 0.15);
+            }
+            .report-content table tbody tr:nth-child(even) {
+              background: rgba(249, 250, 251, 0.6);
+            }
+            .report-content table tbody tr:nth-child(odd) {
+              background: rgba(255, 255, 255, 0.5);
+            }
+            .report-content .card,
+            .report-content [class*="card"],
+            .report-content [class*="bg-white"],
+            .report-content [class*="bg-gray-50"] {
+              background: rgba(255, 255, 255, 0.8) !important;
+            }
+            
+            /* Footer with semi-transparent background */
             .report-footer {
               position: relative;
               z-index: 1;
@@ -144,7 +170,9 @@ export const exportToPDF = (element, filename = 'report') => {
               border-top: 1px solid #d1d5db;
               font-size: 9px;
               color: #6b7280;
-              background: transparent;
+              background: rgba(255, 255, 255, 0.7);
+              border-radius: 4px;
+              padding: 10px;
             }
             .report-footer p {
               margin: 1px 0;
@@ -154,6 +182,19 @@ export const exportToPDF = (element, filename = 'report') => {
               font-weight: 500;
               color: #4b5563;
             }
+            
+            /* Ensure text remains readable over watermark */
+            h1, h2, h3, h4, h5, h6, p, span, li, td, th, div {
+              text-shadow: 0 0 1px rgba(255, 255, 255, 0.3);
+            }
+            
+            /* Dark backgrounds should be semi-transparent in print */
+            .dark .bg-gray-800,
+            .dark .bg-gray-900,
+            [class*="bg-gray-800"],
+            [class*="bg-gray-900"] {
+              background: rgba(249, 250, 251, 0.85) !important;
+            }
           }
           
           /* Screen preview styles */
@@ -162,6 +203,7 @@ export const exportToPDF = (element, filename = 'report') => {
               max-width: 900px;
               margin: 0 auto;
               padding: 30px 25px;
+              background: rgba(255, 255, 255, 0.85);
             }
             .watermark {
               position: fixed;
@@ -169,14 +211,19 @@ export const exportToPDF = (element, filename = 'report') => {
               left: 0;
               width: 100%;
               height: 100%;
-              z-index: -2;
+              z-index: -1;
               pointer-events: none;
             }
             .watermark img {
               width: 100%;
               height: 100%;
               object-fit: cover;
-              opacity: 0.08;
+              opacity: 0.2;
+            }
+            .letterhead {
+              background: rgba(255, 255, 255, 0.7);
+              border-radius: 4px;
+              padding: 12px;
             }
             .letterhead img {
               max-width: 100%;
@@ -185,6 +232,12 @@ export const exportToPDF = (element, filename = 'report') => {
               object-fit: contain;
               margin: 0 auto;
             }
+            .report-content {
+              background: rgba(255, 255, 255, 0.75);
+              border-radius: 6px;
+              padding: 16px;
+              margin: 8px 0;
+            }
             .report-footer {
               text-align: center;
               padding-top: 12px;
@@ -192,17 +245,30 @@ export const exportToPDF = (element, filename = 'report') => {
               border-top: 1px solid #e5e7eb;
               font-size: 9px;
               color: #9ca3af;
+              background: rgba(255, 255, 255, 0.7);
+              border-radius: 4px;
+              padding: 10px;
             }
           }
           
-          /* Hide dark mode styles when printing */
+          /* Force light backgrounds to be semi-transparent */
+          .bg-white,
+          [class*="bg-white"],
+          .bg-gray-50,
+          [class*="bg-gray-50"],
+          .bg-gray-100,
+          [class*="bg-gray-100"] {
+            background: rgba(255, 255, 255, 0.8) !important;
+          }
+          
+          /* Dark mode overrides for print */
           .dark { 
             background: transparent !important; 
             color: #1f2937 !important;
           }
           .dark .text-white { color: #1f2937 !important; }
-          .dark .bg-gray-800 { background: rgba(249, 250, 251, 0.9) !important; }
-          .dark .bg-gray-900 { background: rgba(243, 244, 246, 0.9) !important; }
+          .dark .bg-gray-800 { background: rgba(249, 250, 251, 0.8) !important; }
+          .dark .bg-gray-900 { background: rgba(243, 244, 246, 0.8) !important; }
           .dark .text-gray-300 { color: #374151 !important; }
           .dark .text-gray-400 { color: #4b5563 !important; }
           .dark .border-gray-700 { border-color: #e5e7eb !important; }
@@ -214,7 +280,7 @@ export const exportToPDF = (element, filename = 'report') => {
           <img src="${window.location.origin}/watermark-A4.jpg" alt="Watermark Background" onerror="this.style.display='none';" />
         </div>
         
-        <!-- Page Container with margins -->
+        <!-- Page Container with margins and reduced opacity background -->
         <div class="page-container">
           <!-- Letterhead Header -->
           <div class="letterhead">
@@ -230,7 +296,7 @@ export const exportToPDF = (element, filename = 'report') => {
             ${element.outerHTML}
           </div>
           
-          <!-- Report Footer - inside the margin area -->
+          <!-- Report Footer -->
           <div class="report-footer">
             <p class="footer-brand">Heavenly Nature Nursery & Primary School</p>
             <p>Generated on ${formattedDateTime}</p>
