@@ -122,6 +122,64 @@ class Settings(BaseSettings):
     CONSECUTIVE_ABSENCE_CRITICAL: int = Field(default=5)
     
     # =========================================================================
+    # OFFLINE SYNC CONFIGURATION
+    # =========================================================================
+    SYNC_ENABLED: bool = Field(
+        default=True,
+        description="Enable/disable offline sync functionality"
+    )
+    SYNC_BATCH_SIZE: int = Field(
+        default=50,
+        description="Maximum number of changes to sync in a single batch"
+    )
+    SYNC_RETRY_MAX: int = Field(
+        default=5,
+        description="Maximum number of retry attempts for failed sync operations"
+    )
+    SYNC_CONFLICT_RESOLUTION: str = Field(
+        default="manual",
+        description="Conflict resolution strategy: manual, auto_client, auto_server, auto_merge"
+    )
+    OFFLINE_DATA_EXPIRY_HOURS: int = Field(
+        default=72,
+        description="Number of hours before cached offline data expires"
+    )
+    SYNC_LOG_RETENTION_DAYS: int = Field(
+        default=30,
+        description="Number of days to retain sync logs before auto-deletion"
+    )
+    SYNC_QUEUE_MAX_SIZE: int = Field(
+        default=500,
+        description="Maximum number of items allowed in the sync queue"
+    )
+    
+    @validator('SYNC_CONFLICT_RESOLUTION')
+    def validate_sync_conflict_resolution(cls, v):
+        """Validate conflict resolution strategy"""
+        allowed = ['manual', 'auto_client', 'auto_server', 'auto_merge']
+        if v not in allowed:
+            raise ValueError(f'Sync conflict resolution must be one of: {", ".join(allowed)}')
+        return v
+    
+    @validator('SYNC_BATCH_SIZE')
+    def validate_sync_batch_size(cls, v):
+        """Validate batch size limits"""
+        if v < 1:
+            raise ValueError('Sync batch size must be at least 1')
+        if v > 500:
+            raise ValueError('Sync batch size cannot exceed 500')
+        return v
+    
+    @validator('OFFLINE_DATA_EXPIRY_HOURS')
+    def validate_offline_expiry(cls, v):
+        """Validate offline data expiry"""
+        if v < 1:
+            raise ValueError('Offline data expiry must be at least 1 hour')
+        if v > 720:  # 30 days
+            raise ValueError('Offline data expiry cannot exceed 720 hours (30 days)')
+        return v
+    
+    # =========================================================================
     # LOGGING
     # =========================================================================
     LOG_LEVEL: str = Field(default="INFO")
@@ -167,6 +225,19 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
     
+    @property
+    def offline_data_expiry_timedelta(self) -> timedelta:
+        """Get offline data expiry as timedelta"""
+        return timedelta(hours=self.OFFLINE_DATA_EXPIRY_HOURS)
+    
+    @property
+    def sync_enabled_and_configured(self) -> bool:
+        """Check if sync is enabled and properly configured"""
+        return self.SYNC_ENABLED and self.MONGODB_URL is not None
+    
+    # =========================================================================
+    # VALIDATORS
+    # =========================================================================
     @validator('ENVIRONMENT')
     def validate_environment(cls, v):
         allowed = ['development', 'staging', 'production']
@@ -186,15 +257,5 @@ settings = Settings()
 
 
 def get_settings() -> Settings:
+    """Get application settings instance"""
     return settings
-
-
-update the config with this new feature offline
-# In your Settings class, add:
-
-# Sync Configuration
-SYNC_ENABLED: bool = True
-SYNC_BATCH_SIZE: int = 50
-SYNC_RETRY_MAX: int = 5
-SYNC_CONFLICT_RESOLUTION: str = "manual"  # manual, auto_client, auto_server
-OFFLINE_DATA_EXPIRY_HOURS: int = 72
