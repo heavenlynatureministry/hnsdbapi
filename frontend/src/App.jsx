@@ -14,3 +14,24 @@ function App() {
 }
 
 export default App
+
+
+
+update the app with this
+import { BrowserRouter } from 'react-router-dom';
+import { OfflineProvider } from './context/OfflineContext';
+import OfflineIndicator from './components/common/OfflineIndicator';
+// ... other imports
+
+function App() {
+  return (
+    <BrowserRouter>
+      <OfflineProvider>
+        {/* Your existing app content */}
+        <OfflineIndicator />
+      </OfflineProvider>
+    </BrowserRouter>
+  );
+}
+
+export default App;
