@@ -27,6 +27,7 @@ from app.api.v1 import (
     auth, users, students, teachers, classes,
     attendance, exams, financial, reports, school
 )
+from app.api.v1.endpoints import sync
 
 # =========================================================================
 # LOGGING CONFIGURATION
@@ -68,6 +69,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"   Environment: {settings.ENVIRONMENT}")
     logger.info(f"   Debug Mode: {settings.DEBUG}")
     logger.info(f"   API Prefix: {settings.API_V1_PREFIX}")
+    logger.info(f"   Offline Sync: {'Enabled' if settings.SYNC_ENABLED else 'Disabled'}")
     logger.info("=" * 60)
 
     startup_start = time.time()
@@ -79,6 +81,10 @@ async def lifespan(app: FastAPI):
 
         if connected:
             logger.info("✅ MongoDB connection established")
+            
+            # Initialize sync indexes
+            if settings.SYNC_ENABLED:
+                await initialize_sync_collections()
             
             # Seed default data and initialize services
             await seed_default_data()
@@ -96,6 +102,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"📡 API Base URL: {settings.API_V1_PREFIX}")
     logger.info(f"📚 API Documentation: /docs")
     logger.info(f"🔍 Health Check: /health")
+    logger.info(f"🔄 Sync Endpoint: {settings.API_V1_PREFIX}/sync")
     logger.info("=" * 60)
 
     yield  # Application runs here
@@ -110,6 +117,43 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ Error closing MongoDB: {e}")
 
     logger.info("👋 Application shutdown complete")
+
+
+# =========================================================================
+# INITIALIZE SYNC COLLECTIONS
+# =========================================================================
+async def initialize_sync_collections():
+    """
+    Create indexes for sync-related collections
+    """
+    db = get_database()
+    
+    if db is None:
+        logger.warning("⚠️  Cannot initialize sync collections: database not connected")
+        return
+
+    try:
+        # Sync conflicts collection
+        await db.sync_conflicts.create_index("status")
+        await db.sync_conflicts.create_index("user_id")
+        await db.sync_conflicts.create_index("entity_type")
+        await db.sync_conflicts.create_index("created_at")
+        
+        # Sync log collection
+        await db.sync_log.create_index("user_id")
+        await db.sync_log.create_index("timestamp")
+        await db.sync_log.create_index("status")
+        
+        # Create TTL index for sync logs (auto-delete after 30 days)
+        await db.sync_log.create_index(
+            "timestamp",
+            expireAfterSeconds=30 * 24 * 60 * 60
+        )
+        
+        logger.info("✅ Sync collection indexes created")
+        
+    except Exception as e:
+        logger.error(f"❌ Error initializing sync collections: {e}")
 
 
 # =========================================================================
@@ -242,6 +286,15 @@ async def initialize_services():
         if result.modified_count > 0:
             logger.info(f"✅ Cleaned {result.modified_count} expired reset tokens")
 
+        # Clean up old sync logs (older than 30 days)
+        if settings.SYNC_ENABLED:
+            thirty_days_ago = now.replace(day=now.day-30) if now.day > 30 else now.replace(month=now.month-1 if now.month > 1 else 12)
+            result = await db.sync_log.delete_many({
+                "timestamp": {"$lt": thirty_days_ago.isoformat()}
+            })
+            if result.deleted_count > 0:
+                logger.info(f"✅ Cleaned {result.deleted_count} old sync logs")
+
         logger.info("✅ Services initialized successfully")
 
     except Exception as e:
@@ -283,7 +336,7 @@ app.add_middleware(
     allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID", "X-Response-Time"],
+    expose_headers=["X-Request-ID", "X-Response-Time", "X-Sync-Status"],
     max_age=3600
 )
 
@@ -320,6 +373,10 @@ async def request_middleware(request: Request, call_next):
         process_time = time.time() - start_time
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Response-Time"] = f"{process_time:.3f}s"
+        
+        # Add sync status header for sync endpoints
+        if "/sync" in request.url.path:
+            response.headers["X-Sync-Status"] = "completed"
         
         # Log response
         logger.info(
@@ -514,6 +571,13 @@ app.include_router(
     tags=["School"]
 )
 
+# Sync routes (Offline support)
+app.include_router(
+    sync.router,
+    prefix=f"{API_PREFIX}/sync",
+    tags=["Sync"]
+)
+
 
 # =========================================================================
 # ROOT ENDPOINTS
@@ -531,7 +595,8 @@ async def root():
         "status": "running",
         "docs": "/docs",
         "health": "/health",
-        "api_prefix": settings.API_V1_PREFIX
+        "api_prefix": settings.API_V1_PREFIX,
+        "sync_enabled": settings.SYNC_ENABLED
     }
 
 
@@ -548,6 +613,7 @@ async def health_check():
         "status": "healthy" if db_health.get("status") == "healthy" else "degraded",
         "database": db_health,
         "connection": get_connection_status(),
+        "sync_enabled": settings.SYNC_ENABLED,
         "timestamp": datetime.utcnow().isoformat(),
         "uptime": "available"
     }
@@ -566,6 +632,7 @@ async def api_info():
         "api_version": "v1",
         "base_url": settings.API_V1_PREFIX,
         "documentation": "/docs",
+        "sync_enabled": settings.SYNC_ENABLED,
         "endpoints": {
             "auth": f"{settings.API_V1_PREFIX}/auth",
             "users": f"{settings.API_V1_PREFIX}/users",
@@ -576,7 +643,8 @@ async def api_info():
             "exams": f"{settings.API_V1_PREFIX}/exams",
             "financial": f"{settings.API_V1_PREFIX}/financial",
             "reports": f"{settings.API_V1_PREFIX}/reports",
-            "school": f"{settings.API_V1_PREFIX}/school"
+            "school": f"{settings.API_V1_PREFIX}/school",
+            "sync": f"{settings.API_V1_PREFIX}/sync"
         }
     }
 
@@ -594,17 +662,4 @@ if __name__ == "__main__":
         reload=settings.is_development,
         log_level=settings.LOG_LEVEL.lower(),
         workers=1
-    )
-
-
-
-update the main with offline capability 
-# Add this import
-from app.api.v1.endpoints import sync
-
-# Add this to your app initialization
-app.include_router(
-    sync.router,
-    prefix=f"{settings.API_V1_STR}",
-    tags=["Sync"]
 )
