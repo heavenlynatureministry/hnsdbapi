@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pymongo.errors import OperationFailure
 import logging
 import time
 import sys
@@ -124,7 +125,8 @@ async def lifespan(app: FastAPI):
 # =========================================================================
 async def initialize_sync_collections():
     """
-    Create indexes for sync-related collections
+    Create indexes for sync-related collections.
+    Handles existing indexes gracefully.
     """
     db = get_database()
     
@@ -133,27 +135,54 @@ async def initialize_sync_collections():
         return
 
     try:
-        # Sync conflicts collection
-        await db.sync_conflicts.create_index("status")
-        await db.sync_conflicts.create_index("user_id")
-        await db.sync_conflicts.create_index("entity_type")
-        await db.sync_conflicts.create_index("created_at")
+        # Sync conflicts collection indexes
+        await _safe_create_index(db.sync_conflicts, "status")
+        await _safe_create_index(db.sync_conflicts, "user_id")
+        await _safe_create_index(db.sync_conflicts, "entity_type")
+        await _safe_create_index(db.sync_conflicts, "created_at")
         
-        # Sync log collection
-        await db.sync_log.create_index("user_id")
-        await db.sync_log.create_index("timestamp")
-        await db.sync_log.create_index("status")
+        # Sync log collection indexes
+        await _safe_create_index(db.sync_log, "user_id")
+        await _safe_create_index(db.sync_log, "status")
+        
+        # Handle timestamp index with TTL
+        # Drop existing index if it exists without TTL, then recreate with TTL
+        try:
+            await db.sync_log.drop_index("timestamp_1")
+            logger.info("   Dropped existing timestamp_1 index")
+        except OperationFailure:
+            pass  # Index doesn't exist, that's fine
+        except Exception:
+            pass  # Any other error, ignore and try to create
         
         # Create TTL index for sync logs (auto-delete after 30 days)
-        await db.sync_log.create_index(
+        await _safe_create_index(
+            db.sync_log,
             "timestamp",
-            expireAfterSeconds=30 * 24 * 60 * 60
+            expireAfterSeconds=settings.SYNC_LOG_RETENTION_DAYS * 24 * 60 * 60
         )
         
         logger.info("✅ Sync collection indexes created")
         
     except Exception as e:
-        logger.error(f"❌ Error initializing sync collections: {e}")
+        logger.warning(f"⚠️  Sync collection initialization warning: {e}")
+
+
+async def _safe_create_index(collection, field, **kwargs):
+    """
+    Safely create an index, ignoring if it already exists.
+    """
+    try:
+        # Build index specification
+        index_spec = [(field, 1)] if isinstance(field, str) else field
+        await collection.create_index(index_spec, **kwargs)
+    except OperationFailure as e:
+        if "already exists" in str(e).lower():
+            logger.debug(f"   Index on '{field}' already exists, skipping")
+        else:
+            raise
+    except Exception as e:
+        logger.warning(f"   Could not create index on '{field}': {e}")
 
 
 # =========================================================================
@@ -285,15 +314,6 @@ async def initialize_services():
         )
         if result.modified_count > 0:
             logger.info(f"✅ Cleaned {result.modified_count} expired reset tokens")
-
-        # Clean up old sync logs (older than 30 days)
-        if settings.SYNC_ENABLED:
-            thirty_days_ago = now.replace(day=now.day-30) if now.day > 30 else now.replace(month=now.month-1 if now.month > 1 else 12)
-            result = await db.sync_log.delete_many({
-                "timestamp": {"$lt": thirty_days_ago.isoformat()}
-            })
-            if result.deleted_count > 0:
-                logger.info(f"✅ Cleaned {result.deleted_count} old sync logs")
 
         logger.info("✅ Services initialized successfully")
 
@@ -662,4 +682,4 @@ if __name__ == "__main__":
         reload=settings.is_development,
         log_level=settings.LOG_LEVEL.lower(),
         workers=1
-)
+    )
