@@ -7,41 +7,27 @@ from datetime import datetime
 import logging
 
 from app.services.sync_service import SyncService
-from app.models.sync_models import SyncPushRequest, SyncPullResponse, ConflictResolution
+from app.models.sync_models import SyncPushRequest, ConflictResolution
 
 logger = logging.getLogger(__name__)
 
 # =========================================================================
 # IMPORT get_current_user FROM THE CORRECT MODULE
 # =========================================================================
-# Try multiple possible locations for the auth dependency
-_get_current_user = None
-
 try:
     from app.api.v1.auth import get_current_user
-    logger.info("✅ Imported get_current_user from app.api.v1.auth")
 except ImportError:
     try:
         from app.api.deps import get_current_user
-        logger.info("✅ Imported get_current_user from app.api.deps")
     except ImportError:
         try:
             from app.core.dependencies import get_current_user
-            logger.info("✅ Imported get_current_user from app.core.dependencies")
         except ImportError:
             try:
                 from app.dependencies import get_current_user
-                logger.info("✅ Imported get_current_user from app.dependencies")
             except ImportError:
-                logger.warning("⚠️  Could not find get_current_user in standard locations")
-                logger.warning("⚠️  Using fallback authentication dependency")
-                
-                # Fallback: define a basic auth dependency
+                # Fallback auth dependency
                 async def get_current_user(request: Request):
-                    """
-                    Fallback authentication dependency.
-                    Replace this with the actual implementation from your auth module.
-                    """
                     from jose import JWTError, jwt
                     from app.core.config import settings
                     
@@ -62,10 +48,7 @@ except ImportError:
                         )
                         user_id = payload.get("sub")
                         if user_id is None:
-                            raise HTTPException(
-                                status_code=401,
-                                detail="Invalid token"
-                            )
+                            raise HTTPException(status_code=401, detail="Invalid token")
                         return {"_id": user_id, **payload}
                     except JWTError:
                         raise HTTPException(
@@ -84,10 +67,7 @@ async def push_changes(
     request: SyncPushRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Receive offline changes from client and apply them to the database.
-    Returns any conflicts that need resolution.
-    """
+    """Receive offline changes from client and apply them to the database."""
     try:
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
         
@@ -103,7 +83,7 @@ async def push_changes(
             "errors": result["errors"]
         }
     except Exception as e:
-        logger.error(f"❌ Push sync error: {e}", exc_info=True)
+        logger.error(f"Push sync error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -113,10 +93,7 @@ async def pull_changes(
     since: Optional[str] = Query(None, description="ISO timestamp to get changes since"),
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Send latest data to client for offline sync.
-    Returns all data modified after the 'since' timestamp.
-    """
+    """Send latest data to client for offline sync."""
     try:
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
         since_dt = datetime.fromisoformat(since) if since else None
@@ -133,7 +110,7 @@ async def pull_changes(
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"❌ Pull sync error: {e}", exc_info=True)
+        logger.error(f"Pull sync error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -141,19 +118,13 @@ async def pull_changes(
 async def get_sync_status(
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Get current sync status including pending changes and conflicts.
-    """
+    """Get current sync status including pending changes and conflicts."""
     try:
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
-        
         status = await sync_service.get_sync_status(user_id=user_id)
-        return {
-            "success": True,
-            "data": status
-        }
+        return {"success": True, "data": status}
     except Exception as e:
-        logger.error(f"❌ Sync status error: {e}", exc_info=True)
+        logger.error(f"Sync status error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -162,22 +133,13 @@ async def get_conflicts(
     status: Optional[str] = Query("pending", description="Filter by status: pending, resolved, all"),
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Get list of sync conflicts that need resolution.
-    """
+    """Get list of sync conflicts that need resolution."""
     try:
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
-        
-        conflicts = await sync_service.get_conflicts(
-            user_id=user_id,
-            status=status
-        )
-        return {
-            "success": True,
-            "data": conflicts
-        }
+        conflicts = await sync_service.get_conflicts(user_id=user_id, status=status)
+        return {"success": True, "data": conflicts}
     except Exception as e:
-        logger.error(f"❌ Get conflicts error: {e}", exc_info=True)
+        logger.error(f"Get conflicts error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -186,22 +148,15 @@ async def resolve_conflict(
     resolution: ConflictResolution,
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Resolve a sync conflict by choosing which version to keep.
-    """
+    """Resolve a sync conflict by choosing which version to keep."""
     try:
         user_id = str(current_user.get("_id", current_user.get("sub", "unknown")))
-        
         result = await sync_service.resolve_conflict(
             conflict_id=resolution.conflict_id,
             resolution=resolution.resolution,
             user_id=user_id
         )
-        return {
-            "success": True,
-            "message": "Conflict resolved",
-            "data": result
-        }
+        return {"success": True, "message": "Conflict resolved", "data": result}
     except Exception as e:
-        logger.error(f"❌ Resolve conflict error: {e}", exc_info=True)
+        logger.error(f"Resolve conflict error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
