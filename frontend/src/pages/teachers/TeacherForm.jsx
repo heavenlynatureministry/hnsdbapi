@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import teachersAPI from '../../api/teachers'
-import schoolAPI from '../../api/school'
+import classesAPI from '../../api/classes'
+import api from '../../api/axios'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -23,6 +24,8 @@ function TeacherForm() {
   const [errors, setErrors] = useState({})
   const [subjectsList, setSubjectsList] = useState([])
   const [loadingSubjects, setLoadingSubjects] = useState(false)
+  const [classOptions, setClassOptions] = useState([])
+  const [loadingClasses, setLoadingClasses] = useState(false)
 
   const QUALIFICATIONS = [
     'Certificate', 'Diploma', 'B.Ed', 'B.Sc', 'B.A',
@@ -39,6 +42,7 @@ function TeacherForm() {
     qualification: '',
     specialization: '',
     subjects: [],
+    assigned_classes: [],
     phone_number: '',
     email: '',
     address: '',
@@ -61,6 +65,7 @@ function TeacherForm() {
 
   useEffect(() => {
     fetchSubjects()
+    fetchClasses()
     if (isEdit) {
       fetchTeacher()
     } else {
@@ -71,33 +76,126 @@ function TeacherForm() {
   const fetchSubjects = async () => {
     setLoadingSubjects(true)
     try {
-      // Try to fetch subjects from the school settings/subjects endpoint
-      // Adjust the API call based on your actual endpoint for fetching subjects
-      const response = await schoolAPI.getSettings({ category: 'subjects' })
-      if (response?.success && response.data?.subjects) {
-        setSubjectsList(response.data.subjects)
-      } else if (response?.success && Array.isArray(response.data)) {
-        setSubjectsList(response.data)
+      console.log('Fetching subjects...')
+      
+      // Try multiple endpoints to find subjects
+      let subjectsData = null
+      
+      // Try 1: School settings endpoint
+      try {
+        const response = await api.get('/school/settings')
+        console.log('Settings response:', response)
+        if (response?.data?.success && response.data.data?.subjects) {
+          subjectsData = response.data.data.subjects
+        } else if (response?.data?.subjects) {
+          subjectsData = response.data.subjects
+        }
+      } catch (e) {
+        console.warn('Settings endpoint failed:', e.message)
+      }
+      
+      // Try 2: Dedicated subjects endpoint
+      if (!subjectsData) {
+        try {
+          const response = await api.get('/subjects')
+          console.log('Subjects response:', response)
+          if (Array.isArray(response?.data)) {
+            subjectsData = response.data
+          } else if (response?.data?.success && Array.isArray(response.data.data)) {
+            subjectsData = response.data.data
+          } else if (response?.data?.subjects) {
+            subjectsData = response.data.subjects
+          }
+        } catch (e) {
+          console.warn('Subjects endpoint failed:', e.message)
+        }
+      }
+      
+      // Try 3: Curriculum/subjects endpoint
+      if (!subjectsData) {
+        try {
+          const response = await api.get('/curriculum/subjects')
+          console.log('Curriculum subjects response:', response)
+          if (Array.isArray(response?.data)) {
+            subjectsData = response.data
+          } else if (response?.data?.success && Array.isArray(response.data.data)) {
+            subjectsData = response.data.data
+          }
+        } catch (e) {
+          console.warn('Curriculum subjects endpoint failed:', e.message)
+        }
+      }
+      
+      if (subjectsData && Array.isArray(subjectsData) && subjectsData.length > 0) {
+        // Extract subject names from various possible formats
+        const subjects = subjectsData.map(item => {
+          if (typeof item === 'string') return item
+          return item.name || item.subject_name || item.title || item.label || String(item)
+        }).filter(Boolean)
+        
+        console.log('Subjects loaded:', subjects)
+        setSubjectsList(subjects)
       } else {
-        // Fallback: try fetching from a dedicated subjects endpoint if it exists
-        // or use a reasonable default list
-        console.warn('Could not fetch subjects from settings, using defaults')
+        console.warn('No subjects found from API, using defaults')
         setSubjectsList([
           'English Language', 'Mathematics', 'Science', 'Social Studies',
           'Religious Education', 'Creative Arts', 'Physical Education',
-          'Local Language', 'Computer Studies',
+          'Local Language', 'Computer Studies', 'Agriculture',
+          'Business Studies', 'History', 'Geography', 'Civics',
         ])
       }
     } catch (error) {
       console.error('Failed to fetch subjects:', error)
-      // Fallback to default subjects if API fails
+      // Fallback to default subjects
       setSubjectsList([
         'English Language', 'Mathematics', 'Science', 'Social Studies',
         'Religious Education', 'Creative Arts', 'Physical Education',
-        'Local Language', 'Computer Studies',
+        'Local Language', 'Computer Studies', 'Agriculture',
+        'Business Studies', 'History', 'Geography', 'Civics',
       ])
     } finally {
       setLoadingSubjects(false)
+    }
+  }
+
+  const fetchClasses = async () => {
+    setLoadingClasses(true)
+    try {
+      console.log('Fetching classes for teacher assignment...')
+      const response = await classesAPI.getAll()
+      console.log('Classes API response:', response)
+
+      let classesArray = null
+
+      if (Array.isArray(response)) {
+        classesArray = response
+      } else if (response?.data && Array.isArray(response.data)) {
+        classesArray = response.data
+      } else if (response?.data?.data && Array.isArray(response.data.data)) {
+        classesArray = response.data.data
+      } else if (response?.data?.success && Array.isArray(response.data.data)) {
+        classesArray = response.data.data
+      } else if (response?.success && Array.isArray(response.data)) {
+        classesArray = response.data
+      } else if (response?.data?.classes && Array.isArray(response.data.classes)) {
+        classesArray = response.data.classes
+      }
+
+      if (classesArray && classesArray.length > 0) {
+        const options = classesArray.map(cls => ({
+          value: cls._id || cls.id || cls.class_id || cls.classId || '',
+          label: cls.name || cls.class_name || cls.className || 
+                 (cls.level ? `${cls.level} ${cls.section || ''}`.trim() : '') ||
+                 cls.label || cls.title || 'Unknown Class',
+        })).filter(option => option.value && option.label)
+        
+        console.log('Class options loaded:', options)
+        setClassOptions(options)
+      }
+    } catch (error) {
+      console.error('Failed to fetch classes:', error)
+    } finally {
+      setLoadingClasses(false)
     }
   }
 
@@ -117,6 +215,7 @@ function TeacherForm() {
           qualification: t.qualification || '',
           specialization: t.specialization || '',
           subjects: t.subjects || [],
+          assigned_classes: t.assigned_classes || t.classes || [],
           phone_number: t.phone_number || '',
           email: t.email || '',
           address: t.address || '',
@@ -260,6 +359,20 @@ function TeacherForm() {
             <FormInput label="Hire Date *" name="hire_date" type="date" value={formData.hire_date} onChange={handleChange} error={errors.hire_date} />
             <FormInput label="Years of Experience" name="years_of_experience" type="number" value={formData.years_of_experience} onChange={handleChange} min="0" max="50" />
             <FormInput label="Salary Grade" name="salary_grade" value={formData.salary_grade} onChange={handleChange} placeholder="e.g., Grade 5" />
+            
+            {/* Class Assignment */}
+            <div className="sm:col-span-2">
+              <FormSelect 
+                label="Assign to Classes" 
+                name="assigned_classes" 
+                value={formData.assigned_classes} 
+                onChange={handleChange} 
+                options={classOptions} 
+                disabled={loadingClasses}
+                placeholder={loadingClasses ? 'Loading classes...' : 'Select classes'}
+                multiple={true}
+              />
+            </div>
           </div>
         </Card>
 
@@ -280,7 +393,7 @@ function TeacherForm() {
                     onClick={() => handleSubjectsChange(subject)}
                     className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                       formData.subjects.includes(subject)
-                        ? 'bg-primary-600 text-white'
+                        ? 'bg-primary-600 text-white shadow-md'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                     }`}
                   >
