@@ -232,6 +232,7 @@ class ClassModel:
                     upsert=True
                 )
             
+            logger.info(f"Class levels initialized for {academic_year}")
             return True, f"Class levels initialized for {academic_year}"
             
         except Exception as e:
@@ -842,6 +843,8 @@ class ClassModel:
                 dob = student["date_of_birth"]
                 if isinstance(dob, datetime):
                     dob = dob.date()
+                elif isinstance(dob, str):
+                    dob = datetime.fromisoformat(dob).date()
                 today = date.today()
                 age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
                 student["age"] = age
@@ -1461,41 +1464,112 @@ class ClassModel:
     
     @staticmethod
     def _get_current_academic_year() -> str:
-        """Get current academic year"""
-        current_year = datetime.now().year
-        current_month = datetime.now().month
+        """
+        Get current academic year dynamically.
         
-        if current_month >= 9:
-            return f"{current_year}/{current_year + 1}"
+        South Sudan Academic Calendar:
+        - Academic year runs February to November
+        - January belongs to the PREVIOUS academic year
+        
+        Examples:
+            June 2026 → "2026/2027"
+            January 2026 → "2025/2026"
+            February 2026 → "2026/2027"
+            December 2026 → "2026/2027"
+        """
+        now = datetime.now()
+        year = now.year
+        month = now.month
+        
+        # January is still part of the previous academic year
+        if month == 1:
+            start_year = year - 1
         else:
-            return f"{current_year - 1}/{current_year}"
+            start_year = year
+        
+        return f"{start_year}/{start_year + 1}"
     
     @staticmethod
     def _get_next_academic_year() -> str:
-        """Get next academic year"""
-        current_year = datetime.now().year
-        current_month = datetime.now().month
+        """
+        Get next academic year dynamically.
         
-        if current_month >= 9:
-            return f"{current_year + 1}/{current_year + 2}"
+        Examples:
+            June 2026 → "2027/2028"
+            January 2026 → "2026/2027"
+        """
+        now = datetime.now()
+        year = now.year
+        month = now.month
+        
+        # January is still part of the previous academic year
+        if month == 1:
+            start_year = year
         else:
-            return f"{current_year}/{current_year + 1}"
+            start_year = year + 1
+        
+        return f"{start_year}/{start_year + 1}"
     
     @staticmethod
     def _get_current_term() -> str:
-        """Get current academic term"""
-        current_month = datetime.now().month
+        """
+        Get current academic term dynamically.
         
-        if 1 <= current_month <= 4:
+        South Sudan Academic Calendar:
+            Term 1: February - April
+            Term 2: May - July  
+            Term 3: September - November
+            Breaks: August, December, January
+        """
+        month = datetime.now().month
+        
+        if 2 <= month <= 4:
             return "Term 1"
-        elif 5 <= current_month <= 8:
+        elif 5 <= month <= 7:
             return "Term 2"
-        else:
+        elif 9 <= month <= 11:
             return "Term 3"
+        elif month == 8:
+            return "Term 2 Break"
+        elif month == 12:
+            return "Annual Break"
+        else:  # January
+            return "Annual Break"
+    
+    @staticmethod
+    def _get_current_term_number() -> int:
+        """
+        Get current term number (1, 2, or 3).
+        Returns 0 during breaks.
+        """
+        month = datetime.now().month
+        
+        if 2 <= month <= 4:
+            return 1
+        elif 5 <= month <= 7:
+            return 2
+        elif 9 <= month <= 11:
+            return 3
+        else:
+            return 0  # Break period
+    
+    @staticmethod
+    def _is_school_in_session() -> bool:
+        """
+        Check if school is currently in session.
+        """
+        return ClassModel._get_current_term_number() > 0
     
     @staticmethod
     def _validate_academic_year(year_str: str) -> bool:
-        """Validate academic year format (YYYY/YYYY)"""
+        """
+        Validate academic year format (YYYY/YYYY).
+        
+        Examples:
+            "2026/2027" → True
+            "2026-2027" → False
+            "2026" → False
+        """
         try:
             parts = year_str.split("/")
             if len(parts) != 2:
@@ -1508,13 +1582,22 @@ class ClassModel:
     
     @staticmethod
     def _calculate_graduation_year(class_name: str, academic_year: str) -> Optional[int]:
-        """Calculate expected graduation year for a class"""
+        """
+        Calculate expected graduation year for a class.
+        
+        Args:
+            class_name: Class name (Baby, P1, P8, etc.)
+            academic_year: Academic year string (YYYY/YYYY)
+            
+        Returns:
+            Expected graduation year or None for nursery
+        """
         try:
             start_year = int(academic_year.split("/")[0])
             
             if class_name in ClassModel.NURSERY_CLASSES:
-                # Nursery classes graduate from nursery after Top
-                return None  # Nursery doesn't have a specific graduation
+                # Nursery classes don't have a specific graduation year
+                return None
             
             if class_name in ClassModel.PRIMARY_CLASSES:
                 class_number = int(class_name[1:])  # Extract number from P1-P8
@@ -1526,6 +1609,47 @@ class ClassModel:
             return None
     
     @staticmethod
+    def _get_academic_year_for_date(target_date: datetime) -> str:
+        """
+        Get academic year for a specific date.
+        
+        Args:
+            target_date: Date to check
+            
+        Returns:
+            Academic year string (YYYY/YYYY)
+        """
+        year = target_date.year
+        month = target_date.month
+        
+        if month == 1:
+            start_year = year - 1
+        else:
+            start_year = year
+        
+        return f"{start_year}/{start_year + 1}"
+    
+    @staticmethod
+    def _get_all_academic_years(from_year: int = 2020) -> List[str]:
+        """
+        Get list of all academic years from a starting year to current.
+        
+        Args:
+            from_year: Starting year
+            
+        Returns:
+            List of academic year strings
+        """
+        current_academic_year = ClassModel._get_current_academic_year()
+        current_start_year = int(current_academic_year.split("/")[0])
+        
+        years = []
+        for year in range(from_year, current_start_year + 1):
+            years.append(f"{year}/{year + 1}")
+        
+        return years
+    
+    @staticmethod
     async def _log_audit(
         db: AsyncIOMotorDatabase,
         table_name: str,
@@ -1534,15 +1658,28 @@ class ClassModel:
         changed_by: Optional[str],
         details: Dict[str, Any]
     ):
-        """Log class operations to audit log"""
+        """
+        Log class operations to audit log.
+        
+        Args:
+            db: Database connection
+            table_name: Name of the table/collection
+            record_id: ID of the modified record
+            operation: Operation type (INSERT, UPDATE, DELETE)
+            changed_by: User who made the change
+            details: Details of the change
+        """
         try:
-            await db.audit_log.insert_one({
+            audit_doc = {
                 "table_name": table_name,
                 "record_id": record_id,
                 "operation": operation,
                 "changed_by": ObjectId(changed_by) if changed_by else None,
                 "new_values": details,
-                "changed_at": datetime.utcnow()
-            })
+                "changed_at": datetime.utcnow(),
+                "academic_year": ClassModel._get_current_academic_year(),
+                "term": ClassModel._get_current_term()
+            }
+            await db.audit_log.insert_one(audit_doc)
         except Exception as e:
             logger.error(f"Failed to log audit: {e}")
