@@ -34,6 +34,107 @@ def _safe_objectid(value) -> Optional[ObjectId]:
         return None
 
 
+# =========================================================================
+# BULK CREATE - MUST be before /{class_id} routes
+# =========================================================================
+@router.post("/create-all")
+async def create_all_classes(
+    request: Request = None,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """
+    Create all default classes (Nursery + Primary) for an academic year.
+    Skips classes that already exist.
+    """
+    db = get_database()
+    
+    body = {}
+    if request:
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+    
+    academic_year = body.get("academic_year", _get_current_academic_year())
+    
+    created = []
+    skipped = []
+    errors = []
+    
+    # Define all classes to create
+    all_classes = [
+        # Nursery
+        {"class_name": "Baby", "class_level": "nursery", "max_capacity": 20},
+        {"class_name": "Middle", "class_level": "nursery", "max_capacity": 20},
+        {"class_name": "Top", "class_level": "nursery", "max_capacity": 20},
+        # Primary
+        {"class_name": "P1", "class_level": "primary", "max_capacity": 25},
+        {"class_name": "P2", "class_level": "primary", "max_capacity": 25},
+        {"class_name": "P3", "class_level": "primary", "max_capacity": 25},
+        {"class_name": "P4", "class_level": "primary", "max_capacity": 25},
+        {"class_name": "P5", "class_level": "primary", "max_capacity": 25},
+        {"class_name": "P6", "class_level": "primary", "max_capacity": 25},
+        {"class_name": "P7", "class_level": "primary", "max_capacity": 25},
+        {"class_name": "P8", "class_level": "primary", "max_capacity": 25},
+    ]
+    
+    for cls in all_classes:
+        class_name = cls["class_name"]
+        class_level = cls["class_level"]
+        
+        # Check if already exists
+        existing = await db.classes.find_one({
+            "class_name": class_name,
+            "class_level": class_level,
+            "academic_year": academic_year,
+            "status": "active"
+        })
+        
+        if existing:
+            skipped.append(class_name)
+            continue
+        
+        # Create the class
+        try:
+            doc = {
+                "class_name": class_name,
+                "class_level": class_level,
+                "academic_year": academic_year,
+                "max_capacity": cls["max_capacity"],
+                "current_enrollment": 0,
+                "status": "active",
+                "schedule": {
+                    "monday": [], "tuesday": [], "wednesday": [],
+                    "thursday": [], "friday": []
+                },
+                "created_by": current_user.get("_id"),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            
+            result = await db.classes.insert_one(doc)
+            created.append(class_name)
+            
+        except Exception as e:
+            errors.append(f"{class_name}: {str(e)}")
+    
+    return {
+        "success": True,
+        "message": f"Created {len(created)} classes, {len(skipped)} already existed, {len(errors)} errors",
+        "data": {
+            "academic_year": academic_year,
+            "created": created,
+            "skipped": skipped,
+            "errors": errors,
+            "total_created": len(created),
+            "total_skipped": len(skipped)
+        }
+    }
+
+
+# =========================================================================
+# LIST CLASSES
+# =========================================================================
 @router.get("")
 @router.get("/")
 async def list_classes(
@@ -58,7 +159,6 @@ async def list_classes(
     
     classes = [parse_mongo_document(c) for c in classes]
     
-    # Calculate occupancy and format for frontend
     for c in classes:
         c["id"] = c.get("_id", c.get("id"))
         if c.get("max_capacity") and c["max_capacity"] > 0:
@@ -231,11 +331,9 @@ async def create_class(
     if not class_name or not class_level:
         raise HTTPException(status_code=400, detail="Class name and level are required")
     
-    # Auto-calculate academic year if not provided
     if not academic_year:
         academic_year = _get_current_academic_year()
     
-    # Validate class name based on level
     valid_nursery = ["Baby", "Middle", "Top"]
     valid_primary = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"]
     
@@ -244,7 +342,6 @@ async def create_class(
     if class_level == "primary" and class_name not in valid_primary:
         raise HTTPException(status_code=400, detail=f"Invalid primary class name. Must be: {', '.join(valid_primary)}")
     
-    # Check for existing class
     existing = await db.classes.find_one({
         "class_name": class_name,
         "class_level": class_level,
@@ -254,7 +351,6 @@ async def create_class(
     if existing:
         raise HTTPException(status_code=400, detail=f"Class {class_name} already exists for {academic_year}")
     
-    # Build document
     doc = {
         "class_name": class_name,
         "class_level": class_level,
@@ -272,17 +368,14 @@ async def create_class(
         "updated_at": datetime.utcnow()
     }
     
-    # Handle teacher assignment - only if valid ObjectId
     teacher_id = _safe_objectid(body.get("class_teacher_id"))
     if teacher_id:
         doc["class_teacher_id"] = teacher_id
     
-    # Handle classroom assignment - only if valid ObjectId
     classroom_id = _safe_objectid(body.get("classroom_id"))
     if classroom_id:
         doc["classroom_id"] = classroom_id
     
-    # Remove None values
     doc = {k: v for k, v in doc.items() if v is not None}
     
     try:
@@ -324,22 +417,20 @@ async def update_class(
     if not body:
         raise HTTPException(status_code=400, detail="No fields to update")
     
-    # Remove protected fields
     for key in ["_id", "id", "created_at", "created_by"]:
         body.pop(key, None)
     
-    # Safely convert ObjectId fields
     teacher_id = _safe_objectid(body.get("class_teacher_id"))
     if teacher_id:
         body["class_teacher_id"] = teacher_id
     elif "class_teacher_id" in body:
-        body.pop("class_teacher_id")  # Remove invalid value
+        body.pop("class_teacher_id")
     
     classroom_id = _safe_objectid(body.get("classroom_id"))
     if classroom_id:
         body["classroom_id"] = classroom_id
     elif "classroom_id" in body:
-        body.pop("classroom_id")  # Remove invalid value
+        body.pop("classroom_id")
     
     body["updated_at"] = datetime.utcnow()
     
@@ -377,7 +468,6 @@ async def delete_class(
     if not obj_id:
         raise HTTPException(status_code=400, detail="Invalid class ID format")
     
-    # Check if class has active students
     active_students = await db.students.count_documents({
         "current_class_id": obj_id,
         "status": "active"
