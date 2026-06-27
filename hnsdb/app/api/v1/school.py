@@ -35,7 +35,6 @@ def _get_current_academic_year() -> str:
     year = now.year
     month = now.month
     
-    # January is still part of the previous academic year
     if month == 1:
         start_year = year - 1
     else:
@@ -66,7 +65,7 @@ def _get_current_term() -> str:
         return "Term 2 Break"
     elif month == 12:
         return "Annual Break"
-    else:  # January
+    else:
         return "Annual Break"
 
 
@@ -80,7 +79,6 @@ async def get_school_info(current_user: Dict[str, Any] = Depends(get_current_use
     school = await db.school_info.find_one({})
     if school:
         school = parse_mongo_document(school)
-        # Add dynamic academic year
         school["current_academic_year"] = _get_current_academic_year()
         school["current_term"] = _get_current_term()
     return SuccessResponse(success=True, message="School info retrieved", data=school)
@@ -107,24 +105,16 @@ async def get_dashboard(current_user: Dict[str, Any] = Depends(get_current_user)
     """Get dashboard statistics"""
     db = get_database()
     
-    # Get counts
     total_students = await db.students.count_documents({"status": "active"})
     total_teachers = await db.teachers.count_documents({"status": "active"})
     total_classes = await db.classes.count_documents({"status": "active"})
     total_staff = await db.users.count_documents({"status": "active"})
     upcoming_events = await db.school_events.count_documents({"status": "upcoming"})
     
-    # Get today's attendance
     today = datetime.utcnow().strftime("%Y-%m-%d")
     today_attendance = await db.attendance.count_documents({"date": today})
     
-    # Get financial summary
-    pipeline = [
-        {"$group": {
-            "_id": "$type",
-            "total": {"$sum": "$amount"}
-        }}
-    ]
+    pipeline = [{"$group": {"_id": "$type", "total": {"$sum": "$amount"}}}]
     financial_data = await db.financial_transactions.aggregate(pipeline).to_list(length=None)
     
     total_income = sum(item["total"] for item in financial_data if item["_id"] == "income")
@@ -139,10 +129,7 @@ async def get_dashboard(current_user: Dict[str, Any] = Depends(get_current_user)
             "total_staff": total_staff,
             "total_classes": total_classes
         },
-        "attendance": {
-            "today_marked": today_attendance,
-            "attendance_rate": 0
-        },
+        "attendance": {"today_marked": today_attendance, "attendance_rate": 0},
         "events": {"upcoming": upcoming_events},
         "financial": {
             "total_income": total_income,
@@ -165,22 +152,15 @@ async def get_current_term(current_user: Dict[str, Any] = Depends(get_current_us
     academic_year = _get_current_academic_year()
     term_name = _get_current_term()
     
-    # Override with calendar data if available
     if calendar:
         for term in calendar.get("terms", []):
             start = term.get("start_date")
             end = term.get("end_date")
-            
-            if isinstance(start, str):
-                start = datetime.fromisoformat(start)
-            if isinstance(end, str):
-                end = datetime.fromisoformat(end)
-            
+            if isinstance(start, str): start = datetime.fromisoformat(start)
+            if isinstance(end, str): end = datetime.fromisoformat(end)
             if start and end and start <= now <= end:
                 term_name = term.get("term_name", term_name)
                 break
-        
-        # Use calendar's academic year if available
         if calendar.get("academic_year"):
             academic_year = calendar.get("academic_year")
     
@@ -208,11 +188,9 @@ async def check_school_day(
     else:
         target_date = datetime.utcnow()
     
-    # Check if weekend
-    day_of_week = target_date.weekday()  # 0=Monday, 6=Sunday
-    is_weekend = day_of_week >= 5  # Saturday or Sunday
+    day_of_week = target_date.weekday()
+    is_weekend = day_of_week >= 5
     
-    # Check if holiday
     date_str = target_date.strftime("%Y-%m-%d")
     holiday = await db.school_events.find_one({
         "start_date": {"$lte": date_str},
@@ -246,10 +224,8 @@ async def list_events(
     """List school events"""
     db = get_database()
     filter_query = {}
-    if status:
-        filter_query["status"] = status
-    if event_type:
-        filter_query["event_type"] = event_type
+    if status: filter_query["status"] = status
+    if event_type: filter_query["event_type"] = event_type
     
     events = await db.school_events.find(filter_query).sort("start_date", 1).to_list(length=None)
     events = [parse_mongo_document(e) for e in events]
@@ -322,10 +298,7 @@ async def cancel_event(
 ):
     """Cancel school event"""
     db = get_database()
-    update_data = {
-        "status": "cancelled",
-        "updated_at": datetime.utcnow()
-    }
+    update_data = {"status": "cancelled", "updated_at": datetime.utcnow()}
     if reason:
         update_data["cancellation_reason"] = reason
     
@@ -411,6 +384,25 @@ async def remove_board_member(
 
 
 # =========================================================================
+# SUBJECTS
+# =========================================================================
+@router.get("/subjects")
+async def get_subjects(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get list of available subjects"""
+    subjects = [
+        "English Language", "Mathematics", "Science", "Social Studies",
+        "Religious Education", "Creative Arts", "Physical Education",
+        "Local Language", "Computer Studies", "Agriculture",
+        "Business Studies", "History", "Geography", "Civics"
+    ]
+    return {
+        "success": True,
+        "message": "Subjects retrieved",
+        "data": subjects
+    }
+
+
+# =========================================================================
 # SETTINGS
 # =========================================================================
 @router.get("/settings", response_model=SuccessResponse)
@@ -420,8 +412,17 @@ async def get_settings(current_user: Dict[str, Any] = Depends(get_current_user))
     settings = await db.settings.find_one({}) or {}
     if settings:
         settings = parse_mongo_document(settings)
-    # Add dynamic values
     settings["current_academic_year"] = _get_current_academic_year()
+    
+    # Include default subjects if not in settings
+    if "subjects" not in settings:
+        settings["subjects"] = [
+            "English Language", "Mathematics", "Science", "Social Studies",
+            "Religious Education", "Creative Arts", "Physical Education",
+            "Local Language", "Computer Studies", "Agriculture",
+            "Business Studies", "History", "Geography", "Civics"
+        ]
+    
     return SuccessResponse(success=True, message="Settings retrieved", data=settings)
 
 
@@ -451,7 +452,6 @@ async def initialize_school(current_user: Dict[str, Any] = Depends(require_role(
     """Initialize/reinitialize school data"""
     db = get_database()
     
-    # Create default settings
     await db.settings.update_one(
         {},
         {"$set": {
@@ -463,6 +463,12 @@ async def initialize_school(current_user: Dict[str, Any] = Depends(require_role(
             "language": "en",
             "currency": "SSP",
             "timezone": "Africa/Juba",
+            "subjects": [
+                "English Language", "Mathematics", "Science", "Social Studies",
+                "Religious Education", "Creative Arts", "Physical Education",
+                "Local Language", "Computer Studies", "Agriculture",
+                "Business Studies", "History", "Geography", "Civics"
+            ],
             "updated_at": datetime.utcnow()
         }},
         upsert=True
