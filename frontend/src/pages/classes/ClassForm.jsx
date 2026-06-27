@@ -20,6 +20,8 @@ function ClassForm() {
   const isEdit = Boolean(id)
   const navigate = useNavigate()
   const { updatePageTitle, updateBreadcrumbs, currentAcademicYear } = useApp()
+  
+  // ALL hooks must be here, before any conditional returns
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
@@ -35,6 +37,14 @@ function ClassForm() {
     section: '',
     stream: '',
   })
+
+  // Update max capacity when level changes
+  useEffect(() => {
+    setFormData(prev => ({
+      ...prev,
+      max_capacity: prev.class_level === 'nursery' ? '20' : '25',
+    }))
+  }, [formData.class_level])
 
   useEffect(() => {
     updatePageTitle(isEdit ? 'Edit Class' : 'Add Class')
@@ -156,23 +166,15 @@ function ClassForm() {
     }
   }
 
+  // NOW conditional return - AFTER all hooks
   if (fetching) return <LoadingSpinner fullScreen />
 
   const classOptions = formData.class_level === 'nursery' ? NURSERY_CLASSES : PRIMARY_CLASSES
 
-  // Update max capacity when level changes
-  useEffect(() => {
-    setFormData(prev => ({
-      ...prev,
-      max_capacity: prev.class_level === 'nursery' ? '20' : '25',
-    }))
-  }, [formData.class_level])
-
-  // Build teacher options from API data
   const teacherOptions = [
     { value: '', label: 'Select Teacher' },
     ...teachers.map(t => ({
-      value: t._id || t.teacher_id || '',
+      value: t._id || t.id || '',
       label: `${t.first_name || ''} ${t.last_name || ''}`.trim() || t.email || 'Unknown',
     })),
   ]
