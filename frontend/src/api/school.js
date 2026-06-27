@@ -1,3 +1,6 @@
+/**
+ * School API - Frontend API service
+ */
 import api from './axios'
 
 const schoolAPI = {
@@ -16,7 +19,7 @@ const schoolAPI = {
   // Events
   createEvent: async (data) => api.post('/school/events', data),
   listEvents: async (params = {}) => api.get('/school/events', { params }),
-  getEvents: async (params = {}) => api.get('/school/events', { params }), // Alias for listEvents
+  getEvents: async (params = {}) => api.get('/school/events', { params }),
   getEvent: async (id) => api.get(`/school/events/${id}`),
   updateEvent: async (id, data) => api.put(`/school/events/${id}`, data),
   cancelEvent: async (id, reason = '') => api.delete(`/school/events/${id}`, { params: { reason } }),
@@ -24,7 +27,7 @@ const schoolAPI = {
   // Board Members
   addBoardMember: async (data) => api.post('/school/board', data),
   listBoardMembers: async (params = {}) => api.get('/school/board', { params }),
-  getBoardMembers: async (params = {}) => api.get('/school/board', { params }), // Alias
+  getBoardMembers: async (params = {}) => api.get('/school/board', { params }),
   updateBoardMember: async (id, data) => api.put(`/school/board/${id}`, data),
   removeBoardMember: async (id) => api.delete(`/school/board/${id}`),
   
@@ -40,6 +43,9 @@ const schoolAPI = {
   getSettings: async (params = {}) => api.get('/school/settings', { params }),
   updateSetting: async (data) => api.put('/school/settings', data),
   getSetting: async (key) => api.get(`/school/settings/${key}`),
+  
+  // Subjects
+  getSubjects: async () => api.get('/school/subjects'),
   
   // Dashboard
   getDashboard: async () => api.get('/school/dashboard'),
