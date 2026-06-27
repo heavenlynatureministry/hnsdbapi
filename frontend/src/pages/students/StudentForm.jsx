@@ -1,4 +1,4 @@
-do the same thing to import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import studentsAPI from '../../api/students'
@@ -9,8 +9,24 @@ import Button from '../../components/common/Button'
 import FormInput from '../../components/common/FormInput'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { ArrowLeft, Save, UserPlus, Users, Phone } from 'lucide-react'
+import { ArrowLeft, Save, UserPlus, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+const GENDER_OPTIONS = [
+  { value: '', label: '-- Select Gender --' },
+  { value: 'Male', label: 'Male' },
+  { value: 'Female', label: 'Female' },
+]
+
+const STUDENT_TYPE_OPTIONS = [
+  { value: '', label: '-- Select Student Type --' },
+  { value: 'street', label: 'Street Child' },
+  { value: 'abundant', label: 'Abundant Family' },
+  { value: 'orphan', label: 'Orphan' },
+  { value: 'other', label: 'Other' },
+]
+
+const CLASS_PLACEHOLDER = [{ value: '', label: '-- Select Class --' }]
 
 function StudentForm() {
   const { id } = useParams()
@@ -28,11 +44,11 @@ function StudentForm() {
     first_name: '',
     last_name: '',
     middle_name: '',
-    gender: 'Male',
+    gender: '',
     date_of_birth: '',
     place_of_birth: '',
     nationality: 'South Sudanese',
-    student_type: 'other',
+    student_type: '',
     current_class_id: '',
     enrollment_date: new Date().toISOString().split('T')[0],
     medical_notes: '',
@@ -62,80 +78,28 @@ function StudentForm() {
   const fetchClasses = async () => {
     setLoadingClasses(true)
     try {
-      console.log('Fetching classes...')
       const response = await classesAPI.getAll()
-      console.log('Classes API raw response:', response)
-
-      // Extract classes array from various possible response formats
-      let classesArray = null
-
-      if (Array.isArray(response)) {
-        classesArray = response
-      } else if (response?.data && Array.isArray(response.data)) {
-        classesArray = response.data
-      } else if (response?.data?.data && Array.isArray(response.data.data)) {
-        classesArray = response.data.data
-      } else if (response?.data?.success && Array.isArray(response.data.data)) {
-        classesArray = response.data.data
-      } else if (response?.success && Array.isArray(response.data)) {
-        classesArray = response.data
-      } else if (response?.data?.classes && Array.isArray(response.data.classes)) {
-        classesArray = response.data.classes
-      } else if (response?.classes && Array.isArray(response.classes)) {
-        classesArray = response.classes
-      } else if (response?.data?.results && Array.isArray(response.data.results)) {
-        classesArray = response.data.results
+      let classesArray = response?.data || response || []
+      if (!Array.isArray(classesArray)) {
+        classesArray = classesArray?.classes || classesArray?.data || []
       }
 
-      if (classesArray && classesArray.length > 0) {
-        console.log('Classes array found:', classesArray)
-        const options = classesArray.map(cls => {
-          // Try multiple possible field names for ID and name
-          const id = cls._id || cls.id || cls.class_id || cls.classId || ''
-          const name = cls.name || cls.class_name || cls.className || 
-                      (cls.level ? `${cls.level} ${cls.section || ''}`.trim() : '') ||
-                      cls.label || cls.title || 'Unknown Class'
-          
-          return {
-            value: id,
-            label: name,
-          }
-        }).filter(option => option.value && option.label)
-        
-        console.log('Processed class options:', options)
-        setClassOptions(options)
-        
-        if (options.length === 0) {
-          toast.error('No valid classes found in response')
-        }
+      if (classesArray.length > 0) {
+        const options = classesArray.map(cls => ({
+          value: cls._id || cls.id || '',
+          label: cls.class_name || cls.name || 
+                 (cls.class_level ? `${cls.class_level} - ${cls.class_name || ''}` : '') ||
+                 'Unknown Class',
+        })).filter(opt => opt.value && opt.label)
+        setClassOptions([...CLASS_PLACEHOLDER, ...options])
       } else {
-        console.warn('No classes found in response. Full response:', response)
         toast.error('No classes found. Please create classes first.')
-        setClassOptions([])
+        setClassOptions(CLASS_PLACEHOLDER)
       }
     } catch (error) {
       console.error('Failed to fetch classes:', error)
-      
-      // Try without params as fallback
-      try {
-        console.log('Retrying classes fetch without params...')
-        const retryResponse = await classesAPI.getAll()
-        console.log('Retry response:', retryResponse)
-        
-        if (Array.isArray(retryResponse?.data)) {
-          const options = retryResponse.data.map(cls => ({
-            value: cls._id || cls.id || cls.class_id || '',
-            label: cls.name || cls.class_name || `${cls.level || ''} ${cls.section || ''}`.trim() || 'Unknown Class',
-          })).filter(option => option.value)
-          setClassOptions(options)
-          return
-        }
-      } catch (retryError) {
-        console.error('Retry also failed:', retryError)
-      }
-      
-      toast.error('Failed to load classes. Please check your connection and try again.')
-      setClassOptions([])
+      toast.error('Failed to load classes')
+      setClassOptions(CLASS_PLACEHOLDER)
     } finally {
       setLoadingClasses(false)
     }
@@ -151,11 +115,11 @@ function StudentForm() {
           first_name: s.first_name || '',
           last_name: s.last_name || '',
           middle_name: s.middle_name || '',
-          gender: s.gender || 'Male',
+          gender: s.gender || '',
           date_of_birth: s.date_of_birth?.split('T')[0] || '',
           place_of_birth: s.place_of_birth || '',
           nationality: s.nationality || 'South Sudanese',
-          student_type: s.student_type || 'other',
+          student_type: s.student_type || '',
           current_class_id: s.current_class_id || '',
           enrollment_date: s.enrollment_date?.split('T')[0] || new Date().toISOString().split('T')[0],
           medical_notes: s.medical_notes || '',
@@ -217,11 +181,10 @@ function StudentForm() {
     const newErrors = {}
     if (!formData.first_name.trim()) newErrors.first_name = 'First name is required'
     if (!formData.last_name.trim()) newErrors.last_name = 'Last name is required'
+    if (!formData.gender) newErrors.gender = 'Please select a gender'
     if (!formData.date_of_birth) newErrors.date_of_birth = 'Date of birth is required'
-    if (!formData.gender) newErrors.gender = 'Gender is required'
-    if (!formData.student_type) newErrors.student_type = 'Student type is required'
+    if (!formData.student_type) newErrors.student_type = 'Please select a student type'
     
-    // Validate primary guardian has at least name and phone
     const primaryGuardian = formData.guardians[0]
     if (primaryGuardian && !primaryGuardian.first_name.trim() && !primaryGuardian.last_name.trim()) {
       newErrors.guardians = 'Primary guardian name is required'
@@ -237,7 +200,25 @@ function StudentForm() {
 
     setLoading(true)
     try {
-      const payload = { ...formData }
+      const payload = {
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        middle_name: formData.middle_name,
+        gender: formData.gender,
+        date_of_birth: formData.date_of_birth,
+        place_of_birth: formData.place_of_birth,
+        nationality: formData.nationality,
+        student_type: formData.student_type,
+        enrollment_date: formData.enrollment_date,
+        medical_notes: formData.medical_notes,
+        special_needs: formData.special_needs,
+        address: formData.address,
+        guardians: formData.guardians,
+      }
+      
+      if (formData.current_class_id) {
+        payload.current_class_id = formData.current_class_id
+      }
 
       let response
       if (isEdit) {
@@ -253,7 +234,6 @@ function StudentForm() {
         toast.error(response?.message || 'Failed to save student')
       }
     } catch (error) {
-      // Handle specific error cases
       if (error.status === 422) {
         const fieldErrors = error.errors || []
         const newErrors = {}
@@ -290,45 +270,32 @@ function StudentForm() {
       />
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Personal Information */}
         <Card title="Personal Information">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <FormInput label="First Name *" name="first_name" value={formData.first_name} onChange={handleChange} error={errors.first_name} />
-            <FormInput label="Last Name *" name="last_name" value={formData.last_name} onChange={handleChange} error={errors.last_name} />
-            <FormInput label="Middle Name" name="middle_name" value={formData.middle_name} onChange={handleChange} />
-            <FormSelect label="Gender *" name="gender" value={formData.gender} onChange={handleChange} options={[{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }]} />
+            <FormInput label="First Name *" name="first_name" value={formData.first_name} onChange={handleChange} error={errors.first_name} placeholder="Enter first name" />
+            <FormInput label="Last Name *" name="last_name" value={formData.last_name} onChange={handleChange} error={errors.last_name} placeholder="Enter last name" />
+            <FormInput label="Middle Name" name="middle_name" value={formData.middle_name} onChange={handleChange} placeholder="Optional" />
+            <FormSelect label="Gender *" name="gender" value={formData.gender} onChange={handleChange} options={GENDER_OPTIONS} error={errors.gender} />
             <FormInput label="Date of Birth *" name="date_of_birth" type="date" value={formData.date_of_birth} onChange={handleChange} error={errors.date_of_birth} />
-            <FormInput label="Place of Birth" name="place_of_birth" value={formData.place_of_birth} onChange={handleChange} />
+            <FormInput label="Place of Birth" name="place_of_birth" value={formData.place_of_birth} onChange={handleChange} placeholder="City, Country" />
           </div>
         </Card>
 
-        {/* Enrollment Information */}
         <Card title="Enrollment Information">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect label="Student Type *" name="student_type" value={formData.student_type} onChange={handleChange} options={[
-              { value: 'street', label: 'Street Child' }, { value: 'abundant', label: 'Abundant Family' },
-              { value: 'orphan', label: 'Orphan' }, { value: 'other', label: 'Other' },
-            ]} error={errors.student_type} />
-            <FormSelect 
-              label="Assign to Class" 
-              name="current_class_id" 
-              value={formData.current_class_id} 
-              onChange={handleChange} 
-              options={classOptions} 
-              disabled={loadingClasses}
-              placeholder={loadingClasses ? 'Loading classes...' : classOptions.length === 0 ? 'No classes available - Create classes first' : 'Select a class'}
-            />
+            <FormSelect label="Student Type *" name="student_type" value={formData.student_type} onChange={handleChange} options={STUDENT_TYPE_OPTIONS} error={errors.student_type} />
+            <FormSelect label="Assign to Class" name="current_class_id" value={formData.current_class_id} onChange={handleChange} options={classOptions} disabled={loadingClasses}
+              placeholder={loadingClasses ? 'Loading classes...' : 'Select a class (optional)'} />
             <FormInput label="Enrollment Date" name="enrollment_date" type="date" value={formData.enrollment_date} onChange={handleChange} />
-            <FormInput label="Address" name="address" value={formData.address} onChange={handleChange} />
+            <FormInput label="Address" name="address" value={formData.address} onChange={handleChange} placeholder="Physical address" />
           </div>
         </Card>
 
-        {/* Medical Information */}
         <Card title="Medical & Special Needs">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="form-label">Medical Notes</label>
-              <textarea name="medical_notes" value={formData.medical_notes} onChange={handleChange} rows={2} className="form-input" placeholder="Any medical conditions..." />
+              <textarea name="medical_notes" value={formData.medical_notes} onChange={handleChange} rows={2} className="form-input" placeholder="Any medical conditions, allergies..." />
             </div>
             <div>
               <label className="form-label">Special Needs</label>
@@ -337,19 +304,13 @@ function StudentForm() {
           </div>
         </Card>
 
-        {/* Guardians */}
-        <Card 
-          title="Guardians" 
-          icon={<Users size={20} />}
+        <Card title="Guardians" icon={<Users size={20} />}
           actions={
             <button type="button" onClick={addGuardian} className="btn btn-secondary btn-sm">
               <UserPlus size={14} /> Add Guardian
             </button>
-          }
-        >
-          {errors.guardians && (
-            <p className="text-sm text-red-500 mb-3">{errors.guardians}</p>
-          )}
+          }>
+          {errors.guardians && <p className="text-sm text-red-500 mb-3">{errors.guardians}</p>}
           <div className="space-y-6">
             {formData.guardians.map((guardian, index) => (
               <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg relative">
@@ -357,11 +318,11 @@ function StudentForm() {
                   <button type="button" onClick={() => removeGuardian(index)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 text-sm">Remove</button>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  <FormInput label="First Name" value={guardian.first_name} onChange={(e) => handleGuardianChange(index, 'first_name', e.target.value)} />
-                  <FormInput label="Last Name" value={guardian.last_name} onChange={(e) => handleGuardianChange(index, 'last_name', e.target.value)} />
-                  <FormInput label="Relationship" value={guardian.relationship} onChange={(e) => handleGuardianChange(index, 'relationship', e.target.value)} placeholder="Father, Mother, etc." />
-                  <FormInput label="Phone" value={guardian.phone_number} onChange={(e) => handleGuardianChange(index, 'phone_number', e.target.value)} />
-                  <FormInput label="Email" type="email" value={guardian.email} onChange={(e) => handleGuardianChange(index, 'email', e.target.value)} />
+                  <FormInput label="First Name" value={guardian.first_name} onChange={(e) => handleGuardianChange(index, 'first_name', e.target.value)} placeholder="Guardian first name" />
+                  <FormInput label="Last Name" value={guardian.last_name} onChange={(e) => handleGuardianChange(index, 'last_name', e.target.value)} placeholder="Guardian last name" />
+                  <FormInput label="Relationship" value={guardian.relationship} onChange={(e) => handleGuardianChange(index, 'relationship', e.target.value)} placeholder="Father, Mother, Uncle, etc." />
+                  <FormInput label="Phone" value={guardian.phone_number} onChange={(e) => handleGuardianChange(index, 'phone_number', e.target.value)} placeholder="+211 XXX XXX XXX" />
+                  <FormInput label="Email" type="email" value={guardian.email} onChange={(e) => handleGuardianChange(index, 'email', e.target.value)} placeholder="guardian@email.com" />
                   <div className="flex items-center pt-6">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input type="checkbox" checked={guardian.is_primary_contact} onChange={(e) => handleGuardianChange(index, 'is_primary_contact', e.target.checked)} className="w-4 h-4 text-primary-600 rounded" />
@@ -374,7 +335,6 @@ function StudentForm() {
           </div>
         </Card>
 
-        {/* Actions */}
         <div className="flex gap-3">
           <Button type="submit" variant="primary" loading={loading} icon={<Save size={18} />}>
             {isEdit ? 'Update Student' : 'Enroll Student'}
