@@ -34,6 +34,7 @@ function StudentForm() {
   const navigate = useNavigate()
   const { updatePageTitle, updateBreadcrumbs } = useApp()
 
+  // ALL hooks at the top
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
@@ -185,6 +186,7 @@ function StudentForm() {
     if (!formData.date_of_birth) newErrors.date_of_birth = 'Date of birth is required'
     if (!formData.student_type) newErrors.student_type = 'Please select a student type'
     
+    // Validate primary guardian has at least name
     const primaryGuardian = formData.guardians[0]
     if (primaryGuardian && !primaryGuardian.first_name.trim() && !primaryGuardian.last_name.trim()) {
       newErrors.guardians = 'Primary guardian name is required'
@@ -200,6 +202,7 @@ function StudentForm() {
 
     setLoading(true)
     try {
+      // Build clean payload - only include class_id if selected
       const payload = {
         first_name: formData.first_name,
         last_name: formData.last_name,
@@ -216,6 +219,7 @@ function StudentForm() {
         guardians: formData.guardians,
       }
       
+      // Only include class if one is selected
       if (formData.current_class_id) {
         payload.current_class_id = formData.current_class_id
       }
@@ -270,6 +274,7 @@ function StudentForm() {
       />
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Personal Information */}
         <Card title="Personal Information">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <FormInput label="First Name *" name="first_name" value={formData.first_name} onChange={handleChange} error={errors.first_name} placeholder="Enter first name" />
@@ -281,16 +286,32 @@ function StudentForm() {
           </div>
         </Card>
 
+        {/* Enrollment Information */}
         <Card title="Enrollment Information">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect label="Student Type *" name="student_type" value={formData.student_type} onChange={handleChange} options={STUDENT_TYPE_OPTIONS} error={errors.student_type} />
-            <FormSelect label="Assign to Class" name="current_class_id" value={formData.current_class_id} onChange={handleChange} options={classOptions} disabled={loadingClasses}
-              placeholder={loadingClasses ? 'Loading classes...' : 'Select a class (optional)'} />
+            <FormSelect 
+              label="Student Type *" 
+              name="student_type" 
+              value={formData.student_type} 
+              onChange={handleChange} 
+              options={STUDENT_TYPE_OPTIONS} 
+              error={errors.student_type} 
+            />
+            <FormSelect 
+              label="Assign to Class" 
+              name="current_class_id" 
+              value={formData.current_class_id} 
+              onChange={handleChange} 
+              options={classOptions} 
+              disabled={loadingClasses}
+              placeholder={loadingClasses ? 'Loading classes...' : 'Select a class (optional)'}
+            />
             <FormInput label="Enrollment Date" name="enrollment_date" type="date" value={formData.enrollment_date} onChange={handleChange} />
             <FormInput label="Address" name="address" value={formData.address} onChange={handleChange} placeholder="Physical address" />
           </div>
         </Card>
 
+        {/* Medical Information */}
         <Card title="Medical & Special Needs">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -304,13 +325,19 @@ function StudentForm() {
           </div>
         </Card>
 
-        <Card title="Guardians" icon={<Users size={20} />}
+        {/* Guardians */}
+        <Card 
+          title="Guardians" 
+          icon={<Users size={20} />}
           actions={
             <button type="button" onClick={addGuardian} className="btn btn-secondary btn-sm">
               <UserPlus size={14} /> Add Guardian
             </button>
-          }>
-          {errors.guardians && <p className="text-sm text-red-500 mb-3">{errors.guardians}</p>}
+          }
+        >
+          {errors.guardians && (
+            <p className="text-sm text-red-500 mb-3">{errors.guardians}</p>
+          )}
           <div className="space-y-6">
             {formData.guardians.map((guardian, index) => (
               <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg relative">
@@ -335,6 +362,7 @@ function StudentForm() {
           </div>
         </Card>
 
+        {/* Actions */}
         <div className="flex gap-3">
           <Button type="submit" variant="primary" loading={loading} icon={<Save size={18} />}>
             {isEdit ? 'Update Student' : 'Enroll Student'}
