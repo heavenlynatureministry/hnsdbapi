@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+do the same thing to import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import studentsAPI from '../../api/students'
