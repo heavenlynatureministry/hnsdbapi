@@ -11,7 +11,14 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import { ArrowLeft, Save, DollarSign } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+const TYPE_OPTIONS = [
+  { value: '', label: '-- Select Type --' },
+  { value: 'income', label: 'Income' },
+  { value: 'expense', label: 'Expense' },
+]
+
 const INCOME_CATEGORIES = [
+  { value: '', label: '-- Select Category --' },
   { value: 'tuition_fees', label: 'Tuition Fees' },
   { value: 'registration_fees', label: 'Registration Fees' },
   { value: 'examination_fees', label: 'Examination Fees' },
@@ -24,6 +31,7 @@ const INCOME_CATEGORIES = [
 ]
 
 const EXPENSE_CATEGORIES = [
+  { value: '', label: '-- Select Category --' },
   { value: 'salaries', label: 'Salaries & Wages' },
   { value: 'utilities', label: 'Utilities' },
   { value: 'rent', label: 'Rent' },
@@ -41,10 +49,39 @@ const EXPENSE_CATEGORIES = [
 ]
 
 const PAYMENT_METHODS = [
+  { value: '', label: '-- Select Method --' },
   { value: 'cash', label: 'Cash' },
   { value: 'bank_transfer', label: 'Bank Transfer' },
   { value: 'mobile_money', label: 'Mobile Money' },
   { value: 'cheque', label: 'Cheque' },
+]
+
+function getCurrentAcademicYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1 // JavaScript months are 0-indexed
+  const startYear = month === 1 ? year - 1 : year
+  return `${startYear}/${startYear + 1}`
+}
+
+function getCurrentTerm() {
+  const month = new Date().getMonth() + 1
+  if (month >= 2 && month <= 4) return 'Term 1'
+  if (month >= 5 && month <= 7) return 'Term 2'
+  if (month >= 9 && month <= 11) return 'Term 3'
+  return 'Term 2' // Default for break periods
+}
+
+const ACADEMIC_YEAR_OPTIONS = [
+  { value: getCurrentAcademicYear(), label: getCurrentAcademicYear() },
+  { value: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}`, label: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}` },
+]
+
+const TERM_OPTIONS = [
+  { value: '', label: '-- Select Term --' },
+  { value: 'Term 1', label: 'Term 1' },
+  { value: 'Term 2', label: 'Term 2' },
+  { value: 'Term 3', label: 'Term 3' },
 ]
 
 function TransactionForm() {
@@ -52,22 +89,24 @@ function TransactionForm() {
   const isEdit = Boolean(id)
   const navigate = useNavigate()
   const { updatePageTitle, updateBreadcrumbs } = useApp()
+  
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
 
+  const currentYear = getCurrentAcademicYear()
+  const currentTerm = getCurrentTerm()
+
   const [formData, setFormData] = useState({
     transaction_date: new Date().toISOString().split('T')[0],
     amount: '',
-    transaction_type: 'income',
+    transaction_type: '',
     category: '',
     description: '',
-    payment_method: 'cash',
-    academic_year: '2024/2025',
-    term: 'Term 1',
-    currency: 'SSP',
+    payment_method: '',
+    academic_year: currentYear,
+    term: currentTerm,
     notes: '',
-    receipt_url: '',
   })
 
   useEffect(() => {
@@ -94,15 +133,13 @@ function TransactionForm() {
         setFormData({
           transaction_date: t.transaction_date?.split('T')[0] || new Date().toISOString().split('T')[0],
           amount: t.amount || '',
-          transaction_type: t.transaction_type || 'income',
+          transaction_type: t.transaction_type || '',
           category: t.category || '',
           description: t.description || '',
-          payment_method: t.payment_method || 'cash',
-          academic_year: t.academic_year || '2024/2025',
-          term: t.term || 'Term 1',
-          currency: t.currency || 'SSP',
+          payment_method: t.payment_method || '',
+          academic_year: t.academic_year || currentYear,
+          term: t.term || currentTerm,
           notes: t.notes || '',
-          receipt_url: t.receipt_url || '',
         })
       } else {
         toast.error('Failed to load transaction')
@@ -120,15 +157,20 @@ function TransactionForm() {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }))
-    if (name === 'transaction_type') setFormData(prev => ({ ...prev, category: '' }))
+    // Reset category when type changes
+    if (name === 'transaction_type') {
+      setFormData(prev => ({ ...prev, category: '' }))
+    }
   }
 
   const validateForm = () => {
     const newErrors = {}
+    if (!formData.transaction_type) newErrors.transaction_type = 'Please select a transaction type'
     if (!formData.transaction_date) newErrors.transaction_date = 'Date is required'
-    if (!formData.amount || formData.amount <= 0) newErrors.amount = 'Valid amount is required'
-    if (!formData.category) newErrors.category = 'Category is required'
+    if (!formData.amount || parseFloat(formData.amount) <= 0) newErrors.amount = 'Valid amount is required'
+    if (!formData.category) newErrors.category = 'Please select a category'
     if (!formData.description.trim()) newErrors.description = 'Description is required'
+    if (!formData.payment_method) newErrors.payment_method = 'Please select a payment method'
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -139,7 +181,17 @@ function TransactionForm() {
 
     setLoading(true)
     try {
-      const payload = { ...formData }
+      const payload = {
+        transaction_date: formData.transaction_date,
+        amount: parseFloat(formData.amount),
+        transaction_type: formData.transaction_type,
+        category: formData.category,
+        description: formData.description,
+        payment_method: formData.payment_method,
+        academic_year: formData.academic_year,
+        term: formData.term,
+        notes: formData.notes,
+      }
       
       let response
       if (isEdit) {
@@ -177,7 +229,9 @@ function TransactionForm() {
 
   if (fetching) return <LoadingSpinner fullScreen />
 
-  const categories = formData.transaction_type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
+  const categories = formData.transaction_type === 'income' ? INCOME_CATEGORIES : 
+                     formData.transaction_type === 'expense' ? EXPENSE_CATEGORIES :
+                     [{ value: '', label: '-- Select Type First --' }]
 
   return (
     <div className="space-y-6 max-w-2xl animate-fade-in-up">
@@ -189,36 +243,96 @@ function TransactionForm() {
       <Card>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect label="Transaction Type *" name="transaction_type" value={formData.transaction_type} onChange={handleChange}
-              options={[{ value: 'income', label: 'Income' }, { value: 'expense', label: 'Expense' }]} error={errors.transaction_type} />
-            <FormInput label="Date *" name="transaction_date" type="date" value={formData.transaction_date} onChange={handleChange} error={errors.transaction_date} />
+            <FormSelect 
+              label="Transaction Type *" 
+              name="transaction_type" 
+              value={formData.transaction_type} 
+              onChange={handleChange}
+              options={TYPE_OPTIONS} 
+              error={errors.transaction_type} 
+            />
+            <FormInput 
+              label="Date *" 
+              name="transaction_date" 
+              type="date" 
+              value={formData.transaction_date} 
+              onChange={handleChange} 
+              error={errors.transaction_date} 
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormInput label={`Amount (${formData.currency}) *`} name="amount" type="number" value={formData.amount} onChange={handleChange} error={errors.amount} placeholder="0.00" min="0" step="0.01" />
-            <FormSelect label="Payment Method" name="payment_method" value={formData.payment_method} onChange={handleChange} options={PAYMENT_METHODS} />
+            <FormInput 
+              label="Amount (SSP) *" 
+              name="amount" 
+              type="number" 
+              value={formData.amount} 
+              onChange={handleChange} 
+              error={errors.amount} 
+              placeholder="0.00" 
+              min="0" 
+              step="0.01" 
+            />
+            <FormSelect 
+              label="Payment Method *" 
+              name="payment_method" 
+              value={formData.payment_method} 
+              onChange={handleChange} 
+              options={PAYMENT_METHODS} 
+              error={errors.payment_method}
+            />
           </div>
 
-          <FormSelect label="Category *" name="category" value={formData.category} onChange={handleChange} options={categories} error={errors.category} />
+          <FormSelect 
+            label="Category *" 
+            name="category" 
+            value={formData.category} 
+            onChange={handleChange} 
+            options={categories} 
+            error={errors.category} 
+            disabled={!formData.transaction_type}
+          />
 
           <div>
             <label className="form-label">Description *</label>
-            <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className={`form-input ${errors.description ? 'error' : ''}`} placeholder="Describe the transaction..." />
+            <textarea 
+              name="description" 
+              value={formData.description} 
+              onChange={handleChange} 
+              rows={2} 
+              className={`form-input ${errors.description ? 'error' : ''}`} 
+              placeholder="Describe the transaction..." 
+            />
             {errors.description && <p className="form-error">{errors.description}</p>}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange}
-              options={[{ value: '2024/2025', label: '2024/2025' }, { value: '2023/2024', label: '2023/2024' }]} />
-            <FormSelect label="Term" name="term" value={formData.term} onChange={handleChange}
-              options={[{ value: 'Term 1', label: 'Term 1' }, { value: 'Term 2', label: 'Term 2' }, { value: 'Term 3', label: 'Term 3' }]} />
+            <FormSelect 
+              label="Academic Year" 
+              name="academic_year" 
+              value={formData.academic_year} 
+              onChange={handleChange}
+              options={ACADEMIC_YEAR_OPTIONS} 
+            />
+            <FormSelect 
+              label="Term" 
+              name="term" 
+              value={formData.term} 
+              onChange={handleChange}
+              options={TERM_OPTIONS} 
+            />
           </div>
-
-          <FormInput label="Receipt/Invoice URL" name="receipt_url" value={formData.receipt_url} onChange={handleChange} placeholder="https://..." />
 
           <div>
             <label className="form-label">Notes</label>
-            <textarea name="notes" value={formData.notes} onChange={handleChange} rows={2} className="form-input" placeholder="Additional notes..." />
+            <textarea 
+              name="notes" 
+              value={formData.notes} 
+              onChange={handleChange} 
+              rows={2} 
+              className="form-input" 
+              placeholder="Additional notes..." 
+            />
           </div>
 
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
