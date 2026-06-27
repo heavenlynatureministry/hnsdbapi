@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import financialAPI from '../../api/financial'
+import studentsAPI from '../../api/students'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -14,6 +15,43 @@ import EmptyState from '../../components/common/EmptyState'
 import { DollarSign, Plus, Search, Download, CheckCircle, Clock, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+function getCurrentAcademicYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const startYear = month === 1 ? year - 1 : year
+  return `${startYear}/${startYear + 1}`
+}
+
+function getCurrentTerm() {
+  const month = new Date().getMonth() + 1
+  if (month >= 2 && month <= 4) return 'Term 1'
+  if (month >= 5 && month <= 7) return 'Term 2'
+  if (month >= 9 && month <= 11) return 'Term 3'
+  return 'Term 2'
+}
+
+const currentYear = getCurrentAcademicYear()
+const currentTerm = getCurrentTerm()
+
+const PAYMENT_METHODS = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'bank_transfer', label: 'Bank Transfer' },
+  { value: 'mobile_money', label: 'Mobile Money' },
+  { value: 'cheque', label: 'Cheque' },
+]
+
+const ACADEMIC_YEAR_OPTIONS = [
+  { value: currentYear, label: currentYear },
+  { value: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}`, label: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}` },
+]
+
+const TERM_OPTIONS = [
+  { value: 'Term 1', label: 'Term 1' },
+  { value: 'Term 2', label: 'Term 2' },
+  { value: 'Term 3', label: 'Term 3' },
+]
+
 function PaymentsPage() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [payments, setPayments] = useState([])
@@ -21,11 +59,21 @@ function PaymentsPage() {
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [students, setStudents] = useState([])
+  const [loadingStudents, setLoadingStudents] = useState(false)
+  const [studentSearch, setStudentSearch] = useState('')
 
   const [formData, setFormData] = useState({
-    student_id: '', fee_structure_id: '', amount_paid: '',
-    payment_method: 'cash', paid_by: '', transaction_reference: '',
-    academic_year: '2024/2025', term: 'Term 1', notes: '',
+    student_id: '',
+    amount_paid: '',
+    payment_method: 'cash',
+    payment_type: 'school_fees',
+    fee_type: 'tuition',
+    paid_by: '',
+    transaction_reference: '',
+    academic_year: currentYear,
+    term: currentTerm,
+    notes: '',
   })
 
   useEffect(() => {
@@ -36,6 +84,7 @@ function PaymentsPage() {
       { label: 'Payments' },
     ])
     fetchPayments()
+    fetchStudents()
   }, [])
 
   const fetchPayments = async () => {
@@ -56,6 +105,24 @@ function PaymentsPage() {
     }
   }
 
+  const fetchStudents = async () => {
+    setLoadingStudents(true)
+    try {
+      const response = await studentsAPI.getAll({ status: 'active', limit: 200 })
+      let studentList = response?.data || response || []
+      if (!Array.isArray(studentList)) {
+        studentList = studentList?.students || studentList?.data || []
+      }
+      const safeStudents = Array.isArray(studentList) ? studentList : []
+      setStudents(safeStudents)
+    } catch (error) {
+      console.error('Failed to fetch students:', error)
+      setStudents([])
+    } finally {
+      setLoadingStudents(false)
+    }
+  }
+
   useEffect(() => {
     fetchPayments()
   }, [search])
@@ -65,15 +132,67 @@ function PaymentsPage() {
     setFormData(prev => ({ ...prev, [name]: value }))
   }
 
+  const handleStudentSelect = (studentId) => {
+    const student = students.find(s => (s._id || s.id) === studentId)
+    setFormData(prev => ({
+      ...prev,
+      student_id: studentId,
+      paid_by: student ? `${student.first_name || ''} ${student.last_name || ''}`.trim() : prev.paid_by,
+    }))
+  }
+
+  const filteredStudents = studentSearch
+    ? students.filter(s => {
+        const name = `${s.first_name || ''} ${s.last_name || ''}`.toLowerCase()
+        return name.includes(studentSearch.toLowerCase())
+      })
+    : students
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    if (!formData.student_id) {
+      toast.error('Please select a student')
+      return
+    }
+    if (!formData.amount_paid || parseFloat(formData.amount_paid) <= 0) {
+      toast.error('Please enter a valid amount')
+      return
+    }
+    
     setSaving(true)
     try {
-      const response = await financialAPI.recordPayment(formData)
+      const payload = {
+        student_id: formData.student_id,
+        amount_paid: parseFloat(formData.amount_paid),
+        amount: parseFloat(formData.amount_paid),
+        payment_method: formData.payment_method,
+        payment_type: formData.payment_type,
+        fee_type: formData.fee_type,
+        paid_by: formData.paid_by || undefined,
+        transaction_reference: formData.transaction_reference || undefined,
+        academic_year: formData.academic_year,
+        term: formData.term,
+        notes: formData.notes || undefined,
+      }
+      
+      const response = await financialAPI.recordPayment(payload)
       if (response?.success) {
         toast.success('Payment recorded successfully!')
         setShowModal(false)
-        setFormData({ student_id: '', fee_structure_id: '', amount_paid: '', payment_method: 'cash', paid_by: '', transaction_reference: '', academic_year: '2024/2025', term: 'Term 1', notes: '' })
+        setFormData({
+          student_id: '',
+          amount_paid: '',
+          payment_method: 'cash',
+          payment_type: 'school_fees',
+          fee_type: 'tuition',
+          paid_by: '',
+          transaction_reference: '',
+          academic_year: currentYear,
+          term: currentTerm,
+          notes: '',
+        })
+        setStudentSearch('')
         fetchPayments()
       } else {
         toast.error(response?.message || 'Failed to record payment')
@@ -93,6 +212,14 @@ function PaymentsPage() {
   }
 
   const totalCollected = payments.reduce((s, p) => s + (p.amount_paid || 0), 0)
+
+  const studentOptions = [
+    { value: '', label: loadingStudents ? 'Loading students...' : '-- Select Student --' },
+    ...filteredStudents.slice(0, 50).map(s => ({
+      value: s._id || s.id || '',
+      label: `${s.first_name || ''} ${s.last_name || ''}`.trim() || s.email || 'Unknown Student',
+    })),
+  ]
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -163,22 +290,123 @@ function PaymentsPage() {
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Record Payment" size="md">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <FormInput label="Student ID *" name="student_id" value={formData.student_id} onChange={handleChange} required placeholder="Search student..." />
-          <FormSelect label="Fee Structure" name="fee_structure_id" value={formData.fee_structure_id} onChange={handleChange}
-            options={[{ value: '', label: 'Select...' }, { value: 'fs1', label: 'Nursery Fees 2024/2025' }, { value: 'fs2', label: 'Primary Fees 2024/2025' }]} />
-          <FormInput label="Amount Paid (SSP) *" name="amount_paid" type="number" value={formData.amount_paid} onChange={handleChange} required min="0" />
-          <FormSelect label="Payment Method" name="payment_method" value={formData.payment_method} onChange={handleChange}
-            options={[{ value: 'cash', label: 'Cash' }, { value: 'bank_transfer', label: 'Bank Transfer' }, { value: 'mobile_money', label: 'Mobile Money' }, { value: 'cheque', label: 'Cheque' }]} />
-          <FormInput label="Paid By *" name="paid_by" value={formData.paid_by} onChange={handleChange} required placeholder="Name of payer" />
-          <FormInput label="Transaction Reference" name="transaction_reference" value={formData.transaction_reference} onChange={handleChange} />
-          <FormSelect label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange}
-            options={[{ value: '2024/2025', label: '2024/2025' }]} />
-          <FormSelect label="Term" name="term" value={formData.term} onChange={handleChange}
-            options={[{ value: 'Term 1', label: 'Term 1' }, { value: 'Term 2', label: 'Term 2' }, { value: 'Term 3', label: 'Term 3' }]} />
-          <FormInput label="Notes" name="notes" value={formData.notes} onChange={handleChange} />
+          <div>
+            <label className="form-label">Student *</label>
+            <div className="flex gap-2 mb-2">
+              <input
+                type="text"
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Search student by name..."
+                className="form-input flex-1"
+              />
+            </div>
+            <FormSelect
+              name="student_id"
+              value={formData.student_id}
+              onChange={(e) => handleStudentSelect(e.target.value)}
+              options={studentOptions}
+              disabled={loadingStudents}
+            />
+          </div>
 
-          <div className="flex gap-3 pt-4">
-            <Button type="submit" variant="primary" loading={saving} icon={<DollarSign size={18} />}>Record Payment</Button>
+          <div className="grid grid-cols-2 gap-4">
+            <FormSelect
+              label="Payment Type"
+              name="payment_type"
+              value={formData.payment_type}
+              onChange={handleChange}
+              options={[
+                { value: 'school_fees', label: 'School Fees' },
+                { value: 'registration', label: 'Registration' },
+                { value: 'exam', label: 'Exam Fees' },
+                { value: 'other', label: 'Other' },
+              ]}
+            />
+            <FormSelect
+              label="Fee Type"
+              name="fee_type"
+              value={formData.fee_type}
+              onChange={handleChange}
+              options={[
+                { value: 'tuition', label: 'Tuition' },
+                { value: 'registration', label: 'Registration' },
+                { value: 'exam', label: 'Examination' },
+                { value: 'library', label: 'Library' },
+                { value: 'sports', label: 'Sports' },
+                { value: 'uniform', label: 'Uniform' },
+                { value: 'transport', label: 'Transport' },
+                { value: 'other', label: 'Other' },
+              ]}
+            />
+          </div>
+
+          <FormInput
+            label="Amount Paid (SSP) *"
+            name="amount_paid"
+            type="number"
+            value={formData.amount_paid}
+            onChange={handleChange}
+            required
+            min="0"
+            step="0.01"
+            placeholder="0.00"
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormSelect
+              label="Payment Method"
+              name="payment_method"
+              value={formData.payment_method}
+              onChange={handleChange}
+              options={PAYMENT_METHODS}
+            />
+            <FormInput
+              label="Paid By"
+              name="paid_by"
+              value={formData.paid_by}
+              onChange={handleChange}
+              placeholder="Name of payer"
+            />
+          </div>
+
+          <FormInput
+            label="Transaction Reference"
+            name="transaction_reference"
+            value={formData.transaction_reference}
+            onChange={handleChange}
+            placeholder="e.g., bank transaction ID"
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormSelect
+              label="Academic Year"
+              name="academic_year"
+              value={formData.academic_year}
+              onChange={handleChange}
+              options={ACADEMIC_YEAR_OPTIONS}
+            />
+            <FormSelect
+              label="Term"
+              name="term"
+              value={formData.term}
+              onChange={handleChange}
+              options={TERM_OPTIONS}
+            />
+          </div>
+
+          <FormInput
+            label="Notes"
+            name="notes"
+            value={formData.notes}
+            onChange={handleChange}
+            placeholder="Additional notes..."
+          />
+
+          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <Button type="submit" variant="primary" loading={saving} icon={<DollarSign size={18} />}>
+              Record Payment
+            </Button>
             <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
           </div>
         </form>
