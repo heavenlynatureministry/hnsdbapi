@@ -25,22 +25,50 @@ def _safe_objectid(value) -> Optional[ObjectId]:
         return None
 
 
+def _get_current_academic_year() -> str:
+    """Calculate current academic year dynamically."""
+    now = datetime.utcnow()
+    year = now.year
+    month = now.month
+    start_year = year - 1 if month == 1 else year
+    return f"{start_year}/{start_year + 1}"
+
+
+def _get_current_term() -> str:
+    """Calculate current term dynamically."""
+    month = datetime.utcnow().month
+    if 2 <= month <= 4: return "Term 1"
+    elif 5 <= month <= 7: return "Term 2"
+    elif 9 <= month <= 11: return "Term 3"
+    elif month == 8: return "Term 2 Break"
+    else: return "Annual Break"
+
+
 # =========================================================================
 # SUMMARY & DASHBOARD (specific routes BEFORE /{id})
 # =========================================================================
 
 @router.get("/summary")
-async def get_summary(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_summary(
+    academic_year: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """Get financial summary"""
     db = get_database()
     
+    year = academic_year or _get_current_academic_year()
+    
+    match_filter = {"approval_status": "approved"}
+    if academic_year:
+        match_filter["academic_year"] = year
+    
     income = await db.financial_records.aggregate([
-        {"$match": {"transaction_type": "income", "approval_status": "approved"}},
+        {"$match": {**match_filter, "transaction_type": "income"}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
     
     expenses = await db.financial_records.aggregate([
-        {"$match": {"transaction_type": "expense", "approval_status": "approved"}},
+        {"$match": {**match_filter, "transaction_type": "expense"}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
     
@@ -51,6 +79,7 @@ async def get_summary(current_user: Dict[str, Any] = Depends(get_current_user)):
         "success": True,
         "message": "Summary retrieved",
         "data": {
+            "academic_year": year,
             "income": {"total": round(total_income, 2)},
             "expense": {"total": round(total_expenses, 2)},
             "balance": round(total_income - total_expenses, 2)
@@ -63,13 +92,15 @@ async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current
     """Financial dashboard"""
     db = get_database()
     
+    year = _get_current_academic_year()
+    
     income = await db.financial_records.aggregate([
-        {"$match": {"transaction_type": "income", "approval_status": "approved"}},
+        {"$match": {"transaction_type": "income", "approval_status": "approved", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
     
     expenses = await db.financial_records.aggregate([
-        {"$match": {"transaction_type": "expense", "approval_status": "approved"}},
+        {"$match": {"transaction_type": "expense", "approval_status": "approved", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
     
@@ -79,8 +110,9 @@ async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current
     recent = await db.financial_records.find().sort("created_at", -1).limit(5).to_list(length=5)
     recent = [parse_mongo_document(t) for t in recent]
     
-    total_payments = await db.payments.count_documents({})
+    total_payments = await db.payments.count_documents({"academic_year": year})
     payment_total = await db.payments.aggregate([
+        {"$match": {"academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount_paid"}}}
     ]).to_list(length=1)
     
@@ -88,6 +120,8 @@ async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current
         "success": True,
         "message": "Dashboard retrieved",
         "data": {
+            "academic_year": year,
+            "current_term": _get_current_term(),
             "current_balance": round(total_income - total_expenses, 2),
             "total_income": round(total_income, 2),
             "total_expenses": round(total_expenses, 2),
@@ -107,6 +141,7 @@ async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current
 async def list_payments(
     student_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    academic_year: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -125,6 +160,9 @@ async def list_payments(
             {"student_name": {"$regex": search, "$options": "i"}},
             {"receipt_number": {"$regex": search, "$options": "i"}},
         ]
+    
+    if academic_year:
+        filter_query["academic_year"] = academic_year
     
     skip = (page - 1) * limit
     total = await db.payments.count_documents(filter_query)
@@ -175,6 +213,9 @@ async def record_payment(
     
     receipt_number = body.get('receipt_number') or f"RCP-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     
+    # Auto-set academic year if not provided
+    academic_year = body.get('academic_year') or _get_current_academic_year()
+    
     doc = {
         "student_id": sid,
         "student_name": student_name,
@@ -188,8 +229,8 @@ async def record_payment(
         "receipt_number": receipt_number,
         "status": "completed",
         "recorded_by": current_user.get("_id"),
-        "academic_year": body.get('academic_year'),
-        "term": body.get('term'),
+        "academic_year": academic_year,
+        "term": body.get('term') or _get_current_term(),
         "notes": body.get('notes'),
         "transaction_reference": body.get('transaction_reference'),
         "created_at": datetime.utcnow(),
@@ -249,12 +290,28 @@ async def delete_payment(
 # =========================================================================
 
 @router.get("/fees")
-async def get_fee_structure(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_fee_structure(
+    academic_year: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """Get fee structure"""
     db = get_database()
-    fees = await db.fee_structure.find({}).to_list(length=None)
+    filter_query = {}
+    if academic_year:
+        filter_query["academic_year"] = academic_year
+    
+    fees = await db.fee_structure.find(filter_query).to_list(length=None)
     fees = [parse_mongo_document(f) for f in fees]
-    return {"success": True, "message": "Fee structure retrieved", "data": fees}
+    
+    return {
+        "success": True,
+        "message": "Fee structure retrieved",
+        "data": {
+            "fees": fees,
+            "total": len(fees),
+            "academic_year": academic_year or _get_current_academic_year()
+        }
+    }
 
 
 @router.post("/fees")
@@ -281,8 +338,8 @@ async def create_fee(
         "fee_type": body.get('fee_type', 'tuition'),
         "amount": float(amount),
         "class_level": body.get('class_level'),
-        "academic_year": body.get('academic_year'),
-        "term": body.get('term'),
+        "academic_year": body.get('academic_year') or _get_current_academic_year(),
+        "term": body.get('term') or _get_current_term(),
         "description": body.get('description', ''),
         "is_mandatory": body.get('is_mandatory', True),
         "status": "active",
@@ -309,6 +366,7 @@ async def list_transactions(
     category: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    academic_year: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -319,6 +377,7 @@ async def list_transactions(
     if type: filter_query["transaction_type"] = type
     if category: filter_query["category"] = category
     if status: filter_query["approval_status"] = status
+    if academic_year: filter_query["academic_year"] = academic_year
     if search:
         filter_query["$or"] = [
             {"description": {"$regex": search, "$options": "i"}},
@@ -333,7 +392,13 @@ async def list_transactions(
     return {
         "success": True,
         "message": "Transactions retrieved",
-        "data": {"transactions": transactions, "total": total, "page": page, "limit": limit}
+        "data": {
+            "transactions": transactions,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "academic_year": academic_year or _get_current_academic_year()
+        }
     }
 
 
@@ -365,6 +430,10 @@ async def create_transaction(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
+    # Auto-set academic year and term if not provided
+    academic_year = body.get('academic_year') or _get_current_academic_year()
+    term = body.get('term') or _get_current_term()
+    
     doc = {
         "transaction_date": date_obj,
         "amount": float(amount),
@@ -374,9 +443,9 @@ async def create_transaction(
         "payment_method": body.get('payment_method', 'cash'),
         "reference_number": body.get('reference_number') or f"TXN-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
         "recorded_by": current_user.get("_id"),
-        "approval_status": body.get('status', 'pending'),
-        "academic_year": body.get('academic_year'),
-        "term": body.get('term'),
+        "approval_status": body.get('status', 'completed'),
+        "academic_year": academic_year,
+        "term": term,
         "notes": body.get('notes'),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
