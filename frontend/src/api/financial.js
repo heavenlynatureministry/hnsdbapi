@@ -15,7 +15,15 @@ const financialAPI = {
   // Payments
   recordPayment: async (data) => api.post('/financial/payments', data),
   listPayments: async (params = {}) => api.get('/financial/payments', { params }),
-  getStudentPayments: async (studentId, params = {}) => api.get(`/financial/payments`, { ...params, student_id: studentId }),
+  getPayments: async (params = {}) => api.get('/financial/payments', { params }),
+  getPaymentById: async (id) => api.get(`/financial/payments/${id}`),
+  getStudentPayments: async (studentId, params = {}) => api.get('/financial/payments', { ...params, student_id: studentId }),
+  
+  // School Fees
+  getFeeStructure: async (params = {}) => api.get('/financial/fees', { params }),
+  createFeeStructure: async (data) => api.post('/financial/fees', data),
+  updateFeeStructure: async (id, data) => api.put(`/financial/fees/${id}`, data),
+  deleteFeeStructure: async (id) => api.delete(`/financial/fees/${id}`),
 }
 
 export default financialAPI
