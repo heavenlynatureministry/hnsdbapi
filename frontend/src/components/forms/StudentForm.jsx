@@ -1,36 +1,26 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import FormInput from '../common/FormInput'
 import FormSelect from '../common/FormSelect'
 import Button from '../common/Button'
 import Card from '../common/Card'
 import { Save, X, Plus, Users } from 'lucide-react'
+import classesAPI from '../../api/classes'
+import toast from 'react-hot-toast'
+
+const CLASS_PLACEHOLDER = [{ value: '', label: '-- Select Class --' }]
 
 const GENDERS = [
+  { value: '', label: '-- Select Gender --' },
   { value: 'Male', label: 'Male' },
   { value: 'Female', label: 'Female' },
-  { value: 'Other', label: 'Other' },
 ]
 
 const STUDENT_TYPES = [
+  { value: '', label: '-- Select Student Type --' },
   { value: 'street', label: 'Street Child' },
   { value: 'abundant', label: 'Abundant Family' },
   { value: 'orphan', label: 'Orphan' },
   { value: 'other', label: 'Other' },
-]
-
-const CLASSES = [
-  { value: '', label: 'Select Class' },
-  { value: 'c1', label: 'Baby (Nursery)' },
-  { value: 'c2', label: 'Middle (Nursery)' },
-  { value: 'c3', label: 'Top (Nursery)' },
-  { value: 'c4', label: 'P1' },
-  { value: 'c5', label: 'P2' },
-  { value: 'c6', label: 'P3' },
-  { value: 'c7', label: 'P4' },
-  { value: 'c8', label: 'P5' },
-  { value: 'c9', label: 'P6' },
-  { value: 'c10', label: 'P7' },
-  { value: 'c11', label: 'P8' },
 ]
 
 function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }) {
@@ -40,11 +30,11 @@ function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }
     first_name: initialData?.first_name || '',
     last_name: initialData?.last_name || '',
     middle_name: initialData?.middle_name || '',
-    gender: initialData?.gender || 'Male',
+    gender: initialData?.gender || '',
     date_of_birth: initialData?.date_of_birth || '',
     place_of_birth: initialData?.place_of_birth || '',
     nationality: initialData?.nationality || 'South Sudanese',
-    student_type: initialData?.student_type || 'other',
+    student_type: initialData?.student_type || '',
     current_class_id: initialData?.current_class_id || '',
     enrollment_date: initialData?.enrollment_date || new Date().toISOString().split('T')[0],
     medical_notes: initialData?.medical_notes || '',
@@ -59,6 +49,39 @@ function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }
   )
 
   const [errors, setErrors] = useState({})
+  const [classOptions, setClassOptions] = useState(CLASS_PLACEHOLDER)
+  const [loadingClasses, setLoadingClasses] = useState(false)
+
+  // Fetch classes on mount
+  useEffect(() => {
+    fetchClasses()
+  }, [])
+
+  const fetchClasses = async () => {
+    setLoadingClasses(true)
+    try {
+      const response = await classesAPI.getAll({ status: 'active' })
+      let classesArray = response?.data || response || []
+      if (!Array.isArray(classesArray)) {
+        classesArray = classesArray?.classes || classesArray?.data || []
+      }
+
+      if (classesArray.length > 0) {
+        const options = classesArray.map(cls => ({
+          value: cls._id || cls.id || '',
+          label: cls.class_name || cls.name || 
+                 `${cls.class_level || ''} ${cls.class_name || ''}`.trim() ||
+                 'Unknown Class',
+        })).filter(opt => opt.value && opt.label)
+        setClassOptions([...CLASS_PLACEHOLDER, ...options])
+      }
+    } catch (error) {
+      console.error('Failed to fetch classes:', error)
+      toast.error('Failed to load classes')
+    } finally {
+      setLoadingClasses(false)
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -87,11 +110,10 @@ function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }
     const newErrors = {}
     if (!formData.first_name.trim()) newErrors.first_name = 'First name is required'
     if (!formData.last_name.trim()) newErrors.last_name = 'Last name is required'
+    if (!formData.gender) newErrors.gender = 'Please select a gender'
     if (!formData.date_of_birth) newErrors.date_of_birth = 'Date of birth is required'
-    if (!formData.gender) newErrors.gender = 'Gender is required'
-    if (!formData.student_type) newErrors.student_type = 'Student type is required'
+    if (!formData.student_type) newErrors.student_type = 'Please select a student type'
     
-    // Validate primary guardian
     const primaryGuardian = guardians[0]
     if (!primaryGuardian?.first_name?.trim() && !primaryGuardian?.last_name?.trim()) {
       newErrors.guardians = 'At least one guardian name is required'
@@ -104,7 +126,14 @@ function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!validate()) return
-    onSubmit?.({ ...formData, guardians })
+    
+    const payload = { ...formData }
+    // Only include class_id if selected
+    if (!payload.current_class_id) {
+      delete payload.current_class_id
+    }
+    
+    onSubmit?.({ ...payload, guardians })
   }
 
   return (
@@ -112,12 +141,12 @@ function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }
       {/* Personal Information */}
       <Card title="Personal Information">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <FormInput label="First Name *" name="first_name" value={formData.first_name} onChange={handleChange} error={errors.first_name} />
-          <FormInput label="Last Name *" name="last_name" value={formData.last_name} onChange={handleChange} error={errors.last_name} />
-          <FormInput label="Middle Name" name="middle_name" value={formData.middle_name} onChange={handleChange} />
-          <FormSelect label="Gender *" name="gender" value={formData.gender} onChange={handleChange} options={GENDERS} />
+          <FormInput label="First Name *" name="first_name" value={formData.first_name} onChange={handleChange} error={errors.first_name} placeholder="Enter first name" />
+          <FormInput label="Last Name *" name="last_name" value={formData.last_name} onChange={handleChange} error={errors.last_name} placeholder="Enter last name" />
+          <FormInput label="Middle Name" name="middle_name" value={formData.middle_name} onChange={handleChange} placeholder="Optional" />
+          <FormSelect label="Gender *" name="gender" value={formData.gender} onChange={handleChange} options={GENDERS} error={errors.gender} />
           <FormInput label="Date of Birth *" name="date_of_birth" type="date" value={formData.date_of_birth} onChange={handleChange} error={errors.date_of_birth} />
-          <FormInput label="Place of Birth" name="place_of_birth" value={formData.place_of_birth} onChange={handleChange} />
+          <FormInput label="Place of Birth" name="place_of_birth" value={formData.place_of_birth} onChange={handleChange} placeholder="City, Country" />
         </div>
       </Card>
 
@@ -125,9 +154,17 @@ function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }
       <Card title="Enrollment Information">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormSelect label="Student Type *" name="student_type" value={formData.student_type} onChange={handleChange} options={STUDENT_TYPES} error={errors.student_type} />
-          <FormSelect label="Assign to Class" name="current_class_id" value={formData.current_class_id} onChange={handleChange} options={CLASSES} />
+          <FormSelect 
+            label="Assign to Class" 
+            name="current_class_id" 
+            value={formData.current_class_id} 
+            onChange={handleChange} 
+            options={classOptions}
+            disabled={loadingClasses}
+            placeholder={loadingClasses ? 'Loading classes...' : 'Select a class (optional)'}
+          />
           <FormInput label="Enrollment Date" name="enrollment_date" type="date" value={formData.enrollment_date} onChange={handleChange} />
-          <FormInput label="Nationality" name="nationality" value={formData.nationality} onChange={handleChange} />
+          <FormInput label="Nationality" name="nationality" value={formData.nationality} onChange={handleChange} placeholder="South Sudanese" />
         </div>
       </Card>
 
@@ -168,11 +205,11 @@ function StudentForm({ initialData = null, onSubmit, onCancel, loading = false }
                 </button>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <FormInput label="First Name" value={guardian.first_name} onChange={(e) => handleGuardianChange(index, 'first_name', e.target.value)} />
-                <FormInput label="Last Name" value={guardian.last_name} onChange={(e) => handleGuardianChange(index, 'last_name', e.target.value)} />
+                <FormInput label="First Name" value={guardian.first_name} onChange={(e) => handleGuardianChange(index, 'first_name', e.target.value)} placeholder="Guardian first name" />
+                <FormInput label="Last Name" value={guardian.last_name} onChange={(e) => handleGuardianChange(index, 'last_name', e.target.value)} placeholder="Guardian last name" />
                 <FormInput label="Relationship" value={guardian.relationship} onChange={(e) => handleGuardianChange(index, 'relationship', e.target.value)} placeholder="Father, Mother, Uncle, etc." />
-                <FormInput label="Phone Number" value={guardian.phone_number} onChange={(e) => handleGuardianChange(index, 'phone_number', e.target.value)} />
-                <FormInput label="Email" type="email" value={guardian.email} onChange={(e) => handleGuardianChange(index, 'email', e.target.value)} />
+                <FormInput label="Phone Number" value={guardian.phone_number} onChange={(e) => handleGuardianChange(index, 'phone_number', e.target.value)} placeholder="+211 XXX XXX XXX" />
+                <FormInput label="Email" type="email" value={guardian.email} onChange={(e) => handleGuardianChange(index, 'email', e.target.value)} placeholder="guardian@email.com" />
                 <div className="flex items-center pt-6">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input type="checkbox" checked={guardian.is_primary_contact} onChange={(e) => handleGuardianChange(index, 'is_primary_contact', e.target.checked)} className="w-4 h-4 text-primary-600 rounded" />
