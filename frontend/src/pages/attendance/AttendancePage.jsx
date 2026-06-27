@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import attendanceAPI from '../../api/attendance'
+import classesAPI from '../../api/classes'
 import api from '../../api/axios'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
@@ -17,32 +18,60 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+const CLASS_PLACEHOLDER = [{ value: '', label: '-- Select Class --' }]
+
 function AttendancePage() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
+  const [loadingClasses, setLoadingClasses] = useState(false)
   const [selectedClass, setSelectedClass] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   const [attendanceData, setAttendanceData] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [classOptions, setClassOptions] = useState(CLASS_PLACEHOLDER)
 
   // Delete confirmation
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
-  const classes = [
-    { value: 'c1', label: 'Baby (Nursery)' }, { value: 'c2', label: 'Middle (Nursery)' },
-    { value: 'c3', label: 'Top (Nursery)' }, { value: 'c4', label: 'P1' },
-    { value: 'c5', label: 'P2' }, { value: 'c6', label: 'P3' },
-    { value: 'c7', label: 'P4' }, { value: 'c8', label: 'P5' },
-    { value: 'c9', label: 'P6' }, { value: 'c10', label: 'P7' }, { value: 'c11', label: 'P8' },
-  ]
-
   useEffect(() => {
     updatePageTitle('Attendance Management')
     updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Attendance' }])
+    fetchClasses()
   }, [])
 
+  const fetchClasses = async () => {
+    setLoadingClasses(true)
+    try {
+      const response = await classesAPI.getAll({ status: 'active' })
+      let classesArray = response?.data || response || []
+      if (!Array.isArray(classesArray)) {
+        classesArray = classesArray?.classes || classesArray?.data || []
+      }
+
+      if (classesArray.length > 0) {
+        const options = classesArray.map(cls => ({
+          value: cls._id || cls.id || '',
+          label: cls.class_name || cls.name || 
+                 `${cls.class_level || ''} ${cls.class_name || ''}`.trim() ||
+                 'Unknown Class',
+        })).filter(opt => opt.value && opt.label)
+        setClassOptions([...CLASS_PLACEHOLDER, ...options])
+      } else {
+        setClassOptions(CLASS_PLACEHOLDER)
+      }
+    } catch (error) {
+      console.error('Failed to fetch classes:', error)
+      setClassOptions(CLASS_PLACEHOLDER)
+    } finally {
+      setLoadingClasses(false)
+    }
+  }
+
   const handleLoadAttendance = async () => {
-    if (!selectedClass) return
+    if (!selectedClass) {
+      toast.error('Please select a class')
+      return
+    }
     
     setLoading(true)
     setAttendanceData(null)
@@ -128,7 +157,9 @@ function AttendancePage() {
               label="Select Class"
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
-              options={classes}
+              options={classOptions}
+              disabled={loadingClasses}
+              placeholder={loadingClasses ? 'Loading classes...' : '-- Select Class --'}
             />
           </div>
           <div className="w-full sm:w-48">
@@ -224,7 +255,7 @@ function AttendancePage() {
         <EmptyState
           icon={ClipboardCheck}
           title="Select a Class"
-          description="Choose a class and date to view attendance."
+          description="Choose a class and date to view attendance records."
         />
       )}
 
