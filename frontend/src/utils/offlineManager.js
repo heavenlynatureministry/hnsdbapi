@@ -21,6 +21,7 @@ class OfflineManager {
     this.listeners = new Set();
     this.syncing = false;
     this.lastSyncTime = null;
+    this.syncInterval = null;
     
     this.init();
   }
@@ -36,11 +37,11 @@ class OfflineManager {
     }
     
     // Periodic sync check (every 5 minutes)
-    setInterval(() => this.checkAndSync(), 5 * 60 * 1000);
+    this.syncInterval = setInterval(() => this.checkAndSync(), 5 * 60 * 1000);
     
-    // Initial sync if online
+    // Initial sync if online (delay to let app initialize)
     if (this.isOnline) {
-      this.checkAndSync();
+      setTimeout(() => this.checkAndSync(), 3000);
     }
   }
 
@@ -65,11 +66,12 @@ class OfflineManager {
     console.log('[OfflineManager] 📶 Online - Starting sync...');
     this.isOnline = true;
     this.notifyListeners();
-    this.checkAndSync();
+    // Small delay to ensure connection is stable
+    setTimeout(() => this.checkAndSync(), 1000);
   }
 
   handleOffline() {
-    console.log('[OfflineManager] 📵 Offline - Changes will be queued');
+    console.log('[OfflineManager] 📵 Offline - Changes will be queued locally');
     this.isOnline = false;
     this.notifyListeners();
   }
@@ -84,7 +86,7 @@ class OfflineManager {
       const pendingItems = await getPendingSyncItems();
       
       if (pendingItems.length > 0) {
-        console.log(`[OfflineManager] Found ${pendingItems.length} items to sync`);
+        console.log(`[OfflineManager] Found ${pendingItems.length} pending item(s) to sync`);
         await this.syncItems(pendingItems);
       } else {
         console.log('[OfflineManager] No pending items to sync');
@@ -94,11 +96,11 @@ class OfflineManager {
       await cleanSyncedItems();
       
       // Clear expired cache
-      await clearExpiredCache(72); // Clear cache older than 72 hours
+      await clearExpiredCache(72);
       
       this.lastSyncTime = Date.now();
     } catch (error) {
-      console.error('[OfflineManager] Sync failed:', error);
+      console.error('[OfflineManager] Sync check failed:', error.message);
     } finally {
       this.syncing = false;
       this.notifyListeners();
@@ -111,13 +113,21 @@ class OfflineManager {
     
     for (const item of items) {
       try {
+        // Skip items that have failed too many times
+        if (item.retryCount >= 5) {
+          console.warn(`[OfflineManager] ⏭️ Skipping ${item.method} ${item.url} - max retries reached`);
+          await markSynced(item.id); // Mark as synced to remove from queue
+          failCount++;
+          continue;
+        }
+        
         const response = await fetch(item.url, {
           method: item.method,
           headers: {
             'Content-Type': 'application/json',
             ...item.headers,
           },
-          body: JSON.stringify(item.body),
+          body: item.method !== 'GET' && item.method !== 'HEAD' ? JSON.stringify(item.body) : null,
         });
         
         if (response.ok) {
@@ -125,27 +135,39 @@ class OfflineManager {
           successCount++;
           console.log(`[OfflineManager] ✅ Synced: ${item.method} ${item.url}`);
         } else if (response.status === 409) {
-          // Conflict - mark as synced but log conflict
+          // Conflict - mark as synced but log
           await markSynced(item.id);
-          console.warn(`[OfflineManager] ⚠️ Conflict: ${item.method} ${item.url}`);
+          console.warn(`[OfflineManager] ⚠️ Conflict resolved: ${item.method} ${item.url}`);
           successCount++;
+        } else if (response.status === 401 || response.status === 403) {
+          // Auth error - don't retry
+          await markSynced(item.id);
+          console.error(`[OfflineManager] 🔒 Auth error: ${item.method} ${item.url} - Status: ${response.status}`);
+          failCount++;
         } else {
           failCount++;
-          console.error(`[OfflineManager] ❌ Failed: ${item.method} ${item.url} - Status: ${response.status}`);
+          // Update retry count
+          item.retryCount = (item.retryCount || 0) + 1;
+          console.error(`[OfflineManager] ❌ Failed (attempt ${item.retryCount}): ${item.method} ${item.url} - Status: ${response.status}`);
         }
       } catch (error) {
         failCount++;
-        console.error(`[OfflineManager] ❌ Error syncing: ${item.method} ${item.url}`, error);
+        item.retryCount = (item.retryCount || 0) + 1;
+        console.error(`[OfflineManager] ❌ Network error (attempt ${item.retryCount}): ${item.method} ${item.url}`, error.message);
       }
     }
     
     console.log(`[OfflineManager] Sync complete: ${successCount} succeeded, ${failCount} failed`);
     
-    // If there were failures, trigger background sync
+    // Trigger background sync for remaining failures
     if (failCount > 0 && 'serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.ready;
-      if ('sync' in registration) {
-        await registration.sync.register('sync-pending');
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        if ('sync' in registration) {
+          await registration.sync.register('sync-pending');
+        }
+      } catch (error) {
+        console.warn('[OfflineManager] Could not register background sync:', error.message);
       }
     }
   }
@@ -153,7 +175,7 @@ class OfflineManager {
   // Queue an API request for offline use
   async queueRequest(method, url, body = null) {
     if (this.isOnline) {
-      // If online, try to make the request directly
+      // Try to make the request directly first
       try {
         const response = await fetch(url, {
           method,
@@ -164,8 +186,13 @@ class OfflineManager {
         if (response.ok) {
           return await response.json();
         }
+        
+        // If server error, queue for retry
+        if (response.status >= 500) {
+          console.warn('[OfflineManager] Server error, queueing for retry');
+        }
       } catch (error) {
-        console.warn('[OfflineManager] Online request failed, queueing:', error);
+        console.warn('[OfflineManager] Online request failed, queueing:', error.message);
       }
     }
     
@@ -177,12 +204,12 @@ class OfflineManager {
       body,
     });
     
-    console.log(`[OfflineManager] 📝 Queued: ${method} ${url}`);
+    console.log(`[OfflineManager] 📝 Queued for sync: ${method} ${url}`);
     
     return { 
       success: true, 
       queued: true, 
-      message: 'Saved offline. Will sync when online.' 
+      message: 'Saved offline. Will sync when connection is restored.' 
     };
   }
 
@@ -196,34 +223,55 @@ class OfflineManager {
     return await getCachedApiResponse(path);
   }
 
-  // Store auth token for offline
+  // Get all cached responses
+  async getAllCached() {
+    return await getAllCachedResponses();
+  }
+
+  // Store auth token for offline login
   async storeAuth(token, user) {
     await storeUserData('authToken', token);
     await storeUserData('currentUser', user);
     await storeUserData('lastLogin', Date.now());
   }
 
-  // Get stored auth
+  // Get stored auth for offline login
   async getStoredAuth() {
     const token = await getUserData('authToken');
     const user = await getUserData('currentUser');
-    return { token, user };
+    const lastLogin = await getUserData('lastLogin');
+    return { token, user, lastLogin };
+  }
+
+  // Check if stored auth is still valid
+  async isStoredAuthValid() {
+    const { token, lastLogin } = await this.getStoredAuth();
+    if (!token || !lastLogin) return false;
+    
+    // Auth valid for 7 days offline
+    const maxAge = 7 * 24 * 60 * 60 * 1000;
+    return (Date.now() - lastLogin) < maxAge;
   }
 
   // Subscribe to online/offline changes
   subscribe(listener) {
     this.listeners.add(listener);
+    // Immediately notify with current state
+    listener(this.getState());
+    // Return unsubscribe function
     return () => this.listeners.delete(listener);
   }
 
   // Notify all listeners
   notifyListeners() {
-    const state = {
-      isOnline: this.isOnline,
-      syncing: this.syncing,
-      lastSyncTime: this.lastSyncTime,
-    };
-    this.listeners.forEach(listener => listener(state));
+    const state = this.getState();
+    this.listeners.forEach(listener => {
+      try {
+        listener(state);
+      } catch (error) {
+        console.error('[OfflineManager] Listener error:', error);
+      }
+    });
   }
 
   // Get current state
@@ -233,6 +281,27 @@ class OfflineManager {
       syncing: this.syncing,
       lastSyncTime: this.lastSyncTime,
     };
+  }
+
+  // Force immediate sync
+  async forceSync() {
+    if (!this.isOnline) {
+      console.warn('[OfflineManager] Cannot sync - offline');
+      return { success: false, message: 'Cannot sync while offline' };
+    }
+    await this.checkAndSync();
+    return { success: true, message: 'Sync completed' };
+  }
+
+  // Destroy the manager (cleanup)
+  destroy() {
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
+    window.removeEventListener('online', this.handleOnline);
+    window.removeEventListener('offline', this.handleOffline);
+    this.listeners.clear();
   }
 }
 
