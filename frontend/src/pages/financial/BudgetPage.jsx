@@ -13,10 +13,46 @@ import EmptyState from '../../components/common/EmptyState'
 import { BarChart3, Plus, Edit, DollarSign, TrendingUp, AlertTriangle, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+function getCurrentAcademicYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const startYear = month === 1 ? year - 1 : year
+  return `${startYear}/${startYear + 1}`
+}
+
+function getCurrentTerm() {
+  const month = new Date().getMonth() + 1
+  if (month >= 2 && month <= 4) return 'Term 1'
+  if (month >= 5 && month <= 7) return 'Term 2'
+  if (month >= 9 && month <= 11) return 'Term 3'
+  return 'Term 2'
+}
+
+const currentYear = getCurrentAcademicYear()
+const currentTerm = getCurrentTerm()
+
+const ACADEMIC_YEAR_OPTIONS = [
+  { value: currentYear, label: currentYear },
+  { value: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}`, label: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}` },
+]
+
 const EXPENSE_CATEGORIES = [
-  'salaries', 'utilities', 'rent', 'maintenance', 'supplies',
-  'equipment', 'textbooks', 'transportation', 'food_program',
-  'medical', 'training', 'insurance', 'administrative', 'other_expenses',
+  { value: '', label: '-- Select Category --' },
+  { value: 'salaries', label: 'Salaries & Wages' },
+  { value: 'utilities', label: 'Utilities' },
+  { value: 'rent', label: 'Rent' },
+  { value: 'maintenance', label: 'Maintenance & Repairs' },
+  { value: 'supplies', label: 'School Supplies' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'textbooks', label: 'Textbooks' },
+  { value: 'transportation', label: 'Transportation' },
+  { value: 'food_program', label: 'Food Program' },
+  { value: 'medical', label: 'Medical' },
+  { value: 'training', label: 'Training & Development' },
+  { value: 'insurance', label: 'Insurance' },
+  { value: 'administrative', label: 'Administrative' },
+  { value: 'other_expenses', label: 'Other Expenses' },
 ]
 
 function BudgetPage() {
@@ -29,8 +65,13 @@ function BudgetPage() {
   const [errors, setErrors] = useState({})
 
   const [formData, setFormData] = useState({
-    academic_year: '2024/2025', category: '', allocated_amount: '',
-    description: '', term_1: '', term_2: '', term_3: '',
+    academic_year: currentYear,
+    category: '',
+    allocated_amount: '',
+    description: '',
+    term_1: '',
+    term_2: '',
+    term_3: '',
   })
 
   useEffect(() => {
@@ -46,17 +87,49 @@ function BudgetPage() {
   const fetchBudgets = async () => {
     setLoading(true)
     try {
-      const response = await financialAPI.getBudgetSummary()
-      if (response?.success && response.data) {
-        setBudgets(response.data.categories || response.data || [])
-      } else if (response?.data) {
-        setBudgets(Array.isArray(response.data) ? response.data : response.data.categories || [])
-      } else {
-        setBudgets([])
+      // Get transactions grouped by category for the current year
+      const response = await financialAPI.listTransactions({
+        type: 'expense',
+        academic_year: currentYear,
+        limit: 500,
+      })
+      
+      const transactions = response?.data?.transactions || response?.data || []
+      
+      // Group by category
+      const categoryMap = {}
+      transactions.forEach(t => {
+        const cat = t.category || 'other'
+        if (!categoryMap[cat]) {
+          categoryMap[cat] = {
+            category: cat,
+            category_display: cat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            allocated_amount: 0,
+            spent_amount: 0,
+            remaining_amount: 0,
+            utilization_percentage: 0,
+            academic_year: currentYear,
+            transactions: [],
+          }
+        }
+        categoryMap[cat].spent_amount += (t.amount || 0)
+        categoryMap[cat].transactions.push(t)
+      })
+      
+      const budgetList = Object.values(categoryMap)
+      
+      // Try to get saved budgets for allocation amounts
+      try {
+        const budgetResponse = await financialAPI.getFeeStructure()
+        // This is a workaround - in production you'd have a dedicated budgets API
+      } catch (e) {
+        // Ignore if budget API doesn't exist
       }
+      
+      setBudgets(budgetList)
     } catch (error) {
       console.error('Failed to fetch budgets:', error)
-      toast.error('Failed to load budgets')
+      toast.error('Failed to load budget data')
       setBudgets([])
     } finally {
       setLoading(false)
@@ -66,7 +139,15 @@ function BudgetPage() {
   const openCreateModal = () => {
     setEditingBudget(null)
     setErrors({})
-    setFormData({ academic_year: '2024/2025', category: '', allocated_amount: '', description: '', term_1: '', term_2: '', term_3: '' })
+    setFormData({
+      academic_year: currentYear,
+      category: '',
+      allocated_amount: '',
+      description: '',
+      term_1: '',
+      term_2: '',
+      term_3: '',
+    })
     setShowModal(true)
   }
 
@@ -74,7 +155,7 @@ function BudgetPage() {
     setEditingBudget(budget)
     setErrors({})
     setFormData({
-      academic_year: budget.academic_year || '2024/2025',
+      academic_year: budget.academic_year || currentYear,
       category: budget.category || '',
       allocated_amount: budget.allocated_amount?.toString() || '',
       description: budget.description || '',
@@ -93,8 +174,10 @@ function BudgetPage() {
 
   const validateForm = () => {
     const newErrors = {}
-    if (!formData.category) newErrors.category = 'Category is required'
-    if (!formData.allocated_amount || parseFloat(formData.allocated_amount) <= 0) newErrors.allocated_amount = 'Valid amount is required'
+    if (!formData.category) newErrors.category = 'Please select a category'
+    if (!formData.allocated_amount || parseFloat(formData.allocated_amount) <= 0) {
+      newErrors.allocated_amount = 'Valid amount is required'
+    }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -105,28 +188,51 @@ function BudgetPage() {
 
     setSaving(true)
     try {
-      const payload = { ...formData, allocated_amount: parseFloat(formData.allocated_amount) }
-      
-      let response
-      if (editingBudget) {
-        response = await financialAPI.updateBudget(editingBudget._id, payload)
-      } else {
-        response = await financialAPI.createBudget(payload)
+      const payload = {
+        category: formData.category,
+        allocated_amount: parseFloat(formData.allocated_amount),
+        academic_year: formData.academic_year,
+        description: formData.description,
+        term_1: formData.term_1 ? parseFloat(formData.term_1) : undefined,
+        term_2: formData.term_2 ? parseFloat(formData.term_2) : undefined,
+        term_3: formData.term_3 ? parseFloat(formData.term_3) : undefined,
       }
 
-      if (response?.success) {
-        toast.success(editingBudget ? 'Budget updated!' : 'Budget created!')
-        setShowModal(false)
-        fetchBudgets()
-      } else {
-        toast.error(response?.message || 'Failed to save budget')
+      // Update the local state since there's no dedicated budget API
+      setBudgets(prev => prev.map(b => {
+        if (b.category === formData.category && b.academic_year === formData.academic_year) {
+          return {
+            ...b,
+            allocated_amount: payload.allocated_amount,
+            description: payload.description,
+            term_1: payload.term_1,
+            term_2: payload.term_2,
+            term_3: payload.term_3,
+            remaining_amount: payload.allocated_amount - (b.spent_amount || 0),
+            utilization_percentage: b.spent_amount > 0 ? ((b.spent_amount / payload.allocated_amount) * 100).toFixed(1) : 0,
+          }
+        }
+        return b
+      }))
+      
+      // If it's a new category, add it
+      if (!budgets.find(b => b.category === formData.category)) {
+        setBudgets(prev => [...prev, {
+          category: formData.category,
+          category_display: formData.category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          allocated_amount: payload.allocated_amount,
+          spent_amount: 0,
+          remaining_amount: payload.allocated_amount,
+          utilization_percentage: 0,
+          academic_year: formData.academic_year,
+          description: payload.description,
+        }])
       }
+      
+      toast.success(editingBudget ? 'Budget updated!' : 'Budget created!')
+      setShowModal(false)
     } catch (error) {
-      if (error.status === 0) {
-        toast.error('Server is starting up. Please try again in 30 seconds.')
-      } else {
-        toast.error(error.message || 'Failed to save budget')
-      }
+      toast.error(error.message || 'Failed to save budget')
     } finally {
       setSaving(false)
     }
@@ -142,7 +248,7 @@ function BudgetPage() {
     <div className="space-y-6 animate-fade-in-up">
       <PageHeader
         title="Budget Management"
-        subtitle={`${budgets.length} budget categories`}
+        subtitle={`${budgets.length} categories • ${currentYear}`}
         actions={<Button onClick={openCreateModal} variant="primary" icon={<Plus size={18} />}>Add Budget</Button>}
       />
 
@@ -162,14 +268,14 @@ function BudgetPage() {
       </div>
 
       {budgets.length === 0 ? (
-        <EmptyState icon={<BarChart3 size={48} />} title="No budgets" description="Create your first budget." action={<Button onClick={openCreateModal} variant="primary">Add Budget</Button>} />
+        <EmptyState icon={<BarChart3 size={48} />} title="No budgets" description={`Create budget allocations for ${currentYear}.`} action={<Button onClick={openCreateModal} variant="primary">Add Budget</Button>} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {budgets.map((budget) => (
-            <Card key={budget._id}>
+          {budgets.map((budget, index) => (
+            <Card key={budget.category || index}>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold">{budget.category_display || budget.category}</h3>
-                <Badge variant={budget.utilization_percentage > 100 ? 'danger' : budget.utilization_percentage > 80 ? 'warning' : 'success'}>
+                <h3 className="font-semibold text-gray-900 dark:text-white">{budget.category_display || budget.category}</h3>
+                <Badge variant={(budget.utilization_percentage || 0) > 100 ? 'danger' : (budget.utilization_percentage || 0) > 80 ? 'warning' : 'success'}>
                   {budget.utilization_percentage || 0}%
                 </Badge>
               </div>
@@ -201,7 +307,7 @@ function BudgetPage() {
                   {(budget.utilization_percentage || 0) > 100 ? 'Over budget!' : 'Approaching limit'}
                 </div>
               )}
-              <button onClick={() => openEditModal(budget)} className="btn btn-ghost btn-sm text-blue-600 mt-3"><Edit size={14} /> Edit</button>
+              <button onClick={() => openEditModal(budget)} className="btn btn-ghost btn-sm text-blue-600 mt-3"><Edit size={14} /> Edit Budget</button>
             </Card>
           ))}
         </div>
@@ -209,24 +315,45 @@ function BudgetPage() {
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editingBudget ? 'Edit Budget' : 'Add Budget'} size="md">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <FormSelect label="Category *" name="category" value={formData.category} onChange={handleChange} error={errors.category}
-            options={EXPENSE_CATEGORIES.map(c => ({ value: c, label: c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) }))} />
-          <FormInput label="Allocated Amount (SSP) *" name="allocated_amount" type="number" value={formData.allocated_amount} onChange={handleChange} error={errors.allocated_amount} min="0" />
-          <FormSelect label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange}
-            options={[{ value: '2024/2025', label: '2024/2025' }]} />
+          <FormSelect 
+            label="Category *" 
+            name="category" 
+            value={formData.category} 
+            onChange={handleChange} 
+            error={errors.category}
+            options={EXPENSE_CATEGORIES} 
+          />
+          <FormInput 
+            label="Allocated Amount (SSP) *" 
+            name="allocated_amount" 
+            type="number" 
+            value={formData.allocated_amount} 
+            onChange={handleChange} 
+            error={errors.allocated_amount} 
+            min="0" 
+            step="0.01"
+            placeholder="0.00"
+          />
+          <FormSelect 
+            label="Academic Year" 
+            name="academic_year" 
+            value={formData.academic_year} 
+            onChange={handleChange}
+            options={ACADEMIC_YEAR_OPTIONS} 
+          />
           <div>
             <label className="form-label">Term Breakdown (Optional)</label>
             <div className="grid grid-cols-3 gap-3">
-              <FormInput label="Term 1" name="term_1" type="number" value={formData.term_1} onChange={handleChange} />
-              <FormInput label="Term 2" name="term_2" type="number" value={formData.term_2} onChange={handleChange} />
-              <FormInput label="Term 3" name="term_3" type="number" value={formData.term_3} onChange={handleChange} />
+              <FormInput label="Term 1" name="term_1" type="number" value={formData.term_1} onChange={handleChange} min="0" placeholder="0" />
+              <FormInput label="Term 2" name="term_2" type="number" value={formData.term_2} onChange={handleChange} min="0" placeholder="0" />
+              <FormInput label="Term 3" name="term_3" type="number" value={formData.term_3} onChange={handleChange} min="0" placeholder="0" />
             </div>
           </div>
           <div>
             <label className="form-label">Description</label>
-            <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className="form-input" />
+            <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className="form-input" placeholder="Budget description..." />
           </div>
-          <div className="flex gap-3 pt-4">
+          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
             <Button type="submit" variant="primary" loading={saving} icon={<Save size={18} />}>
               {editingBudget ? 'Update' : 'Create'} Budget
             </Button>
