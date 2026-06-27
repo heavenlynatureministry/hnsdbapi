@@ -12,8 +12,17 @@ from app.utils.helpers import parse_mongo_document
 router = APIRouter()
 
 
-@router.get("", response_model=SuccessResponse)
-@router.get("/", response_model=SuccessResponse)
+def _get_current_academic_year() -> str:
+    """Calculate current academic year dynamically."""
+    now = datetime.utcnow()
+    year = now.year
+    month = now.month
+    start_year = year - 1 if month == 1 else year
+    return f"{start_year}/{start_year + 1}"
+
+
+@router.get("")
+@router.get("/")
 async def list_classes(
     class_level: Optional[str] = Query(None),
     status: str = Query(default="active"),
@@ -25,8 +34,10 @@ async def list_classes(
     """List classes with filters"""
     db = get_database()
     filter_query = {"status": status}
-    if class_level: filter_query["class_level"] = class_level
-    if academic_year: filter_query["academic_year"] = academic_year
+    if class_level:
+        filter_query["class_level"] = class_level
+    if academic_year:
+        filter_query["academic_year"] = academic_year
     
     skip = (page - 1) * limit
     total = await db.classes.count_documents(filter_query)
@@ -34,18 +45,24 @@ async def list_classes(
     
     classes = [parse_mongo_document(c) for c in classes]
     
-    # Calculate occupancy
+    # Calculate occupancy and format for frontend
     for c in classes:
+        c["id"] = c.get("_id", c.get("id"))  # Add id field for frontend compatibility
         if c.get("max_capacity") and c["max_capacity"] > 0:
             c["occupancy_rate"] = round((c.get("current_enrollment", 0) / c["max_capacity"]) * 100, 1)
             c["available_spots"] = c["max_capacity"] - c.get("current_enrollment", 0)
+        else:
+            c["occupancy_rate"] = 0
+            c["available_spots"] = 0
     
-    return SuccessResponse(success=True, message="Classes retrieved", data={
-        "classes": classes, "total": total, "page": page, "limit": limit
-    })
+    return {
+        "success": True,
+        "message": "Classes retrieved",
+        "data": classes  # Return array directly for frontend compatibility
+    }
 
 
-@router.get("/statistics/overview", response_model=SuccessResponse)
+@router.get("/statistics/overview")
 async def class_statistics(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get class statistics overview"""
     db = get_database()
@@ -60,91 +77,128 @@ async def class_statistics(current_user: Dict[str, Any] = Depends(get_current_us
         }}
     ]).to_list(length=None)
     
-    return SuccessResponse(success=True, message="Statistics retrieved", data={
-        "total_classes": total,
-        "by_level": {
-            item["_id"]: {
-                "classes": item["count"],
-                "enrollment": item["total_enrollment"],
-                "capacity": item["total_capacity"],
-                "occupancy_rate": round((item["total_enrollment"] / item["total_capacity"] * 100), 1) if item["total_capacity"] > 0 else 0
-            } for item in by_level
+    return {
+        "success": True,
+        "message": "Statistics retrieved",
+        "data": {
+            "total_classes": total,
+            "by_level": {
+                item["_id"]: {
+                    "classes": item["count"],
+                    "enrollment": item["total_enrollment"],
+                    "capacity": item["total_capacity"],
+                    "occupancy_rate": round((item["total_enrollment"] / item["total_capacity"] * 100), 1) if item["total_capacity"] > 0 else 0
+                } for item in by_level
+            }
         }
-    })
+    }
 
 
-@router.get("/levels", response_model=SuccessResponse)
+@router.get("/levels")
 async def get_class_levels(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get available class levels"""
-    return SuccessResponse(success=True, message="Levels retrieved", data={
-        "levels": [
+    return {
+        "success": True,
+        "message": "Levels retrieved",
+        "data": [
             {"name": "Nursery", "classes": ["Baby", "Middle", "Top"], "age_range": "3-5 years", "max_capacity": 20},
             {"name": "Primary", "classes": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "age_range": "6-14 years", "max_capacity": 25}
         ]
-    })
+    }
 
 
-@router.get("/promotion-map", response_model=SuccessResponse)
+@router.get("/promotion-map")
 async def get_promotion_map(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get class promotion/transition map"""
-    return SuccessResponse(success=True, message="Promotion map retrieved", data={
-        "nursery": {"Baby": "Middle", "Middle": "Top", "Top": "P1 (Primary)"},
-        "primary": {"P1": "P2", "P2": "P3", "P3": "P4", "P4": "P5", "P5": "P6", "P6": "P7", "P7": "P8", "P8": "Graduation"}
-    })
+    return {
+        "success": True,
+        "message": "Promotion map retrieved",
+        "data": {
+            "nursery": {"Baby": "Middle", "Middle": "Top", "Top": "P1 (Primary)"},
+            "primary": {"P1": "P2", "P2": "P3", "P3": "P4", "P4": "P5", "P5": "P6", "P6": "P7", "P7": "P8", "P8": "Graduation"}
+        }
+    }
 
 
-@router.get("/{class_id}", response_model=SuccessResponse)
+@router.get("/{class_id}")
 async def get_class(
     class_id: str = Path(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Get class details"""
     db = get_database()
-    class_doc = await db.classes.find_one({"_id": ObjectId(class_id)})
-    if not class_doc: raise HTTPException(status_code=404, detail="Class not found")
+    
+    try:
+        obj_id = ObjectId(class_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid class ID format")
+    
+    class_doc = await db.classes.find_one({"_id": obj_id})
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="Class not found")
     
     class_doc = parse_mongo_document(class_doc)
+    class_doc["id"] = class_doc.get("_id")  # Add id field
     
     if class_doc.get("class_teacher_id"):
         try:
             teacher = await db.teachers.find_one({"_id": ObjectId(class_doc["class_teacher_id"])})
-            if teacher: class_doc["teacher_name"] = f"{teacher['first_name']} {teacher['last_name']}"
+            if teacher:
+                class_doc["teacher_name"] = f"{teacher.get('first_name', '')} {teacher.get('last_name', '')}".strip()
         except Exception:
             class_doc["teacher_name"] = "Unknown"
     
     class_doc["student_count"] = await db.students.count_documents({
-        "current_class_id": ObjectId(class_id), "status": "active"
+        "current_class_id": obj_id, "status": "active"
     })
     
-    return SuccessResponse(success=True, message="Class retrieved", data=class_doc)
+    if class_doc.get("max_capacity") and class_doc["max_capacity"] > 0:
+        class_doc["occupancy_rate"] = round((class_doc.get("student_count", 0) / class_doc["max_capacity"]) * 100, 1)
+        class_doc["available_spots"] = class_doc["max_capacity"] - class_doc.get("student_count", 0)
+    
+    return {
+        "success": True,
+        "message": "Class retrieved",
+        "data": class_doc
+    }
 
 
-@router.get("/{class_id}/students", response_model=SuccessResponse)
+@router.get("/{class_id}/students")
 async def get_class_students(
     class_id: str = Path(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Get students in a class"""
     db = get_database()
+    
+    try:
+        obj_id = ObjectId(class_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid class ID format")
+    
     students = await db.students.find({
-        "current_class_id": ObjectId(class_id), "status": "active"
+        "current_class_id": obj_id, "status": "active"
     }).sort("last_name", 1).to_list(length=None)
     
     students = [parse_mongo_document(s) for s in students]
     
-    class_doc = await db.classes.find_one({"_id": ObjectId(class_id)})
+    class_doc = await db.classes.find_one({"_id": obj_id})
     class_name = class_doc["class_name"] if class_doc else "Unknown"
     
-    return SuccessResponse(success=True, message="Students retrieved", data={
-        "class_id": class_id,
-        "class_name": class_name,
-        "students": students,
-        "total": len(students)
-    })
+    return {
+        "success": True,
+        "message": "Students retrieved",
+        "data": {
+            "class_id": class_id,
+            "class_name": class_name,
+            "students": students,
+            "total": len(students)
+        }
+    }
 
 
-@router.post("", response_model=SuccessResponse, status_code=201)
-@router.post("/", response_model=SuccessResponse, status_code=201)
+@router.post("")
+@router.post("/")
 async def create_class(
     request: Request,
     current_user: Dict[str, Any] = Depends(require_role("admin"))
@@ -164,45 +218,83 @@ async def create_class(
     if not class_name or not class_level:
         raise HTTPException(status_code=400, detail="Class name and level are required")
     
+    # Auto-calculate academic year if not provided
     if not academic_year:
-        now = datetime.utcnow()
-        year = now.year
-        month = now.month
-        academic_year = f"{year}/{year+1}" if month >= 9 else f"{year-1}/{year}"
+        academic_year = _get_current_academic_year()
     
+    # Validate class name based on level
+    valid_nursery = ["Baby", "Middle", "Top"]
+    valid_primary = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"]
+    
+    if class_level == "nursery" and class_name not in valid_nursery:
+        raise HTTPException(status_code=400, detail=f"Invalid nursery class name. Must be: {', '.join(valid_nursery)}")
+    if class_level == "primary" and class_name not in valid_primary:
+        raise HTTPException(status_code=400, detail=f"Invalid primary class name. Must be: {', '.join(valid_primary)}")
+    
+    # Check for existing class
     existing = await db.classes.find_one({
-        "class_name": class_name, "class_level": class_level,
-        "academic_year": academic_year, "status": "active"
+        "class_name": class_name,
+        "class_level": class_level,
+        "academic_year": academic_year,
+        "status": "active"
     })
     if existing:
         raise HTTPException(status_code=400, detail=f"Class {class_name} already exists for {academic_year}")
     
+    # Build document
     doc = {
         "class_name": class_name,
         "class_level": class_level,
         "academic_year": academic_year,
         "max_capacity": body.get("max_capacity", 20 if class_level == "nursery" else 25),
         "current_enrollment": 0,
-        "class_teacher_id": ObjectId(body["class_teacher_id"]) if body.get("class_teacher_id") else None,
-        "classroom_id": ObjectId(body["classroom_id"]) if body.get("classroom_id") else None,
         "section": body.get("section"),
         "stream": body.get("stream"),
         "status": "active",
-        "schedule": body.get("schedule", {}),
-        "created_by": ObjectId(current_user["_id"]),
+        "schedule": body.get("schedule", {
+            "monday": [], "tuesday": [], "wednesday": [], "thursday": [], "friday": []
+        }),
+        "created_by": current_user.get("_id"),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
     
+    # Handle teacher assignment
+    if body.get("class_teacher_id"):
+        try:
+            doc["class_teacher_id"] = ObjectId(body["class_teacher_id"])
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid teacher ID format")
+    
+    # Handle classroom assignment
+    if body.get("classroom_id"):
+        try:
+            doc["classroom_id"] = ObjectId(body["classroom_id"])
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid classroom ID format")
+    
+    # Remove None values
     doc = {k: v for k, v in doc.items() if v is not None}
     
-    result = await db.classes.insert_one(doc)
-    doc = parse_mongo_document(doc)
-    
-    return SuccessResponse(success=True, message=f"Class {class_name} created", data=doc)
+    try:
+        result = await db.classes.insert_one(doc)
+        doc["_id"] = str(result.inserted_id)
+        doc["id"] = doc["_id"]
+        if doc.get("class_teacher_id"):
+            doc["class_teacher_id"] = str(doc["class_teacher_id"])
+        if doc.get("classroom_id"):
+            doc["classroom_id"] = str(doc["classroom_id"])
+        
+        return {
+            "success": True,
+            "message": f"Class {class_name} created successfully",
+            "data": doc
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create class: {str(e)}")
 
 
-@router.put("/{class_id}", response_model=SuccessResponse)
+@router.put("/{class_id}")
 async def update_class(
     class_id: str = Path(...),
     request: Request = None,
@@ -212,6 +304,11 @@ async def update_class(
     db = get_database()
     
     try:
+        obj_id = ObjectId(class_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid class ID format")
+    
+    try:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
@@ -219,24 +316,48 @@ async def update_class(
     if not body:
         raise HTTPException(status_code=400, detail="No fields to update")
     
-    for key in ["_id", "created_at", "created_by"]:
+    # Remove protected fields
+    for key in ["_id", "id", "created_at", "created_by"]:
         body.pop(key, None)
+    
+    # Convert ObjectId fields
+    if body.get("class_teacher_id"):
+        try:
+            body["class_teacher_id"] = ObjectId(body["class_teacher_id"])
+        except Exception:
+            pass  # Keep as string if invalid
+    
+    if body.get("classroom_id"):
+        try:
+            body["classroom_id"] = ObjectId(body["classroom_id"])
+        except Exception:
+            pass
     
     body["updated_at"] = datetime.utcnow()
     
-    result = await db.classes.find_one_and_update(
-        {"_id": ObjectId(class_id)},
-        {"$set": body},
-        return_document=True
-    )
-    
-    if not result: raise HTTPException(status_code=404, detail="Class not found")
-    result = parse_mongo_document(result)
-    
-    return SuccessResponse(success=True, message="Class updated", data=result)
+    try:
+        result = await db.classes.find_one_and_update(
+            {"_id": obj_id},
+            {"$set": body},
+            return_document=True
+        )
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Class not found")
+        
+        result = parse_mongo_document(result)
+        result["id"] = result.get("_id")
+        
+        return {
+            "success": True,
+            "message": "Class updated",
+            "data": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update class: {str(e)}")
 
 
-@router.delete("/{class_id}", response_model=SuccessResponse)
+@router.delete("/{class_id}")
 async def delete_class(
     class_id: str = Path(...),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
@@ -244,74 +365,32 @@ async def delete_class(
     """Soft delete a class (mark as inactive)"""
     db = get_database()
     
+    try:
+        obj_id = ObjectId(class_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid class ID format")
+    
     # Check if class has active students
     active_students = await db.students.count_documents({
-        "current_class_id": ObjectId(class_id),
-        "status": "active"
-    })
-    
-    if active_students > 0:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Cannot delete class with {active_students} active students. Transfer or deactivate students first."
-        )
-    
-    result = await db.classes.update_one(
-        {"_id": ObjectId(class_id)},
-        {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
-    )
-    
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Class not found")
-    
-    return SuccessResponse(success=True, message="Class deactivated")
-
-
-@router.delete("/{class_id}/permanent", response_model=SuccessResponse)
-async def permanently_delete_class(
-    class_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(require_role("admin"))
-):
-    """Permanently delete a class (admin only) - Only if no students enrolled"""
-    db = get_database()
-    
-    # Check class exists
-    class_doc = await db.classes.find_one({"_id": ObjectId(class_id)})
-    if not class_doc:
-        raise HTTPException(status_code=404, detail="Class not found")
-    
-    # Check for active students
-    active_students = await db.students.count_documents({
-        "current_class_id": ObjectId(class_id),
+        "current_class_id": obj_id,
         "status": "active"
     })
     
     if active_students > 0:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot permanently delete class with {active_students} active students"
+            detail=f"Cannot delete class with {active_students} active students. Transfer or deactivate students first."
         )
     
-    class_name = class_doc.get("class_name", "Unknown")
+    result = await db.classes.update_one(
+        {"_id": obj_id},
+        {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
+    )
     
-    try:
-        # Delete schedule records if any
-        await db.class_schedules.delete_many({"class_id": ObjectId(class_id)})
-        
-        # Delete the class
-        await db.classes.delete_one({"_id": ObjectId(class_id)})
-        
-        # Log the deletion
-        await db.audit_log.insert_one({
-            "table_name": "classes",
-            "record_id": class_id,
-            "operation": "DELETE_PERMANENT",
-            "changed_by": ObjectId(current_user["_id"]) if current_user.get("_id") else None,
-            "details": {"class_name": class_name, "class_level": class_doc.get("class_level")},
-            "changed_at": datetime.utcnow()
-        })
-        
-        return SuccessResponse(success=True, message=f"Class '{class_name}' permanently deleted")
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete class: {str(e)}")
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    return {
+        "success": True,
+        "message": "Class deactivated"
+    }
