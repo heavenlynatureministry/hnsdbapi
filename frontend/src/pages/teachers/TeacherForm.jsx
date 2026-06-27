@@ -3,14 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import teachersAPI from '../../api/teachers'
 import classesAPI from '../../api/classes'
-import api from '../../api/axios'
+import schoolAPI from '../../api/school'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
 import FormInput from '../../components/common/FormInput'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { ArrowLeft, Save, UserPlus, GraduationCap, BookOpen } from 'lucide-react'
+import { ArrowLeft, Save, GraduationCap, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function TeacherForm() {
@@ -19,6 +19,7 @@ function TeacherForm() {
   const navigate = useNavigate()
   const { updatePageTitle, updateBreadcrumbs } = useApp()
 
+  // ALL hooks at the top - before any conditional returns
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
@@ -28,8 +29,17 @@ function TeacherForm() {
   const [loadingClasses, setLoadingClasses] = useState(false)
 
   const QUALIFICATIONS = [
-    'Certificate', 'Diploma', 'B.Ed', 'B.Sc', 'B.A',
-    'M.Ed', 'M.Sc', 'M.A', 'PhD', 'PGDE', 'Other',
+    { value: 'Certificate', label: 'Certificate' },
+    { value: 'Diploma', label: 'Diploma' },
+    { value: 'B.Ed', label: 'B.Ed (Bachelor of Education)' },
+    { value: 'B.Sc', label: 'B.Sc (Bachelor of Science)' },
+    { value: 'B.A', label: 'B.A (Bachelor of Arts)' },
+    { value: 'M.Ed', label: 'M.Ed (Master of Education)' },
+    { value: 'M.Sc', label: 'M.Sc (Master of Science)' },
+    { value: 'M.A', label: 'M.A (Master of Arts)' },
+    { value: 'PhD', label: 'PhD (Doctor of Philosophy)' },
+    { value: 'PGDE', label: 'PGDE (Post Graduate Diploma in Education)' },
+    { value: 'Other', label: 'Other' },
   ]
 
   const [formData, setFormData] = useState({
@@ -77,66 +87,18 @@ function TeacherForm() {
     setLoadingSubjects(true)
     try {
       console.log('Fetching subjects...')
+      // Use the dedicated school subjects endpoint
+      const response = await schoolAPI.getSubjects()
+      console.log('Subjects response:', response)
       
-      // Try multiple endpoints to find subjects
-      let subjectsData = null
-      
-      // Try 1: School settings endpoint
-      try {
-        const response = await api.get('/school/settings')
-        console.log('Settings response:', response)
-        if (response?.data?.success && response.data.data?.subjects) {
-          subjectsData = response.data.data.subjects
-        } else if (response?.data?.subjects) {
-          subjectsData = response.data.subjects
-        }
-      } catch (e) {
-        console.warn('Settings endpoint failed:', e.message)
-      }
-      
-      // Try 2: Dedicated subjects endpoint
-      if (!subjectsData) {
-        try {
-          const response = await api.get('/subjects')
-          console.log('Subjects response:', response)
-          if (Array.isArray(response?.data)) {
-            subjectsData = response.data
-          } else if (response?.data?.success && Array.isArray(response.data.data)) {
-            subjectsData = response.data.data
-          } else if (response?.data?.subjects) {
-            subjectsData = response.data.subjects
-          }
-        } catch (e) {
-          console.warn('Subjects endpoint failed:', e.message)
-        }
-      }
-      
-      // Try 3: Curriculum/subjects endpoint
-      if (!subjectsData) {
-        try {
-          const response = await api.get('/curriculum/subjects')
-          console.log('Curriculum subjects response:', response)
-          if (Array.isArray(response?.data)) {
-            subjectsData = response.data
-          } else if (response?.data?.success && Array.isArray(response.data.data)) {
-            subjectsData = response.data.data
-          }
-        } catch (e) {
-          console.warn('Curriculum subjects endpoint failed:', e.message)
-        }
-      }
-      
-      if (subjectsData && Array.isArray(subjectsData) && subjectsData.length > 0) {
-        // Extract subject names from various possible formats
-        const subjects = subjectsData.map(item => {
-          if (typeof item === 'string') return item
-          return item.name || item.subject_name || item.title || item.label || String(item)
-        }).filter(Boolean)
-        
-        console.log('Subjects loaded:', subjects)
-        setSubjectsList(subjects)
+      if (response?.data?.success && Array.isArray(response.data.data)) {
+        setSubjectsList(response.data.data)
+      } else if (response?.success && Array.isArray(response.data)) {
+        setSubjectsList(response.data)
+      } else if (Array.isArray(response?.data)) {
+        setSubjectsList(response.data)
       } else {
-        console.warn('No subjects found from API, using defaults')
+        // Fallback defaults
         setSubjectsList([
           'English Language', 'Mathematics', 'Science', 'Social Studies',
           'Religious Education', 'Creative Arts', 'Physical Education',
@@ -145,8 +107,7 @@ function TeacherForm() {
         ])
       }
     } catch (error) {
-      console.error('Failed to fetch subjects:', error)
-      // Fallback to default subjects
+      console.warn('Could not fetch subjects, using defaults:', error.message)
       setSubjectsList([
         'English Language', 'Mathematics', 'Science', 'Social Studies',
         'Religious Education', 'Creative Arts', 'Physical Education',
@@ -161,35 +122,17 @@ function TeacherForm() {
   const fetchClasses = async () => {
     setLoadingClasses(true)
     try {
-      console.log('Fetching classes for teacher assignment...')
       const response = await classesAPI.getAll()
-      console.log('Classes API response:', response)
-
-      let classesArray = null
-
-      if (Array.isArray(response)) {
-        classesArray = response
-      } else if (response?.data && Array.isArray(response.data)) {
-        classesArray = response.data
-      } else if (response?.data?.data && Array.isArray(response.data.data)) {
-        classesArray = response.data.data
-      } else if (response?.data?.success && Array.isArray(response.data.data)) {
-        classesArray = response.data.data
-      } else if (response?.success && Array.isArray(response.data)) {
-        classesArray = response.data
-      } else if (response?.data?.classes && Array.isArray(response.data.classes)) {
-        classesArray = response.data.classes
+      let classesArray = response?.data || response || []
+      if (!Array.isArray(classesArray)) {
+        classesArray = classesArray?.classes || classesArray?.data || []
       }
-
-      if (classesArray && classesArray.length > 0) {
+      
+      if (classesArray.length > 0) {
         const options = classesArray.map(cls => ({
-          value: cls._id || cls.id || cls.class_id || cls.classId || '',
-          label: cls.name || cls.class_name || cls.className || 
-                 (cls.level ? `${cls.level} ${cls.section || ''}`.trim() : '') ||
-                 cls.label || cls.title || 'Unknown Class',
-        })).filter(option => option.value && option.label)
-        
-        console.log('Class options loaded:', options)
+          value: cls._id || cls.id || '',
+          label: cls.class_name || cls.name || `${cls.class_level || ''} ${cls.class_name || ''}`.trim() || 'Unknown Class',
+        })).filter(opt => opt.value && opt.label)
         setClassOptions(options)
       }
     } catch (error) {
@@ -240,6 +183,7 @@ function TeacherForm() {
 
   const handleChange = (e) => {
     const { name, value } = e.target
+    console.log(`Field changed: ${name} = ${value}`) // Debug log
     setFormData((prev) => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
   }
@@ -266,13 +210,17 @@ function TeacherForm() {
       newErrors.email = 'Invalid email format'
     }
     if (!formData.hire_date) newErrors.hire_date = 'Hire date is required'
+    if (!formData.subjects.length) newErrors.subjects = 'At least one subject is required'
 
+    console.log('Validation errors:', newErrors) // Debug log
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    console.log('Submitting form data:', formData) // Debug log
+    
     if (!validateForm()) return
 
     setLoading(true)
@@ -287,6 +235,10 @@ function TeacherForm() {
       }
       delete payload.emergency_contact_name
       delete payload.emergency_contact_phone
+      // Remove assigned_classes if not used by backend
+      delete payload.assigned_classes
+
+      console.log('Sending payload:', payload) // Debug log
 
       let response
       if (isEdit) {
@@ -302,7 +254,6 @@ function TeacherForm() {
         toast.error(response?.message || 'Failed to save teacher')
       }
     } catch (error) {
-      // Handle specific error cases
       if (error.status === 422) {
         const fieldErrors = error.errors || []
         const newErrors = {}
@@ -325,6 +276,7 @@ function TeacherForm() {
     }
   }
 
+  // Conditional return AFTER all hooks
   if (fetching) return <LoadingSpinner fullScreen />
 
   return (
@@ -354,30 +306,24 @@ function TeacherForm() {
         {/* Professional Information */}
         <Card title="Professional Information" icon={<GraduationCap size={20} />}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect label="Qualification *" name="qualification" value={formData.qualification} onChange={handleChange} options={QUALIFICATIONS.map(q => ({ value: q, label: q }))} error={errors.qualification} />
+            <FormSelect 
+              label="Qualification *" 
+              name="qualification" 
+              value={formData.qualification} 
+              onChange={handleChange} 
+              options={QUALIFICATIONS} 
+              error={errors.qualification} 
+            />
             <FormInput label="Specialization" name="specialization" value={formData.specialization} onChange={handleChange} placeholder="e.g., Mathematics" />
             <FormInput label="Hire Date *" name="hire_date" type="date" value={formData.hire_date} onChange={handleChange} error={errors.hire_date} />
             <FormInput label="Years of Experience" name="years_of_experience" type="number" value={formData.years_of_experience} onChange={handleChange} min="0" max="50" />
             <FormInput label="Salary Grade" name="salary_grade" value={formData.salary_grade} onChange={handleChange} placeholder="e.g., Grade 5" />
-            
-            {/* Class Assignment */}
-            <div className="sm:col-span-2">
-              <FormSelect 
-                label="Assign to Classes" 
-                name="assigned_classes" 
-                value={formData.assigned_classes} 
-                onChange={handleChange} 
-                options={classOptions} 
-                disabled={loadingClasses}
-                placeholder={loadingClasses ? 'Loading classes...' : 'Select classes'}
-                multiple={true}
-              />
-            </div>
           </div>
         </Card>
 
         {/* Subjects */}
         <Card title="Subjects" icon={<BookOpen size={20} />}>
+          {errors.subjects && <p className="text-sm text-red-500 mb-2">{errors.subjects}</p>}
           {loadingSubjects ? (
             <div className="flex items-center justify-center py-4">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
