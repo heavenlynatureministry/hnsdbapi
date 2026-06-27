@@ -21,6 +21,19 @@ def _get_current_academic_year() -> str:
     return f"{start_year}/{start_year + 1}"
 
 
+def _safe_objectid(value) -> Optional[ObjectId]:
+    """Safely convert a value to ObjectId, returning None if invalid/empty."""
+    if not value:
+        return None
+    val = str(value).strip()
+    if not val or val.lower() == "null" or val.lower() == "undefined":
+        return None
+    try:
+        return ObjectId(val)
+    except Exception:
+        return None
+
+
 @router.get("")
 @router.get("/")
 async def list_classes(
@@ -47,7 +60,7 @@ async def list_classes(
     
     # Calculate occupancy and format for frontend
     for c in classes:
-        c["id"] = c.get("_id", c.get("id"))  # Add id field for frontend compatibility
+        c["id"] = c.get("_id", c.get("id"))
         if c.get("max_capacity") and c["max_capacity"] > 0:
             c["occupancy_rate"] = round((c.get("current_enrollment", 0) / c["max_capacity"]) * 100, 1)
             c["available_spots"] = c["max_capacity"] - c.get("current_enrollment", 0)
@@ -58,7 +71,7 @@ async def list_classes(
     return {
         "success": True,
         "message": "Classes retrieved",
-        "data": classes  # Return array directly for frontend compatibility
+        "data": classes
     }
 
 
@@ -128,9 +141,8 @@ async def get_class(
     """Get class details"""
     db = get_database()
     
-    try:
-        obj_id = ObjectId(class_id)
-    except Exception:
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
         raise HTTPException(status_code=400, detail="Invalid class ID format")
     
     class_doc = await db.classes.find_one({"_id": obj_id})
@@ -138,15 +150,17 @@ async def get_class(
         raise HTTPException(status_code=404, detail="Class not found")
     
     class_doc = parse_mongo_document(class_doc)
-    class_doc["id"] = class_doc.get("_id")  # Add id field
+    class_doc["id"] = class_doc.get("_id")
     
     if class_doc.get("class_teacher_id"):
-        try:
-            teacher = await db.teachers.find_one({"_id": ObjectId(class_doc["class_teacher_id"])})
-            if teacher:
-                class_doc["teacher_name"] = f"{teacher.get('first_name', '')} {teacher.get('last_name', '')}".strip()
-        except Exception:
-            class_doc["teacher_name"] = "Unknown"
+        teacher_id = _safe_objectid(class_doc["class_teacher_id"])
+        if teacher_id:
+            try:
+                teacher = await db.teachers.find_one({"_id": teacher_id})
+                if teacher:
+                    class_doc["teacher_name"] = f"{teacher.get('first_name', '')} {teacher.get('last_name', '')}".strip()
+            except Exception:
+                class_doc["teacher_name"] = "Unknown"
     
     class_doc["student_count"] = await db.students.count_documents({
         "current_class_id": obj_id, "status": "active"
@@ -171,9 +185,8 @@ async def get_class_students(
     """Get students in a class"""
     db = get_database()
     
-    try:
-        obj_id = ObjectId(class_id)
-    except Exception:
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
         raise HTTPException(status_code=400, detail="Invalid class ID format")
     
     students = await db.students.find({
@@ -259,19 +272,15 @@ async def create_class(
         "updated_at": datetime.utcnow()
     }
     
-    # Handle teacher assignment
-    if body.get("class_teacher_id"):
-        try:
-            doc["class_teacher_id"] = ObjectId(body["class_teacher_id"])
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid teacher ID format")
+    # Handle teacher assignment - only if valid ObjectId
+    teacher_id = _safe_objectid(body.get("class_teacher_id"))
+    if teacher_id:
+        doc["class_teacher_id"] = teacher_id
     
-    # Handle classroom assignment
-    if body.get("classroom_id"):
-        try:
-            doc["classroom_id"] = ObjectId(body["classroom_id"])
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid classroom ID format")
+    # Handle classroom assignment - only if valid ObjectId
+    classroom_id = _safe_objectid(body.get("classroom_id"))
+    if classroom_id:
+        doc["classroom_id"] = classroom_id
     
     # Remove None values
     doc = {k: v for k, v in doc.items() if v is not None}
@@ -303,9 +312,8 @@ async def update_class(
     """Update class"""
     db = get_database()
     
-    try:
-        obj_id = ObjectId(class_id)
-    except Exception:
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
         raise HTTPException(status_code=400, detail="Invalid class ID format")
     
     try:
@@ -320,18 +328,18 @@ async def update_class(
     for key in ["_id", "id", "created_at", "created_by"]:
         body.pop(key, None)
     
-    # Convert ObjectId fields
-    if body.get("class_teacher_id"):
-        try:
-            body["class_teacher_id"] = ObjectId(body["class_teacher_id"])
-        except Exception:
-            pass  # Keep as string if invalid
+    # Safely convert ObjectId fields
+    teacher_id = _safe_objectid(body.get("class_teacher_id"))
+    if teacher_id:
+        body["class_teacher_id"] = teacher_id
+    elif "class_teacher_id" in body:
+        body.pop("class_teacher_id")  # Remove invalid value
     
-    if body.get("classroom_id"):
-        try:
-            body["classroom_id"] = ObjectId(body["classroom_id"])
-        except Exception:
-            pass
+    classroom_id = _safe_objectid(body.get("classroom_id"))
+    if classroom_id:
+        body["classroom_id"] = classroom_id
+    elif "classroom_id" in body:
+        body.pop("classroom_id")  # Remove invalid value
     
     body["updated_at"] = datetime.utcnow()
     
@@ -365,9 +373,8 @@ async def delete_class(
     """Soft delete a class (mark as inactive)"""
     db = get_database()
     
-    try:
-        obj_id = ObjectId(class_id)
-    except Exception:
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
         raise HTTPException(status_code=400, detail="Invalid class ID format")
     
     # Check if class has active students
