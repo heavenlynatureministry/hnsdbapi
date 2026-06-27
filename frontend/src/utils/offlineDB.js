@@ -3,7 +3,7 @@
  */
 
 const DB_NAME = 'HNSOfflineDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbInstance = null;
 
@@ -59,162 +59,288 @@ export const openDB = () => {
   });
 };
 
+// Helper: Promisify IDB request
+const promisify = (request) => {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
 // Cache API response
 export const cacheApiResponse = async (path, data) => {
-  const db = await openDB();
-  const tx = db.transaction('apiCache', 'readwrite');
-  const store = tx.objectStore('apiCache');
-  await store.put({
-    path,
-    data,
-    timestamp: Date.now(),
-  });
-  await tx.complete;
+  try {
+    const db = await openDB();
+    const tx = db.transaction('apiCache', 'readwrite');
+    const store = tx.objectStore('apiCache');
+    await promisify(store.put({
+      path,
+      data,
+      timestamp: Date.now(),
+    }));
+    await tx.complete;
+  } catch (error) {
+    console.error('[OfflineDB] Error caching API response:', error);
+  }
 };
 
 // Get cached API response
 export const getCachedApiResponse = async (path) => {
-  const db = await openDB();
-  const tx = db.transaction('apiCache', 'readonly');
-  const store = tx.objectStore('apiCache');
-  const result = await store.get(path);
-  return result || null;
+  try {
+    const db = await openDB();
+    const tx = db.transaction('apiCache', 'readonly');
+    const store = tx.objectStore('apiCache');
+    const result = await promisify(store.get(path));
+    return result || null;
+  } catch (error) {
+    console.error('[OfflineDB] Error getting cached response:', error);
+    return null;
+  }
 };
 
 // Get all cached API responses
 export const getAllCachedResponses = async () => {
-  const db = await openDB();
-  const tx = db.transaction('apiCache', 'readonly');
-  const store = tx.objectStore('apiCache');
-  return await store.getAll();
+  try {
+    const db = await openDB();
+    const tx = db.transaction('apiCache', 'readonly');
+    const store = tx.objectStore('apiCache');
+    return await promisify(store.getAll());
+  } catch (error) {
+    console.error('[OfflineDB] Error getting all cached responses:', error);
+    return [];
+  }
 };
 
 // Clear expired cache (older than specified hours)
 export const clearExpiredCache = async (maxAgeHours = 24) => {
-  const db = await openDB();
-  const tx = db.transaction('apiCache', 'readwrite');
-  const store = tx.objectStore('apiCache');
-  const all = await store.getAll();
-  const cutoff = Date.now() - (maxAgeHours * 60 * 60 * 1000);
-  
-  for (const item of all) {
-    if (item.timestamp < cutoff) {
-      await store.delete(item.path);
+  try {
+    const db = await openDB();
+    const tx = db.transaction('apiCache', 'readwrite');
+    const store = tx.objectStore('apiCache');
+    const all = await promisify(store.getAll());
+    const cutoff = Date.now() - (maxAgeHours * 60 * 60 * 1000);
+    
+    for (const item of all) {
+      if (item.timestamp < cutoff) {
+        await promisify(store.delete(item.path));
+      }
     }
+    await tx.complete;
+  } catch (error) {
+    console.error('[OfflineDB] Error clearing expired cache:', error);
   }
-  await tx.complete;
 };
 
 // Add to sync queue
 export const addToSyncQueue = async (entry) => {
-  const db = await openDB();
-  const tx = db.transaction('syncQueue', 'readwrite');
-  const store = tx.objectStore('syncQueue');
-  const id = await store.add({
-    ...entry,
-    synced: false,
-    retryCount: 0,
-    timestamp: Date.now(),
-  });
-  await tx.complete;
-  return id;
+  try {
+    const db = await openDB();
+    const tx = db.transaction('syncQueue', 'readwrite');
+    const store = tx.objectStore('syncQueue');
+    const id = await promisify(store.add({
+      ...entry,
+      synced: false,
+      retryCount: 0,
+      timestamp: Date.now(),
+    }));
+    await tx.complete;
+    return id;
+  } catch (error) {
+    console.error('[OfflineDB] Error adding to sync queue:', error);
+    return null;
+  }
 };
 
-// Get pending sync items
+// Get pending sync items (not yet synced)
 export const getPendingSyncItems = async () => {
-  const db = await openDB();
-  const tx = db.transaction('syncQueue', 'readonly');
-  const store = tx.objectStore('syncQueue');
-  const index = store.index('synced');
-  return await index.getAll(false);
+  try {
+    const db = await openDB();
+    const tx = db.transaction('syncQueue', 'readonly');
+    const store = tx.objectStore('syncQueue');
+    // Get all items and filter unsynced manually
+    // This avoids the IDBIndex.getAll() key issue
+    const allItems = await promisify(store.getAll());
+    return allItems.filter(item => !item.synced);
+  } catch (error) {
+    console.error('[OfflineDB] Error getting pending sync items:', error);
+    return [];
+  }
 };
 
 // Mark sync item as synced
 export const markSynced = async (id) => {
-  const db = await openDB();
-  const tx = db.transaction('syncQueue', 'readwrite');
-  const store = tx.objectStore('syncQueue');
-  const item = await store.get(id);
-  if (item) {
-    item.synced = true;
-    item.syncedAt = Date.now();
-    await store.put(item);
+  try {
+    const db = await openDB();
+    const tx = db.transaction('syncQueue', 'readwrite');
+    const store = tx.objectStore('syncQueue');
+    const item = await promisify(store.get(id));
+    if (item) {
+      item.synced = true;
+      item.syncedAt = Date.now();
+      await promisify(store.put(item));
+    }
+    await tx.complete;
+  } catch (error) {
+    console.error('[OfflineDB] Error marking item as synced:', error);
   }
-  await tx.complete;
 };
 
-// Remove synced items
+// Remove synced items from queue
 export const cleanSyncedItems = async () => {
-  const db = await openDB();
-  const tx = db.transaction('syncQueue', 'readwrite');
-  const store = tx.objectStore('syncQueue');
-  const index = store.index('synced');
-  const synced = await index.getAll(true);
-  for (const item of synced) {
-    await store.delete(item.id);
+  try {
+    const db = await openDB();
+    const tx = db.transaction('syncQueue', 'readwrite');
+    const store = tx.objectStore('syncQueue');
+    const allItems = await promisify(store.getAll());
+    const syncedItems = allItems.filter(item => item.synced);
+    for (const item of syncedItems) {
+      await promisify(store.delete(item.id));
+    }
+    await tx.complete;
+  } catch (error) {
+    console.error('[OfflineDB] Error cleaning synced items:', error);
   }
-  await tx.complete;
+};
+
+// Get sync queue count (for status display)
+export const getSyncQueueCount = async () => {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('syncQueue', 'readonly');
+    const store = tx.objectStore('syncQueue');
+    const allItems = await promisify(store.getAll());
+    const pending = allItems.filter(item => !item.synced).length;
+    return {
+      total: allItems.length,
+      pending: pending,
+      synced: allItems.length - pending
+    };
+  } catch (error) {
+    console.error('[OfflineDB] Error getting sync queue count:', error);
+    return { total: 0, pending: 0, synced: 0 };
+  }
 };
 
 // Store offline data
 export const storeOfflineData = async (collection, key, data) => {
-  const db = await openDB();
-  const tx = db.transaction('offlineData', 'readwrite');
-  const store = tx.objectStore('offlineData');
-  await store.put({
-    key: `${collection}_${key}`,
-    collection,
-    data,
-    timestamp: Date.now(),
-  });
-  await tx.complete;
+  try {
+    const db = await openDB();
+    const tx = db.transaction('offlineData', 'readwrite');
+    const store = tx.objectStore('offlineData');
+    await promisify(store.put({
+      key: `${collection}_${key}`,
+      collection,
+      data,
+      timestamp: Date.now(),
+    }));
+    await tx.complete;
+  } catch (error) {
+    console.error('[OfflineDB] Error storing offline data:', error);
+  }
 };
 
 // Get offline data
 export const getOfflineData = async (collection, key) => {
-  const db = await openDB();
-  const tx = db.transaction('offlineData', 'readonly');
-  const store = tx.objectStore('offlineData');
-  const result = await store.get(`${collection}_${key}`);
-  return result?.data || null;
+  try {
+    const db = await openDB();
+    const tx = db.transaction('offlineData', 'readonly');
+    const store = tx.objectStore('offlineData');
+    const result = await promisify(store.get(`${collection}_${key}`));
+    return result?.data || null;
+  } catch (error) {
+    console.error('[OfflineDB] Error getting offline data:', error);
+    return null;
+  }
 };
 
 // Get all offline data for a collection
 export const getAllOfflineData = async (collection) => {
-  const db = await openDB();
-  const tx = db.transaction('offlineData', 'readonly');
-  const store = tx.objectStore('offlineData');
-  const index = store.index('collection');
-  const results = await index.getAll(collection);
-  return results.map(r => r.data);
+  try {
+    const db = await openDB();
+    const tx = db.transaction('offlineData', 'readonly');
+    const store = tx.objectStore('offlineData');
+    const allItems = await promisify(store.getAll());
+    // Filter by collection
+    return allItems
+      .filter(item => item.collection === collection)
+      .map(item => item.data);
+  } catch (error) {
+    console.error('[OfflineDB] Error getting all offline data:', error);
+    return [];
+  }
 };
 
 // Store user data (auth token, preferences)
 export const storeUserData = async (key, value) => {
-  const db = await openDB();
-  const tx = db.transaction('userData', 'readwrite');
-  const store = tx.objectStore('userData');
-  await store.put({ key, value, timestamp: Date.now() });
-  await tx.complete;
+  try {
+    const db = await openDB();
+    const tx = db.transaction('userData', 'readwrite');
+    const store = tx.objectStore('userData');
+    await promisify(store.put({ key, value, timestamp: Date.now() }));
+    await tx.complete;
+  } catch (error) {
+    console.error('[OfflineDB] Error storing user data:', error);
+  }
 };
 
 // Get user data
 export const getUserData = async (key) => {
-  const db = await openDB();
-  const tx = db.transaction('userData', 'readonly');
-  const store = tx.objectStore('userData');
-  const result = await store.get(key);
-  return result?.value || null;
+  try {
+    const db = await openDB();
+    const tx = db.transaction('userData', 'readonly');
+    const store = tx.objectStore('userData');
+    const result = await promisify(store.get(key));
+    return result?.value || null;
+  } catch (error) {
+    console.error('[OfflineDB] Error getting user data:', error);
+    return null;
+  }
+};
+
+// Delete user data
+export const deleteUserData = async (key) => {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('userData', 'readwrite');
+    const store = tx.objectStore('userData');
+    await promisify(store.delete(key));
+    await tx.complete;
+  } catch (error) {
+    console.error('[OfflineDB] Error deleting user data:', error);
+  }
 };
 
 // Clear all offline data
 export const clearAllData = async () => {
-  const db = await openDB();
-  const stores = ['apiCache', 'syncQueue', 'offlineData', 'userData'];
-  for (const storeName of stores) {
-    const tx = db.transaction(storeName, 'readwrite');
-    const store = tx.objectStore(storeName);
-    await store.clear();
-    await tx.complete;
+  try {
+    const db = await openDB();
+    const stores = ['apiCache', 'syncQueue', 'offlineData', 'userData'];
+    for (const storeName of stores) {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      await promisify(store.clear());
+      await tx.complete;
+    }
+    console.log('[OfflineDB] All offline data cleared');
+  } catch (error) {
+    console.error('[OfflineDB] Error clearing all data:', error);
+  }
+};
+
+// Get storage usage estimate
+export const getStorageEstimate = async () => {
+  try {
+    if ('storage' in navigator && 'estimate' in navigator.storage) {
+      const estimate = await navigator.storage.estimate();
+      return {
+        usage: estimate.usage || 0,
+        quota: estimate.quota || 0,
+        percentUsed: estimate.quota ? Math.round((estimate.usage / estimate.quota) * 100) : 0
+      };
+    }
+    return { usage: 0, quota: 0, percentUsed: 0 };
+  } catch (error) {
+    console.error('[OfflineDB] Error getting storage estimate:', error);
+    return { usage: 0, quota: 0, percentUsed: 0 };
   }
 };
