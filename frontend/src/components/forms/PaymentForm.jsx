@@ -6,6 +6,25 @@ import Card from '../common/Card'
 import LoadingSpinner from '../common/LoadingSpinner'
 import { Save, DollarSign, Search, User, X } from 'lucide-react'
 
+function getCurrentAcademicYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const startYear = month === 1 ? year - 1 : year
+  return `${startYear}/${startYear + 1}`
+}
+
+function getCurrentTerm() {
+  const month = new Date().getMonth() + 1
+  if (month >= 2 && month <= 4) return 'Term 1'
+  if (month >= 5 && month <= 7) return 'Term 2'
+  if (month >= 9 && month <= 11) return 'Term 3'
+  return 'Term 2'
+}
+
+const currentYear = getCurrentAcademicYear()
+const currentTerm = getCurrentTerm()
+
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
   { value: 'bank_transfer', label: 'Bank Transfer' },
@@ -19,16 +38,35 @@ const TERMS = [
   { value: 'Term 3', label: 'Term 3' },
 ]
 
+const PAYMENT_TYPES = [
+  { value: 'school_fees', label: 'School Fees' },
+  { value: 'registration', label: 'Registration' },
+  { value: 'exam', label: 'Exam Fees' },
+  { value: 'other', label: 'Other' },
+]
+
+const FEE_TYPES = [
+  { value: 'tuition', label: 'Tuition' },
+  { value: 'registration', label: 'Registration' },
+  { value: 'exam', label: 'Examination' },
+  { value: 'library', label: 'Library' },
+  { value: 'sports', label: 'Sports' },
+  { value: 'uniform', label: 'Uniform' },
+  { value: 'transport', label: 'Transport' },
+  { value: 'other', label: 'Other' },
+]
+
 function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, loading = false }) {
   const [formData, setFormData] = useState({
     student_id: initialData?.student_id || '',
-    fee_structure_id: initialData?.fee_structure_id || '',
     amount_paid: initialData?.amount_paid || '',
     payment_method: initialData?.payment_method || 'cash',
+    payment_type: initialData?.payment_type || 'school_fees',
+    fee_type: initialData?.fee_type || 'tuition',
     paid_by: initialData?.paid_by || '',
     transaction_reference: initialData?.transaction_reference || '',
-    academic_year: initialData?.academic_year || '2024/2025',
-    term: initialData?.term || 'Term 1',
+    academic_year: initialData?.academic_year || currentYear,
+    term: initialData?.term || currentTerm,
     notes: initialData?.notes || '',
   })
 
@@ -40,10 +78,17 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
   // Set initial student if editing
   useEffect(() => {
     if (initialData?.student_id && students.length > 0) {
-      const student = students.find(s => s.student_id === initialData.student_id || s._id === initialData.student_id)
+      const student = students.find(s => 
+        (s.student_id === initialData.student_id) || 
+        (s._id === initialData.student_id) ||
+        (s.id === initialData.student_id)
+      )
       if (student) {
         setSelectedStudent(student)
-        setStudentSearch(student.student_name || `${student.first_name} ${student.last_name}`)
+        const studentName = student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim()
+        setStudentSearch(studentName)
+        // Auto-fill paid_by with student name
+        setFormData(prev => ({ ...prev, paid_by: prev.paid_by || studentName }))
       }
     }
   }, [initialData, students])
@@ -51,17 +96,24 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
   // Filter students based on search
   const filteredStudents = studentSearch.trim()
     ? students.filter(s => {
-        const name = s.student_name || `${s.first_name || ''} ${s.last_name || ''}`
-        const id = s.student_id || s._id || ''
-        return name.toLowerCase().includes(studentSearch.toLowerCase()) ||
-               id.toLowerCase().includes(studentSearch.toLowerCase())
-      }).slice(0, 5)
+        const name = (s.student_name || `${s.first_name || ''} ${s.last_name || ''}`).toLowerCase()
+        const id = (s.student_id || s._id || s.id || '').toLowerCase()
+        const search = studentSearch.toLowerCase()
+        return name.includes(search) || id.includes(search)
+      }).slice(0, 8)
     : []
 
   const selectStudent = (student) => {
     setSelectedStudent(student)
-    setStudentSearch(student.student_name || `${student.first_name} ${student.last_name}`)
-    setFormData(prev => ({ ...prev, student_id: student.student_id || student._id }))
+    const studentName = student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim()
+    setStudentSearch(studentName)
+    // Use _id for MongoDB, fallback to id or student_id
+    const studentId = student._id || student.id || student.student_id || ''
+    setFormData(prev => ({ 
+      ...prev, 
+      student_id: studentId,
+      paid_by: prev.paid_by || studentName,
+    }))
     setShowResults(false)
     if (errors.student_id) setErrors(prev => ({ ...prev, student_id: '' }))
   }
@@ -69,7 +121,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
   const clearStudent = () => {
     setSelectedStudent(null)
     setStudentSearch('')
-    setFormData(prev => ({ ...prev, student_id: '' }))
+    setFormData(prev => ({ ...prev, student_id: '', paid_by: '' }))
   }
 
   const handleChange = (e) => {
@@ -90,7 +142,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
   const validate = () => {
     const newErrors = {}
     if (!formData.student_id) newErrors.student_id = 'Please select a student'
-    if (!formData.amount_paid || formData.amount_paid <= 0) newErrors.amount_paid = 'Valid amount is required'
+    if (!formData.amount_paid || parseFloat(formData.amount_paid) <= 0) newErrors.amount_paid = 'Valid amount is required'
     if (!formData.paid_by.trim()) newErrors.paid_by = 'Payer name is required'
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -99,7 +151,14 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!validate()) return
-    onSubmit?.(formData)
+    
+    const payload = {
+      ...formData,
+      amount_paid: parseFloat(formData.amount_paid),
+      amount: parseFloat(formData.amount_paid), // Backend also checks 'amount'
+    }
+    
+    onSubmit?.(payload)
   }
 
   return (
@@ -138,7 +197,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
                   {filteredStudents.length > 0 ? (
                     filteredStudents.map((student) => (
                       <button
-                        key={student.student_id || student._id}
+                        key={student.student_id || student._id || student.id}
                         type="button"
                         onClick={() => selectStudent(student)}
                         className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -148,17 +207,17 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">
-                            {student.student_name || `${student.first_name || ''} ${student.last_name || ''}`}
+                            {student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || 'Unknown Student'}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {student.student_id || student._id} • {student.class_name || student.current_class_id || 'N/A'}
+                            ID: {student.student_id || student._id || 'N/A'} • {student.class_name || 'Unassigned'}
                           </p>
                         </div>
                       </button>
                     ))
                   ) : (
                     <div className="px-3 py-4 text-center text-sm text-gray-500">
-                      No students found
+                      {students.length === 0 ? 'No students loaded' : 'No students found'}
                     </div>
                   )}
                 </div>
@@ -170,18 +229,35 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
             {selectedStudent && (
               <div className="mt-2 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-lg flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center text-white font-bold text-sm">
-                  {(selectedStudent.student_name || selectedStudent.first_name || 'S').charAt(0)}
+                  {(selectedStudent.student_name || selectedStudent.first_name || 'S').charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <p className="font-medium text-sm">
-                    {selectedStudent.student_name || `${selectedStudent.first_name || ''} ${selectedStudent.last_name || ''}`}
+                    {selectedStudent.student_name || `${selectedStudent.first_name || ''} ${selectedStudent.last_name || ''}`.trim()}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {selectedStudent.student_id || selectedStudent._id} • {selectedStudent.class_name || 'Unassigned'}
+                    ID: {selectedStudent.student_id || selectedStudent._id} • {selectedStudent.class_name || 'Unassigned'}
                   </p>
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormSelect
+              label="Payment Type"
+              name="payment_type"
+              value={formData.payment_type}
+              onChange={handleChange}
+              options={PAYMENT_TYPES}
+            />
+            <FormSelect
+              label="Fee Type"
+              name="fee_type"
+              value={formData.fee_type}
+              onChange={handleChange}
+              options={FEE_TYPES}
+            />
           </div>
 
           <FormInput
@@ -193,22 +269,27 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
             error={errors.amount_paid}
             min="0"
             step="0.01"
+            placeholder="0.00"
           />
-          <FormSelect
-            label="Payment Method"
-            name="payment_method"
-            value={formData.payment_method}
-            onChange={handleChange}
-            options={PAYMENT_METHODS}
-          />
-          <FormInput
-            label="Paid By *"
-            name="paid_by"
-            value={formData.paid_by}
-            onChange={handleChange}
-            error={errors.paid_by}
-            placeholder="Name of payer"
-          />
+          
+          <div className="grid grid-cols-2 gap-4">
+            <FormSelect
+              label="Payment Method"
+              name="payment_method"
+              value={formData.payment_method}
+              onChange={handleChange}
+              options={PAYMENT_METHODS}
+            />
+            <FormInput
+              label="Paid By *"
+              name="paid_by"
+              value={formData.paid_by}
+              onChange={handleChange}
+              error={errors.paid_by}
+              placeholder="Name of payer"
+            />
+          </div>
+
           <FormInput
             label="Transaction Reference"
             name="transaction_reference"
@@ -216,12 +297,14 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
             onChange={handleChange}
             placeholder="Bank ref, mobile ref, etc."
           />
+          
           <div className="grid grid-cols-2 gap-4">
             <FormInput
               label="Academic Year"
               name="academic_year"
               value={formData.academic_year}
               onChange={handleChange}
+              placeholder={currentYear}
             />
             <FormSelect
               label="Term"
@@ -231,6 +314,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
               options={TERMS}
             />
           </div>
+          
           <div>
             <label className="form-label">Notes</label>
             <textarea
