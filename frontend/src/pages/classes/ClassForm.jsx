@@ -12,8 +12,44 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import { ArrowLeft, Save, School } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-const NURSERY_CLASSES = ['Baby', 'Middle', 'Top']
-const PRIMARY_CLASSES = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8']
+const CLASS_LEVEL_OPTIONS = [
+  { value: '', label: '-- Select Class Level --' },
+  { value: 'nursery', label: 'Nursery' },
+  { value: 'primary', label: 'Primary' },
+]
+
+const NURSERY_CLASS_OPTIONS = [
+  { value: '', label: '-- Select Class Name --' },
+  { value: 'Baby', label: 'Baby' },
+  { value: 'Middle', label: 'Middle' },
+  { value: 'Top', label: 'Top' },
+]
+
+const PRIMARY_CLASS_OPTIONS = [
+  { value: '', label: '-- Select Class Name --' },
+  { value: 'P1', label: 'P1' },
+  { value: 'P2', label: 'P2' },
+  { value: 'P3', label: 'P3' },
+  { value: 'P4', label: 'P4' },
+  { value: 'P5', label: 'P5' },
+  { value: 'P6', label: 'P6' },
+  { value: 'P7', label: 'P7' },
+  { value: 'P8', label: 'P8' },
+]
+
+const TEACHER_PLACEHOLDER = [{ value: '', label: '-- Select Teacher (Optional) --' }]
+
+const CLASSROOM_OPTIONS = [
+  { value: '', label: '-- Select Classroom (Optional) --' },
+  { value: 'r1', label: 'Room 1' },
+  { value: 'r2', label: 'Room 2' },
+  { value: 'r3', label: 'Room 3' },
+  { value: 'r4', label: 'Room 4' },
+  { value: 'r5', label: 'Room 5' },
+  { value: 'r6', label: 'Room 6' },
+  { value: 'r7', label: 'Room 7' },
+  { value: 'r8', label: 'Room 8' },
+]
 
 function ClassForm() {
   const { id } = useParams()
@@ -29,8 +65,8 @@ function ClassForm() {
 
   const [formData, setFormData] = useState({
     class_name: '',
-    class_level: 'primary',
-    academic_year: currentAcademicYear || '2024/2025',
+    class_level: '',
+    academic_year: currentAcademicYear || new Date().getFullYear() + '/' + (new Date().getFullYear() + 1),
     max_capacity: '25',
     class_teacher_id: '',
     classroom_id: '',
@@ -40,10 +76,12 @@ function ClassForm() {
 
   // Update max capacity when level changes
   useEffect(() => {
-    setFormData(prev => ({
-      ...prev,
-      max_capacity: prev.class_level === 'nursery' ? '20' : '25',
-    }))
+    if (formData.class_level) {
+      setFormData(prev => ({
+        ...prev,
+        max_capacity: prev.class_level === 'nursery' ? '20' : '25',
+      }))
+    }
   }, [formData.class_level])
 
   useEffect(() => {
@@ -82,8 +120,8 @@ function ClassForm() {
         const c = response.data
         setFormData({
           class_name: c.class_name || '',
-          class_level: c.class_level || 'primary',
-          academic_year: c.academic_year || currentAcademicYear || '2024/2025',
+          class_level: c.class_level || '',
+          academic_year: c.academic_year || currentAcademicYear || new Date().getFullYear() + '/' + (new Date().getFullYear() + 1),
           max_capacity: c.max_capacity?.toString() || '25',
           class_teacher_id: c.class_teacher_id || '',
           classroom_id: c.classroom_id || '',
@@ -106,15 +144,23 @@ function ClassForm() {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }))
-    if (name === 'class_level') setFormData(prev => ({ ...prev, class_name: '' }))
+    // Reset class name when level changes
+    if (name === 'class_level') {
+      setFormData(prev => ({ ...prev, class_name: '' }))
+    }
   }
 
   const validateForm = () => {
     const newErrors = {}
-    if (!formData.class_name) newErrors.class_name = 'Class name is required'
-    if (!formData.class_level) newErrors.class_level = 'Class level is required'
+    if (!formData.class_level) newErrors.class_level = 'Please select a class level'
+    if (!formData.class_name) newErrors.class_name = 'Please select a class name'
     if (!formData.academic_year) newErrors.academic_year = 'Academic year is required'
-    if (!formData.max_capacity || formData.max_capacity < 1) newErrors.max_capacity = 'Valid capacity is required'
+    if (!formData.max_capacity || parseInt(formData.max_capacity, 10) < 1) {
+      newErrors.max_capacity = 'Valid capacity is required (minimum 1)'
+    }
+    if (parseInt(formData.max_capacity, 10) > 100) {
+      newErrors.max_capacity = 'Capacity cannot exceed 100'
+    }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -125,10 +171,30 @@ function ClassForm() {
 
     setLoading(true)
     try {
+      // Build clean payload - only include optional fields if they have values
       const payload = {
-        ...formData,
+        class_name: formData.class_name,
+        class_level: formData.class_level,
+        academic_year: formData.academic_year,
         max_capacity: parseInt(formData.max_capacity, 10),
+        section: formData.section || undefined,
+        stream: formData.stream || undefined,
       }
+      
+      // Only include teacher if selected
+      if (formData.class_teacher_id) {
+        payload.class_teacher_id = formData.class_teacher_id
+      }
+      
+      // Only include classroom if selected
+      if (formData.classroom_id) {
+        payload.classroom_id = formData.classroom_id
+      }
+      
+      // Remove undefined values
+      Object.keys(payload).forEach(key => {
+        if (payload[key] === undefined) delete payload[key]
+      })
 
       let response
       if (isEdit) {
@@ -166,16 +232,18 @@ function ClassForm() {
     }
   }
 
-  // NOW conditional return - AFTER all hooks
+  // Conditional return AFTER all hooks
   if (fetching) return <LoadingSpinner fullScreen />
 
-  const classOptions = formData.class_level === 'nursery' ? NURSERY_CLASSES : PRIMARY_CLASSES
+  const classOptions = formData.class_level === 'nursery' ? NURSERY_CLASS_OPTIONS : 
+                       formData.class_level === 'primary' ? PRIMARY_CLASS_OPTIONS : 
+                       [{ value: '', label: '-- Select Class Level First --' }]
 
   const teacherOptions = [
-    { value: '', label: 'Select Teacher' },
+    ...TEACHER_PLACEHOLDER,
     ...teachers.map(t => ({
       value: t._id || t.id || '',
-      label: `${t.first_name || ''} ${t.last_name || ''}`.trim() || t.email || 'Unknown',
+      label: `${t.first_name || ''} ${t.last_name || ''}`.trim() || t.email || 'Unknown Teacher',
     })),
   ]
 
@@ -198,10 +266,7 @@ function ClassForm() {
               name="class_level"
               value={formData.class_level}
               onChange={handleChange}
-              options={[
-                { value: 'nursery', label: 'Nursery' },
-                { value: 'primary', label: 'Primary' },
-              ]}
+              options={CLASS_LEVEL_OPTIONS}
               error={errors.class_level}
             />
             <FormSelect
@@ -209,20 +274,23 @@ function ClassForm() {
               name="class_name"
               value={formData.class_name}
               onChange={handleChange}
-              options={classOptions.map(c => ({ value: c, label: c }))}
+              options={classOptions}
               error={errors.class_name}
+              disabled={!formData.class_level}
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput
-              label="Academic Year"
+              label="Academic Year *"
               name="academic_year"
               value={formData.academic_year}
               onChange={handleChange}
+              error={errors.academic_year}
+              placeholder="e.g., 2026/2027"
             />
             <FormInput
-              label="Max Capacity"
+              label="Max Capacity *"
               name="max_capacity"
               type="number"
               value={formData.max_capacity}
@@ -246,17 +314,7 @@ function ClassForm() {
               name="classroom_id"
               value={formData.classroom_id}
               onChange={handleChange}
-              options={[
-                { value: '', label: 'Select Classroom' },
-                { value: 'r1', label: 'Room 1' },
-                { value: 'r2', label: 'Room 2' },
-                { value: 'r3', label: 'Room 3' },
-                { value: 'r4', label: 'Room 4' },
-                { value: 'r5', label: 'Room 5' },
-                { value: 'r6', label: 'Room 6' },
-                { value: 'r7', label: 'Room 7' },
-                { value: 'r8', label: 'Room 8' },
-              ]}
+              options={CLASSROOM_OPTIONS}
             />
           </div>
 
@@ -266,14 +324,14 @@ function ClassForm() {
               name="section"
               value={formData.section}
               onChange={handleChange}
-              placeholder="e.g., A, B"
+              placeholder="e.g., A, B (optional)"
             />
             <FormInput
               label="Stream"
               name="stream"
               value={formData.stream}
               onChange={handleChange}
-              placeholder="e.g., Science, Arts"
+              placeholder="e.g., Science, Arts (optional)"
             />
           </div>
 
