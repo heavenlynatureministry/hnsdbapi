@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import reportsAPI from '../../api/reports'
+import classesAPI from '../../api/classes'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -12,17 +13,49 @@ import { ArrowLeft, Download, ClipboardCheck, TrendingUp, TrendingDown } from 'l
 import { exportToPDF } from '../../utils/exportPDF'
 import toast from 'react-hot-toast'
 
+function getCurrentAcademicYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const startYear = month === 1 ? year - 1 : year
+  return `${startYear}/${startYear + 1}`
+}
+
+function getCurrentTerm() {
+  const month = new Date().getMonth() + 1
+  if (month >= 2 && month <= 4) return 'Term 1'
+  if (month >= 5 && month <= 7) return 'Term 2'
+  if (month >= 9 && month <= 11) return 'Term 3'
+  return 'Term 2'
+}
+
+const currentYear = getCurrentAcademicYear()
+const currentTerm = getCurrentTerm()
+
+const ACADEMIC_YEAR_OPTIONS = [
+  { value: currentYear, label: currentYear },
+  { value: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}`, label: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}` },
+]
+
+const TERM_OPTIONS = [
+  { value: 'Term 1', label: 'Term 1' },
+  { value: 'Term 2', label: 'Term 2' },
+  { value: 'Term 3', label: 'Term 3' },
+]
+
 function AttendanceReport() {
   const navigate = useNavigate()
   const reportRef = useRef(null)
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
+  const [classOptions, setClassOptions] = useState([])
+  const [loadingClasses, setLoadingClasses] = useState(false)
 
   const [filters, setFilters] = useState({
     class_id: '',
-    academic_year: '2024/2025',
-    term: 'Term 1',
+    academic_year: currentYear,
+    term: currentTerm,
     report_type: 'overview',
   })
 
@@ -35,7 +68,32 @@ function AttendanceReport() {
       { label: 'Reports', path: '/reports' },
       { label: 'Attendance' },
     ])
+    fetchClasses()
   }, [])
+
+  const fetchClasses = async () => {
+    setLoadingClasses(true)
+    try {
+      const response = await classesAPI.getAll({ status: 'active' })
+      let classesArray = response?.data || response || []
+      if (!Array.isArray(classesArray)) {
+        classesArray = classesArray?.classes || classesArray?.data || []
+      }
+      const options = [{ value: '', label: 'All Classes' }]
+      classesArray.forEach(c => {
+        options.push({
+          value: c._id || c.id || '',
+          label: c.class_name || c.name || `${c.class_level || ''} ${c.class_name || ''}`.trim(),
+        })
+      })
+      setClassOptions(options)
+    } catch (error) {
+      console.error('Failed to fetch classes:', error)
+      setClassOptions([{ value: '', label: 'All Classes' }])
+    } finally {
+      setLoadingClasses(false)
+    }
+  }
 
   const handleGenerate = async () => {
     setLoading(true)
@@ -71,9 +129,37 @@ function AttendanceReport() {
 
   const handleExportPDF = () => {
     if (reportRef.current) {
-      exportToPDF(reportRef.current, `Attendance_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+      const year = filters.academic_year.replace('/', '_')
+      const term = filters.term.replace(' ', '_')
+      exportToPDF(reportRef.current, `Attendance_Report_${year}_${term}`)
     }
   }
+
+  // Format status summary for display
+  const formatStatusSummary = () => {
+    if (!reportData?.status_summary) return []
+    const total = Object.values(reportData.status_summary).reduce((s, c) => s + c, 0) || 1
+    return Object.entries(reportData.status_summary).map(([status, count]) => ({
+      status,
+      count,
+      percentage: Math.round((count / total) * 100),
+    }))
+  }
+
+  // Format monthly breakdown for daily trend
+  const formatDailyTrend = () => {
+    if (!reportData?.monthly_breakdown) return []
+    return Object.entries(reportData.monthly_breakdown).map(([date, data]) => ({
+      date,
+      rate: data.total > 0 ? Math.round(((data.present + data.late) / data.total) * 100) : 0,
+      present: data.present || 0,
+      absent: data.absent || 0,
+      total: data.total || 0,
+    }))
+  }
+
+  const statusData = formatStatusSummary()
+  const dailyTrend = formatDailyTrend()
 
   return (
     <div className="space-y-6 max-w-4xl animate-fade-in-up">
@@ -86,20 +172,49 @@ function AttendanceReport() {
         }
       />
 
+      {/* Filters */}
       <Card>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <FormSelect label="Report Type" value={filters.report_type} onChange={(e) => setFilters(prev => ({ ...prev, report_type: e.target.value }))}
-            options={[{ value: 'overview', label: 'Overview' }, { value: 'by_class', label: 'By Class' }, { value: 'chronic', label: 'Chronic Absentees' }]} />
-          <FormSelect label="Class" value={filters.class_id} onChange={(e) => setFilters(prev => ({ ...prev, class_id: e.target.value }))}
-            options={[{ value: '', label: 'All Classes' }, { value: 'p5', label: 'P5' }]} />
-          <FormSelect label="Academic Year" value={filters.academic_year} onChange={(e) => setFilters(prev => ({ ...prev, academic_year: e.target.value }))}
-            options={[{ value: '2024/2025', label: '2024/2025' }]} />
-          <FormSelect label="Term" value={filters.term} onChange={(e) => setFilters(prev => ({ ...prev, term: e.target.value }))}
-            options={[{ value: 'Term 1', label: 'Term 1' }, { value: 'Term 2', label: 'Term 2' }]} />
+          <FormSelect 
+            label="Report Type" 
+            value={filters.report_type} 
+            onChange={(e) => setFilters(prev => ({ ...prev, report_type: e.target.value }))}
+            options={[
+              { value: 'overview', label: 'Overview' },
+              { value: 'by_class', label: 'By Class' },
+              { value: 'chronic', label: 'Chronic Absentees' },
+            ]} 
+          />
+          <FormSelect 
+            label="Class" 
+            value={filters.class_id} 
+            onChange={(e) => setFilters(prev => ({ ...prev, class_id: e.target.value }))}
+            options={classOptions}
+            disabled={loadingClasses}
+            placeholder={loadingClasses ? 'Loading...' : 'All Classes'}
+          />
+          <FormSelect 
+            label="Academic Year" 
+            value={filters.academic_year} 
+            onChange={(e) => setFilters(prev => ({ ...prev, academic_year: e.target.value }))}
+            options={ACADEMIC_YEAR_OPTIONS} 
+          />
+          <FormSelect 
+            label="Term" 
+            value={filters.term} 
+            onChange={(e) => setFilters(prev => ({ ...prev, term: e.target.value }))}
+            options={TERM_OPTIONS} 
+          />
         </div>
         <div className="flex gap-3 mt-4">
-          <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<ClipboardCheck size={18} />}>Generate Report</Button>
-          {generated && <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>Export PDF</Button>}
+          <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<ClipboardCheck size={18} />}>
+            Generate Report
+          </Button>
+          {generated && (
+            <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>
+              Export PDF
+            </Button>
+          )}
         </div>
       </Card>
 
@@ -114,7 +229,7 @@ function AttendanceReport() {
 
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
-          {/* Report Title - visible in print only */}
+          {/* Report Title */}
           <div className="hidden print:block text-center mb-6">
             <h2 className="text-xl font-bold text-gray-900">Attendance Report</h2>
             <p className="text-sm text-gray-500">
@@ -123,56 +238,65 @@ function AttendanceReport() {
             <hr className="mt-3 border-gray-300" />
           </div>
 
+          {/* Overall Rate */}
           <Card>
             <div className="text-center mb-4">
-              <p className="text-4xl font-bold text-primary-600">{reportData.attendance_rate || reportData.overall_rate || 0}%</p>
+              <p className="text-4xl font-bold text-primary-600">
+                {reportData.attendance_rate || 0}%
+              </p>
               <p className="text-sm text-gray-500">Overall Attendance Rate</p>
-              <p className="text-xs text-gray-400 mt-1">{(reportData.total_records || 0).toLocaleString()} total records</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {reportData.academic_year || filters.academic_year} • {reportData.term || filters.term} • {(reportData.total_records || 0).toLocaleString()} total records
+              </p>
             </div>
-            {reportData.status_summary && (
+
+            {/* Status Summary */}
+            {statusData.length > 0 && (
               <div className="grid grid-cols-4 gap-3 text-center">
-                {Object.entries(reportData.status_summary).map(([status, data]) => (
-                  <div key={status} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <p className="text-lg font-bold capitalize">{status}</p>
-                    <p className="text-2xl font-bold text-primary-600">{data.percentage || 0}%</p>
-                    <p className="text-xs text-gray-500">{data.count || 0} days</p>
+                {statusData.map((item) => (
+                  <div key={item.status} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <p className="text-xs text-gray-500 capitalize mb-1">{item.status}</p>
+                    <p className="text-2xl font-bold text-primary-600">{item.percentage}%</p>
+                    <p className="text-xs text-gray-500">{item.count.toLocaleString()} days</p>
                   </div>
                 ))}
               </div>
             )}
           </Card>
 
-          {reportData.daily_trend && reportData.daily_trend.length > 0 && (
-            <Card title="Daily Trend (Last 10 School Days)">
-              <div className="flex items-end gap-1 h-32">
-                {reportData.daily_trend.map((day, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-xs font-medium">{day.rate || 0}%</span>
-                    <div className="w-full bg-primary-600 rounded-t" style={{ height: `${Math.min(day.rate || 0, 100)}%` }} />
-                    <span className="text-xs text-gray-500">{day.date ? new Date(day.date).getDate() : '-'}</span>
+          {/* Monthly Trend */}
+          {dailyTrend.length > 0 && (
+            <Card title="Monthly Breakdown">
+              <div className="space-y-3">
+                {dailyTrend.map((day, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500 w-24">{day.date}</span>
+                    <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-6 overflow-hidden">
+                      <div
+                        className="bg-primary-600 h-full rounded-full flex items-center justify-end pr-2"
+                        style={{ width: `${Math.min(day.rate, 100)}%` }}
+                      >
+                        {day.rate > 15 && (
+                          <span className="text-xs text-white font-medium">{day.rate}%</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-500 w-16 text-right">{day.present}/{day.total}</span>
                   </div>
                 ))}
               </div>
             </Card>
           )}
 
-          <Card title="Chronic Absentees (Below 75%)">
-            {!reportData.chronic_absentees || reportData.chronic_absentees.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-4">No chronic absentees found.</p>
-            ) : (
-              <div className="space-y-2">
-                {reportData.chronic_absentees.map((student, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                    <div>
-                      <p className="font-medium">{student.student_name}</p>
-                      <p className="text-xs text-gray-500">{student.class_name} • {student.days_missed || 0} days missed</p>
-                    </div>
-                    <Badge variant="danger">{student.rate || 0}%</Badge>
-                  </div>
-                ))}
+          {/* Empty State for No Data */}
+          {statusData.length === 0 && dailyTrend.length === 0 && (
+            <Card>
+              <div className="text-center py-8 text-gray-500">
+                <ClipboardCheck size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No attendance data found for the selected period.</p>
               </div>
-            )}
-          </Card>
+            </Card>
+          )}
         </div>
       )}
     </div>
