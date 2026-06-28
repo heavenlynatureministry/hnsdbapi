@@ -501,3 +501,81 @@ async def get_student_results(
             "total": len(results)
         }
     }
+
+
+
+
+
+
+update with this
+@router.post("/report-cards/generate")
+async def generate_report_card(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Generate student report card"""
+    db = get_database()
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    student_id = body.get("student_id")
+    term = body.get("term", "Term 1")
+    academic_year = body.get("academic_year")
+    
+    if not student_id:
+        raise HTTPException(status_code=400, detail="Student ID is required")
+    
+    try:
+        sid = ObjectId(student_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+    
+    student = await db.students.find_one({"_id": sid})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Get exam results
+    results = await db.exam_results.find({"student_id": sid}).to_list(length=None)
+    
+    # Get exams for context
+    exam_ids = [r["exam_id"] for r in results if r.get("exam_id")]
+    exams = await db.exams.find({"_id": {"$in": exam_ids}}).to_list(length=None) if exam_ids else []
+    exam_map = {str(e["_id"]): e for e in exams}
+    
+    report_results = []
+    total_score = 0
+    total_max = 0
+    
+    for r in results:
+        exam = exam_map.get(str(r.get("exam_id", "")), {})
+        total_score += r.get("score", 0)
+        total_max += exam.get("max_score", 0)
+        report_results.append({
+            "subject": exam.get("subject_name", exam.get("exam_name", "Unknown")),
+            "score": r.get("score", 0),
+            "max_score": exam.get("max_score", 100),
+            "grade": r.get("grade", "N/A"),
+            "remarks": r.get("remarks", ""),
+            "is_passed": r.get("is_passed", False),
+        })
+    
+    average = round((total_score / total_max * 100), 1) if total_max > 0 else 0
+    
+    return {
+        "success": True,
+        "message": "Report card generated",
+        "data": {
+            "student_name": f"{student.get('first_name', '')} {student.get('last_name', '')}".strip(),
+            "student_id": student_id,
+            "academic_year": academic_year,
+            "term": term,
+            "results": report_results,
+            "total_score": total_score,
+            "total_max": total_max,
+            "average_percentage": average,
+            "grade": "A" if average >= 80 else "B" if average >= 70 else "C" if average >= 60 else "D" if average >= 50 else "F"
+        }
+    }
