@@ -6,9 +6,19 @@ import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { ArrowLeft, Download, FileText } from 'lucide-react'
+import { ArrowLeft, Download, FileText, GraduationCap, Users, ClipboardCheck, DollarSign, TrendingUp } from 'lucide-react'
 import { exportToPDF } from '../../utils/exportPDF'
 import toast from 'react-hot-toast'
+
+function getCurrentAcademicYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const startYear = month === 1 ? year - 1 : year
+  return `${startYear}/${startYear + 1}`
+}
+
+const currentYear = getCurrentAcademicYear()
 
 function AnnualReport() {
   const navigate = useNavigate()
@@ -58,7 +68,8 @@ function AnnualReport() {
 
   const handleExportPDF = () => {
     if (reportRef.current && reportData) {
-      exportToPDF(reportRef.current, `Annual_Report_${(reportData.academic_year || '2024_2025').replace('/', '_')}`)
+      const year = (reportData.academic_year || currentYear).replace('/', '_')
+      exportToPDF(reportRef.current, `Annual_Report_${year}`)
     }
   }
 
@@ -66,7 +77,7 @@ function AnnualReport() {
     <div className="space-y-6 max-w-4xl animate-fade-in-up">
       <PageHeader
         title="Annual School Report"
-        subtitle="Comprehensive yearly report"
+        subtitle={`Comprehensive yearly report for ${currentYear}`}
         actions={
           <button onClick={() => navigate('/reports')} className="btn btn-secondary">
             <ArrowLeft size={18} /> Back
@@ -102,20 +113,22 @@ function AnnualReport() {
           <div className="hidden print:block text-center mb-6">
             <h2 className="text-xl font-bold text-gray-900">Annual School Report</h2>
             <p className="text-sm text-gray-500">
-              {reportData.academic_year || '2024/2025'} Academic Year
+              {reportData.academic_year || currentYear} Academic Year
             </p>
             <hr className="mt-3 border-gray-300" />
           </div>
 
-          <Card title={`Annual Report - ${reportData.academic_year || '2024/2025'}`}>
+          {/* Header Card */}
+          <Card title={`Annual Report - ${reportData.academic_year || currentYear}`}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: 'Students', value: reportData.enrollment?.total_students || 0 },
-                { label: 'Pass Rate', value: `${reportData.academic?.overall_pass_rate || 0}%` },
-                { label: 'Attendance', value: `${reportData.attendance?.overall_rate || 0}%` },
-                { label: 'Balance', value: `SSP ${(reportData.financial?.balance || 0).toLocaleString()}` },
+                { label: 'Total Students', value: reportData.enrollment?.total_students || 0, icon: GraduationCap, color: 'text-blue-600' },
+                { label: 'Teachers', value: reportData.staff?.total_teachers || 0, icon: Users, color: 'text-green-600' },
+                { label: 'Attendance Rate', value: `${reportData.attendance?.attendance_rate || 0}%`, icon: ClipboardCheck, color: 'text-purple-600' },
+                { label: 'Balance', value: `SSP ${(reportData.financial?.balance || 0).toLocaleString()}`, icon: DollarSign, color: 'text-orange-600' },
               ].map((stat, i) => (
                 <div key={i} className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <stat.icon size={20} className={`mx-auto mb-2 ${stat.color}`} />
                   <p className="text-2xl font-bold text-primary-600">{stat.value}</p>
                   <p className="text-xs text-gray-500">{stat.label}</p>
                 </div>
@@ -123,35 +136,95 @@ function AnnualReport() {
             </div>
           </Card>
 
-          {reportData.highlights?.achievements && reportData.highlights.achievements.length > 0 && (
-            <Card title="Achievements">
-              <ul className="list-disc list-inside space-y-2">
-                {reportData.highlights.achievements.map((item, i) => (
-                  <li key={i} className="text-sm text-gray-700 dark:text-gray-300">{item}</li>
-                ))}
-              </ul>
-            </Card>
-          )}
+          {/* Enrollment Section */}
+          <Card title="Enrollment" icon={<GraduationCap size={20} />}>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-xl font-bold text-primary-600">{reportData.enrollment?.total_students || 0}</p>
+                <p className="text-xs text-gray-500">Total Students</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-green-600">{reportData.enrollment?.new_enrollments || 0}</p>
+                <p className="text-xs text-gray-500">New Enrollments</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-blue-600">{reportData.enrollment?.total_classes || 0}</p>
+                <p className="text-xs text-gray-500">Classes</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-purple-600">{reportData.enrollment?.occupancy_rate || 0}%</p>
+                <p className="text-xs text-gray-500">Occupancy Rate</p>
+              </div>
+            </div>
+          </Card>
 
-          {reportData.highlights?.challenges && reportData.highlights.challenges.length > 0 && (
-            <Card title="Challenges">
-              <ul className="list-disc list-inside space-y-2">
-                {reportData.highlights.challenges.map((item, i) => (
-                  <li key={i} className="text-sm text-gray-700 dark:text-gray-300">{item}</li>
-                ))}
-              </ul>
-            </Card>
-          )}
+          {/* Staff Section */}
+          <Card title="Staff" icon={<Users size={20} />}>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-xl font-bold text-primary-600">{reportData.staff?.total_teachers || 0}</p>
+                <p className="text-xs text-gray-500">Teachers</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-green-600">{reportData.staff?.total_staff || 0}</p>
+                <p className="text-xs text-gray-500">Total Staff</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-blue-600">{reportData.staff?.student_teacher_ratio || 'N/A'}</p>
+                <p className="text-xs text-gray-500">Student:Teacher Ratio</p>
+              </div>
+            </div>
+          </Card>
 
-          {reportData.highlights?.recommendations && reportData.highlights.recommendations.length > 0 && (
-            <Card title="Recommendations">
-              <ul className="list-disc list-inside space-y-2">
-                {reportData.highlights.recommendations.map((item, i) => (
-                  <li key={i} className="text-sm text-gray-700 dark:text-gray-300">{item}</li>
-                ))}
-              </ul>
-            </Card>
-          )}
+          {/* Attendance Section */}
+          <Card title="Attendance" icon={<ClipboardCheck size={20} />}>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-xl font-bold text-primary-600">{reportData.attendance?.total_records || 0}</p>
+                <p className="text-xs text-gray-500">Total Records</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-green-600">{reportData.attendance?.present_count || 0}</p>
+                <p className="text-xs text-gray-500">Present</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-red-600">{(reportData.attendance?.total_records || 0) - (reportData.attendance?.present_count || 0)}</p>
+                <p className="text-xs text-gray-500">Absent</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-purple-600">{reportData.attendance?.attendance_rate || 0}%</p>
+                <p className="text-xs text-gray-500">Attendance Rate</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Financial Section */}
+          <Card title="Financial" icon={<DollarSign size={20} />}>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-xl font-bold text-green-600">SSP {(reportData.financial?.total_income || 0).toLocaleString()}</p>
+                <p className="text-xs text-gray-500">Total Income</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-red-600">SSP {(reportData.financial?.total_expenses || 0).toLocaleString()}</p>
+                <p className="text-xs text-gray-500">Total Expenses</p>
+              </div>
+              <div>
+                <p className={`text-xl font-bold ${(reportData.financial?.balance || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  SSP {(reportData.financial?.balance || 0).toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500">Balance</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Generated Info */}
+          <Card>
+            <div className="text-center text-sm text-gray-500">
+              <p>Report generated on {reportData.generated_at ? new Date(reportData.generated_at).toLocaleString() : new Date().toLocaleString()}</p>
+              <p>Academic Year: {reportData.academic_year || currentYear} • Term: {reportData.current_term || 'N/A'}</p>
+            </div>
+          </Card>
         </div>
       )}
     </div>
