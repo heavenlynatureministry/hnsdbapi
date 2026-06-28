@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import reportsAPI from '../../api/reports'
+import classesAPI from '../../api/classes'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -12,17 +13,49 @@ import { ArrowLeft, Download, BarChart3, GraduationCap, TrendingUp } from 'lucid
 import { exportToPDF } from '../../utils/exportPDF'
 import toast from 'react-hot-toast'
 
+function getCurrentAcademicYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const startYear = month === 1 ? year - 1 : year
+  return `${startYear}/${startYear + 1}`
+}
+
+function getCurrentTerm() {
+  const month = new Date().getMonth() + 1
+  if (month >= 2 && month <= 4) return 'Term 1'
+  if (month >= 5 && month <= 7) return 'Term 2'
+  if (month >= 9 && month <= 11) return 'Term 3'
+  return 'Term 2'
+}
+
+const currentYear = getCurrentAcademicYear()
+const currentTerm = getCurrentTerm()
+
+const ACADEMIC_YEAR_OPTIONS = [
+  { value: currentYear, label: currentYear },
+  { value: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}`, label: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}` },
+]
+
+const TERM_OPTIONS = [
+  { value: 'Term 1', label: 'Term 1' },
+  { value: 'Term 2', label: 'Term 2' },
+  { value: 'Term 3', label: 'Term 3' },
+]
+
 function AcademicReport() {
   const navigate = useNavigate()
   const reportRef = useRef(null)
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
+  const [classOptions, setClassOptions] = useState([])
+  const [loadingClasses, setLoadingClasses] = useState(false)
 
   const [filters, setFilters] = useState({
     class_id: '',
-    academic_year: '2024/2025',
-    term: 'Term 1',
+    academic_year: currentYear,
+    term: currentTerm,
     report_type: 'class_performance',
   })
 
@@ -35,7 +68,32 @@ function AcademicReport() {
       { label: 'Reports', path: '/reports' },
       { label: 'Academic' },
     ])
+    fetchClasses()
   }, [])
+
+  const fetchClasses = async () => {
+    setLoadingClasses(true)
+    try {
+      const response = await classesAPI.getAll({ status: 'active' })
+      let classesArray = response?.data || response || []
+      if (!Array.isArray(classesArray)) {
+        classesArray = classesArray?.classes || classesArray?.data || []
+      }
+      const options = [{ value: '', label: 'All Classes' }]
+      classesArray.forEach(c => {
+        options.push({
+          value: c._id || c.id || '',
+          label: c.class_name || c.name || `${c.class_level || ''} ${c.class_name || ''}`.trim(),
+        })
+      })
+      setClassOptions(options)
+    } catch (error) {
+      console.error('Failed to fetch classes:', error)
+      setClassOptions([{ value: '', label: 'All Classes' }])
+    } finally {
+      setLoadingClasses(false)
+    }
+  }
 
   const handleGenerate = async () => {
     setLoading(true)
@@ -43,17 +101,24 @@ function AcademicReport() {
     setGenerated(false)
     
     try {
-      const response = await reportsAPI.getOverview({
-        class_id: filters.class_id || undefined,
+      // Use the comprehensive annual report endpoint
+      const response = await reportsAPI.getAnnualReport({
         academic_year: filters.academic_year,
-        term: filters.term,
       })
       
       if (response?.success && response.data) {
-        setReportData(response.data)
-        setGenerated(true)
-      } else if (response?.data) {
-        setReportData(response.data)
+        const data = response.data
+        // Transform data for display
+        setReportData({
+          class_name: filters.class_id ? 'Selected Class' : 'All Classes',
+          class_level: 'All Levels',
+          total_students: data.enrollment?.total_students || 0,
+          overall_pass_rate: data.attendance?.attendance_rate || 0,
+          class_average: data.enrollment?.occupancy_rate || 0,
+          subjects: [],
+          top_students: [],
+          academic_summary: data,
+        })
         setGenerated(true)
       } else {
         toast.error('Failed to generate report. No data available.')
@@ -109,30 +174,21 @@ function AcademicReport() {
             label="Class"
             value={filters.class_id}
             onChange={(e) => setFilters(prev => ({ ...prev, class_id: e.target.value }))}
-            options={[
-              { value: '', label: 'All Classes' },
-              { value: 'p5', label: 'P5' },
-              { value: 'p6', label: 'P6' },
-            ]}
+            options={classOptions}
+            disabled={loadingClasses}
+            placeholder={loadingClasses ? 'Loading...' : 'All Classes'}
           />
           <FormSelect
             label="Academic Year"
             value={filters.academic_year}
             onChange={(e) => setFilters(prev => ({ ...prev, academic_year: e.target.value }))}
-            options={[
-              { value: '2024/2025', label: '2024/2025' },
-              { value: '2023/2024', label: '2023/2024' },
-            ]}
+            options={ACADEMIC_YEAR_OPTIONS}
           />
           <FormSelect
             label="Term"
             value={filters.term}
             onChange={(e) => setFilters(prev => ({ ...prev, term: e.target.value }))}
-            options={[
-              { value: 'Term 1', label: 'Term 1' },
-              { value: 'Term 2', label: 'Term 2' },
-              { value: 'Term 3', label: 'Term 3' },
-            ]}
+            options={TERM_OPTIONS}
           />
         </div>
         <div className="flex gap-3 mt-4">
@@ -159,7 +215,7 @@ function AcademicReport() {
 
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
-          {/* Report Title - visible in print only */}
+          {/* Report Title */}
           <div className="hidden print:block text-center mb-6">
             <h2 className="text-xl font-bold text-gray-900">Academic Performance Report</h2>
             <p className="text-sm text-gray-500">
@@ -179,11 +235,11 @@ function AcademicReport() {
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <p className="text-3xl font-bold text-primary-600">{reportData.overall_pass_rate || 0}%</p>
-                <p className="text-xs text-gray-500">Pass Rate</p>
+                <p className="text-xs text-gray-500">Attendance Rate</p>
               </div>
               <div>
                 <p className="text-3xl font-bold text-green-600">{reportData.class_average || 0}%</p>
-                <p className="text-xs text-gray-500">Class Average</p>
+                <p className="text-xs text-gray-500">Occupancy Rate</p>
               </div>
               <div>
                 <p className="text-3xl font-bold text-purple-600">{reportData.total_students || 0}</p>
@@ -191,6 +247,43 @@ function AcademicReport() {
               </div>
             </div>
           </Card>
+
+          {/* Academic Summary from Annual Report */}
+          {reportData.academic_summary && (
+            <Card title="Academic Year Summary">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-primary-600">{reportData.academic_summary.enrollment?.total_students || 0}</p>
+                  <p className="text-xs text-gray-500">Total Students</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-green-600">{reportData.academic_summary.staff?.total_teachers || 0}</p>
+                  <p className="text-xs text-gray-500">Teachers</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-blue-600">{reportData.academic_summary.enrollment?.total_classes || 0}</p>
+                  <p className="text-xs text-gray-500">Classes</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-purple-600">
+                    {reportData.academic_summary.staff?.student_teacher_ratio || 'N/A'}
+                  </p>
+                  <p className="text-xs text-gray-500">Student:Teacher</p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Empty State for Subjects */}
+          {(reportData.subjects || []).length === 0 && (
+            <Card>
+              <div className="text-center py-8 text-gray-500">
+                <GraduationCap size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Subject performance data is not yet available.</p>
+                <p className="text-xs">Enter exam results to see subject breakdowns.</p>
+              </div>
+            </Card>
+          )}
 
           {/* Subject Breakdown */}
           {(reportData.subjects || []).length > 0 && (
@@ -231,28 +324,6 @@ function AcademicReport() {
                         </div>
                       </>
                     )}
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* Top Students */}
-          {(reportData.top_students || []).length > 0 && (
-            <Card title="Top Performers">
-              <div className="space-y-2">
-                {reportData.top_students.map((student, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <span className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 font-bold text-sm">
-                        {i + 1}
-                      </span>
-                      <span className="font-medium">{student.student_name}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-primary-600">{student.overall_percentage || 0}%</span>
-                      <Badge variant="success">{student.grade || 'N/A'}</Badge>
-                    </div>
                   </div>
                 ))}
               </div>
