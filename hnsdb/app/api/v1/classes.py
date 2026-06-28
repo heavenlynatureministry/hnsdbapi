@@ -491,3 +491,68 @@ async def delete_class(
         "success": True,
         "message": "Class deactivated"
     }
+
+
+
+
+add this and update the file
+@router.get("/{class_id}/schedule")
+async def get_class_schedule(
+    class_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get class schedule/timetable"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid class ID")
+    
+    class_doc = await db.classes.find_one({"_id": obj_id})
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    schedule = class_doc.get("schedule", {
+        "monday": [], "tuesday": [], "wednesday": [], "thursday": [], "friday": []
+    })
+    
+    return {
+        "success": True,
+        "message": "Schedule retrieved",
+        "data": {
+            "class_name": class_doc.get("class_name"),
+            "class_level": class_doc.get("class_level"),
+            "schedule": schedule
+        }
+    }
+
+
+@router.put("/{class_id}/schedule")
+async def update_class_schedule(
+    class_id: str = Path(...),
+    request: Request = None,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Update class schedule"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid class ID")
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    schedule = body.get("schedule", {})
+    
+    await db.classes.update_one(
+        {"_id": obj_id},
+        {"$set": {"schedule": schedule, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {
+        "success": True,
+        "message": "Schedule updated"
+    }
