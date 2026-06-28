@@ -4,7 +4,7 @@ Request/Response validation for class and classroom management
 """
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
-from pydantic import model_validator,  BaseModel, Field, validator, root_validator
+from pydantic import model_validator, BaseModel, Field, validator
 
 
 class ClassBase(BaseModel):
@@ -51,8 +51,8 @@ class ClassBase(BaseModel):
     @model_validator(mode="after")
     def validate_class_level_match(self):
         """Ensure class name matches the class level"""
-        class_name = self.get('class_name')
-        class_level = self.get('class_level')
+        class_name = self.class_name
+        class_level = self.class_level
         
         if class_name and class_level:
             nursery_classes = ['Baby', 'Middle', 'Top']
@@ -64,7 +64,7 @@ class ClassBase(BaseModel):
             if class_level == 'primary' and class_name not in primary_classes:
                 raise ValueError(f'{class_name} is not a primary class')
         
-        return values
+        return self
 
 
 class ClassCreate(ClassBase):
@@ -150,7 +150,6 @@ class ClassScheduleUpdate(BaseModel):
                     if field not in period:
                         raise ValueError(f'Period {i+1} on {day}: missing required field "{field}"')
                 
-                # Validate time format
                 for time_field in ['start_time', 'end_time']:
                     if time_field in period:
                         try:
@@ -242,8 +241,8 @@ class ClassPromotionRequest(BaseModel):
     
     @model_validator(mode="after")
     def validate_promotion_options(self):
-        student_ids = self.get('student_ids')
-        promote_all = self.get('promote_all')
+        student_ids = self.student_ids
+        promote_all = self.promote_all
         
         if not student_ids and not promote_all:
             raise ValueError('Either student_ids or promote_all must be specified')
@@ -251,7 +250,7 @@ class ClassPromotionRequest(BaseModel):
         if student_ids and promote_all:
             raise ValueError('Cannot specify both student_ids and promote_all')
         
-        return values
+        return self
 
 
 class PromotionResult(BaseModel):
