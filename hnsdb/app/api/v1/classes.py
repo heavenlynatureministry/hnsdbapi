@@ -61,13 +61,10 @@ async def create_all_classes(
     skipped = []
     errors = []
     
-    # Define all classes to create
     all_classes = [
-        # Nursery
         {"class_name": "Baby", "class_level": "nursery", "max_capacity": 20},
         {"class_name": "Middle", "class_level": "nursery", "max_capacity": 20},
         {"class_name": "Top", "class_level": "nursery", "max_capacity": 20},
-        # Primary
         {"class_name": "P1", "class_level": "primary", "max_capacity": 25},
         {"class_name": "P2", "class_level": "primary", "max_capacity": 25},
         {"class_name": "P3", "class_level": "primary", "max_capacity": 25},
@@ -82,7 +79,6 @@ async def create_all_classes(
         class_name = cls["class_name"]
         class_level = cls["class_level"]
         
-        # Check if already exists
         existing = await db.classes.find_one({
             "class_name": class_name,
             "class_level": class_level,
@@ -94,7 +90,6 @@ async def create_all_classes(
             skipped.append(class_name)
             continue
         
-        # Create the class
         try:
             doc = {
                 "class_name": class_name,
@@ -103,18 +98,13 @@ async def create_all_classes(
                 "max_capacity": cls["max_capacity"],
                 "current_enrollment": 0,
                 "status": "active",
-                "schedule": {
-                    "monday": [], "tuesday": [], "wednesday": [],
-                    "thursday": [], "friday": []
-                },
+                "schedule": {"monday": [], "tuesday": [], "wednesday": [], "thursday": [], "friday": []},
                 "created_by": current_user.get("_id"),
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
-            
             result = await db.classes.insert_one(doc)
             created.append(class_name)
-            
         except Exception as e:
             errors.append(f"{class_name}: {str(e)}")
     
@@ -148,15 +138,12 @@ async def list_classes(
     """List classes with filters"""
     db = get_database()
     filter_query = {"status": status}
-    if class_level:
-        filter_query["class_level"] = class_level
-    if academic_year:
-        filter_query["academic_year"] = academic_year
+    if class_level: filter_query["class_level"] = class_level
+    if academic_year: filter_query["academic_year"] = academic_year
     
     skip = (page - 1) * limit
     total = await db.classes.count_documents(filter_query)
     classes = await db.classes.find(filter_query).sort("class_name", 1).skip(skip).limit(limit).to_list(length=limit)
-    
     classes = [parse_mongo_document(c) for c in classes]
     
     for c in classes:
@@ -168,11 +155,7 @@ async def list_classes(
             c["occupancy_rate"] = 0
             c["available_spots"] = 0
     
-    return {
-        "success": True,
-        "message": "Classes retrieved",
-        "data": classes
-    }
+    return {"success": True, "message": "Classes retrieved", "data": classes}
 
 
 @router.get("/statistics/overview")
@@ -191,8 +174,7 @@ async def class_statistics(current_user: Dict[str, Any] = Depends(get_current_us
     ]).to_list(length=None)
     
     return {
-        "success": True,
-        "message": "Statistics retrieved",
+        "success": True, "message": "Statistics retrieved",
         "data": {
             "total_classes": total,
             "by_level": {
@@ -211,8 +193,7 @@ async def class_statistics(current_user: Dict[str, Any] = Depends(get_current_us
 async def get_class_levels(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get available class levels"""
     return {
-        "success": True,
-        "message": "Levels retrieved",
+        "success": True, "message": "Levels retrieved",
         "data": [
             {"name": "Nursery", "classes": ["Baby", "Middle", "Top"], "age_range": "3-5 years", "max_capacity": 20},
             {"name": "Primary", "classes": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"], "age_range": "6-14 years", "max_capacity": 25}
@@ -224,14 +205,88 @@ async def get_class_levels(current_user: Dict[str, Any] = Depends(get_current_us
 async def get_promotion_map(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get class promotion/transition map"""
     return {
-        "success": True,
-        "message": "Promotion map retrieved",
+        "success": True, "message": "Promotion map retrieved",
         "data": {
             "nursery": {"Baby": "Middle", "Middle": "Top", "Top": "P1 (Primary)"},
             "primary": {"P1": "P2", "P2": "P3", "P3": "P4", "P4": "P5", "P5": "P6", "P6": "P7", "P7": "P8", "P8": "Graduation"}
         }
     }
 
+
+# =========================================================================
+# CLASS SCHEDULE - MUST be before /{class_id} generic route
+# =========================================================================
+
+@router.get("/{class_id}/schedule")
+async def get_class_schedule(
+    class_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get class schedule/timetable"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid class ID")
+    
+    class_doc = await db.classes.find_one({"_id": obj_id})
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    schedule = class_doc.get("schedule", {
+        "monday": [], "tuesday": [], "wednesday": [], "thursday": [], "friday": []
+    })
+    
+    return {
+        "success": True,
+        "message": "Schedule retrieved",
+        "data": {
+            "class_id": class_id,
+            "class_name": class_doc.get("class_name"),
+            "class_level": class_doc.get("class_level"),
+            "schedule": schedule
+        }
+    }
+
+
+@router.put("/{class_id}/schedule")
+async def update_class_schedule(
+    class_id: str = Path(...),
+    request: Request = None,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Update class schedule"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid class ID")
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    schedule = body.get("schedule", {})
+    
+    # Validate schedule format
+    valid_days = ["monday", "tuesday", "wednesday", "thursday", "friday"]
+    normalized_schedule = {}
+    for day, periods in schedule.items():
+        if day.lower() in valid_days:
+            normalized_schedule[day.lower()] = periods
+    
+    await db.classes.update_one(
+        {"_id": obj_id},
+        {"$set": {"schedule": normalized_schedule, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"success": True, "message": "Schedule updated"}
+
+
+# =========================================================================
+# CLASS BY ID - generic /{class_id} route
+# =========================================================================
 
 @router.get("/{class_id}")
 async def get_class(
@@ -270,11 +325,7 @@ async def get_class(
         class_doc["occupancy_rate"] = round((class_doc.get("student_count", 0) / class_doc["max_capacity"]) * 100, 1)
         class_doc["available_spots"] = class_doc["max_capacity"] - class_doc.get("student_count", 0)
     
-    return {
-        "success": True,
-        "message": "Class retrieved",
-        "data": class_doc
-    }
+    return {"success": True, "message": "Class retrieved", "data": class_doc}
 
 
 @router.get("/{class_id}/students")
@@ -299,14 +350,8 @@ async def get_class_students(
     class_name = class_doc["class_name"] if class_doc else "Unknown"
     
     return {
-        "success": True,
-        "message": "Students retrieved",
-        "data": {
-            "class_id": class_id,
-            "class_name": class_name,
-            "students": students,
-            "total": len(students)
-        }
+        "success": True, "message": "Students retrieved",
+        "data": {"class_id": class_id, "class_name": class_name, "students": students, "total": len(students)}
     }
 
 
@@ -343,38 +388,28 @@ async def create_class(
         raise HTTPException(status_code=400, detail=f"Invalid primary class name. Must be: {', '.join(valid_primary)}")
     
     existing = await db.classes.find_one({
-        "class_name": class_name,
-        "class_level": class_level,
-        "academic_year": academic_year,
-        "status": "active"
+        "class_name": class_name, "class_level": class_level,
+        "academic_year": academic_year, "status": "active"
     })
     if existing:
         raise HTTPException(status_code=400, detail=f"Class {class_name} already exists for {academic_year}")
     
     doc = {
-        "class_name": class_name,
-        "class_level": class_level,
+        "class_name": class_name, "class_level": class_level,
         "academic_year": academic_year,
         "max_capacity": body.get("max_capacity", 20 if class_level == "nursery" else 25),
-        "current_enrollment": 0,
-        "section": body.get("section"),
-        "stream": body.get("stream"),
+        "current_enrollment": 0, "section": body.get("section"), "stream": body.get("stream"),
         "status": "active",
-        "schedule": body.get("schedule", {
-            "monday": [], "tuesday": [], "wednesday": [], "thursday": [], "friday": []
-        }),
+        "schedule": body.get("schedule", {"monday": [], "tuesday": [], "wednesday": [], "thursday": [], "friday": []}),
         "created_by": current_user.get("_id"),
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
+        "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
     }
     
     teacher_id = _safe_objectid(body.get("class_teacher_id"))
-    if teacher_id:
-        doc["class_teacher_id"] = teacher_id
+    if teacher_id: doc["class_teacher_id"] = teacher_id
     
     classroom_id = _safe_objectid(body.get("classroom_id"))
-    if classroom_id:
-        doc["classroom_id"] = classroom_id
+    if classroom_id: doc["classroom_id"] = classroom_id
     
     doc = {k: v for k, v in doc.items() if v is not None}
     
@@ -382,16 +417,9 @@ async def create_class(
         result = await db.classes.insert_one(doc)
         doc["_id"] = str(result.inserted_id)
         doc["id"] = doc["_id"]
-        if doc.get("class_teacher_id"):
-            doc["class_teacher_id"] = str(doc["class_teacher_id"])
-        if doc.get("classroom_id"):
-            doc["classroom_id"] = str(doc["classroom_id"])
-        
-        return {
-            "success": True,
-            "message": f"Class {class_name} created successfully",
-            "data": doc
-        }
+        if doc.get("class_teacher_id"): doc["class_teacher_id"] = str(doc["class_teacher_id"])
+        if doc.get("classroom_id"): doc["classroom_id"] = str(doc["classroom_id"])
+        return {"success": True, "message": f"Class {class_name} created successfully", "data": doc}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create class: {str(e)}")
 
@@ -421,37 +449,23 @@ async def update_class(
         body.pop(key, None)
     
     teacher_id = _safe_objectid(body.get("class_teacher_id"))
-    if teacher_id:
-        body["class_teacher_id"] = teacher_id
-    elif "class_teacher_id" in body:
-        body.pop("class_teacher_id")
+    if teacher_id: body["class_teacher_id"] = teacher_id
+    elif "class_teacher_id" in body: body.pop("class_teacher_id")
     
     classroom_id = _safe_objectid(body.get("classroom_id"))
-    if classroom_id:
-        body["classroom_id"] = classroom_id
-    elif "classroom_id" in body:
-        body.pop("classroom_id")
+    if classroom_id: body["classroom_id"] = classroom_id
+    elif "classroom_id" in body: body.pop("classroom_id")
     
     body["updated_at"] = datetime.utcnow()
     
     try:
         result = await db.classes.find_one_and_update(
-            {"_id": obj_id},
-            {"$set": body},
-            return_document=True
+            {"_id": obj_id}, {"$set": body}, return_document=True
         )
-        
-        if not result:
-            raise HTTPException(status_code=404, detail="Class not found")
-        
+        if not result: raise HTTPException(status_code=404, detail="Class not found")
         result = parse_mongo_document(result)
         result["id"] = result.get("_id")
-        
-        return {
-            "success": True,
-            "message": "Class updated",
-            "data": result
-        }
+        return {"success": True, "message": "Class updated", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update class: {str(e)}")
 
@@ -469,15 +483,12 @@ async def delete_class(
         raise HTTPException(status_code=400, detail="Invalid class ID format")
     
     active_students = await db.students.count_documents({
-        "current_class_id": obj_id,
-        "status": "active"
+        "current_class_id": obj_id, "status": "active"
     })
     
     if active_students > 0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot delete class with {active_students} active students. Transfer or deactivate students first."
-        )
+        raise HTTPException(status_code=400,
+            detail=f"Cannot delete class with {active_students} active students. Transfer or deactivate students first.")
     
     result = await db.classes.update_one(
         {"_id": obj_id},
@@ -487,72 +498,4 @@ async def delete_class(
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Class not found")
     
-    return {
-        "success": True,
-        "message": "Class deactivated"
-    }
-
-
-
-
-add this and update the file
-@router.get("/{class_id}/schedule")
-async def get_class_schedule(
-    class_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """Get class schedule/timetable"""
-    db = get_database()
-    
-    obj_id = _safe_objectid(class_id)
-    if not obj_id:
-        raise HTTPException(status_code=400, detail="Invalid class ID")
-    
-    class_doc = await db.classes.find_one({"_id": obj_id})
-    if not class_doc:
-        raise HTTPException(status_code=404, detail="Class not found")
-    
-    schedule = class_doc.get("schedule", {
-        "monday": [], "tuesday": [], "wednesday": [], "thursday": [], "friday": []
-    })
-    
-    return {
-        "success": True,
-        "message": "Schedule retrieved",
-        "data": {
-            "class_name": class_doc.get("class_name"),
-            "class_level": class_doc.get("class_level"),
-            "schedule": schedule
-        }
-    }
-
-
-@router.put("/{class_id}/schedule")
-async def update_class_schedule(
-    class_id: str = Path(...),
-    request: Request = None,
-    current_user: Dict[str, Any] = Depends(require_role("admin"))
-):
-    """Update class schedule"""
-    db = get_database()
-    
-    obj_id = _safe_objectid(class_id)
-    if not obj_id:
-        raise HTTPException(status_code=400, detail="Invalid class ID")
-    
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
-    
-    schedule = body.get("schedule", {})
-    
-    await db.classes.update_one(
-        {"_id": obj_id},
-        {"$set": {"schedule": schedule, "updated_at": datetime.utcnow()}}
-    )
-    
-    return {
-        "success": True,
-        "message": "Schedule updated"
-    }
+    return {"success": True, "message": "Class deactivated"}
