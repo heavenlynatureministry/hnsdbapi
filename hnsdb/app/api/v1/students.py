@@ -284,3 +284,57 @@ async def permanently_delete_student(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete student: {str(e)}")
+
+
+
+add this and update the code
+@router.get("/{teacher_id}/workload")
+async def get_teacher_workload(
+    teacher_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get teacher workload summary"""
+    db = get_database()
+    
+    try:
+        obj_id = ObjectId(teacher_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid teacher ID")
+    
+    teacher = await db.teachers.find_one({"_id": obj_id})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    
+    # Count assigned classes
+    assigned_classes = await db.classes.count_documents({
+        "class_teacher_id": obj_id,
+        "status": "active"
+    })
+    
+    # Count subjects taught
+    subjects = teacher.get("subjects", [])
+    
+    # Count students in assigned classes
+    total_students = 0
+    classes = await db.classes.find({
+        "class_teacher_id": obj_id,
+        "status": "active"
+    }).to_list(length=None)
+    
+    for cls in classes:
+        total_students += cls.get("current_enrollment", 0)
+    
+    return {
+        "success": True,
+        "message": "Workload retrieved",
+        "data": {
+            "teacher_name": f"{teacher.get('first_name', '')} {teacher.get('last_name', '')}".strip(),
+            "total_classes": assigned_classes,
+            "total_subjects": len(subjects),
+            "subjects": subjects,
+            "total_students": total_students,
+            "classes": [parse_mongo_document(c) for c in classes],
+            "weekly_hours": len(subjects) * 3,  # Estimate: 3 hours per subject per week
+        }
+    }
+
