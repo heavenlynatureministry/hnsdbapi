@@ -12,7 +12,8 @@ import SearchBar from '../../components/common/SearchBar'
 import Badge from '../../components/common/Badge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
-import { DollarSign, Plus, Search, Download, CheckCircle, Clock, XCircle } from 'lucide-react'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
+import { DollarSign, Plus, Download, CheckCircle, Clock, XCircle, Edit, Trash2, MoreVertical } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function getCurrentAcademicYear() {
@@ -52,6 +53,14 @@ const TERM_OPTIONS = [
   { value: 'Term 3', label: 'Term 3' },
 ]
 
+const STATUS_OPTIONS = [
+  { value: 'completed', label: 'Completed' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'partial', label: 'Partial' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'refunded', label: 'Refunded' },
+]
+
 function PaymentsPage() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [payments, setPayments] = useState([])
@@ -62,6 +71,9 @@ function PaymentsPage() {
   const [students, setStudents] = useState([])
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [studentSearch, setStudentSearch] = useState('')
+  const [editingPayment, setEditingPayment] = useState(null)
+  const [openDropdown, setOpenDropdown] = useState(null)
+  const [showDelete, setShowDelete] = useState(null)
 
   const [formData, setFormData] = useState({
     student_id: '',
@@ -73,6 +85,7 @@ function PaymentsPage() {
     transaction_reference: '',
     academic_year: currentYear,
     term: currentTerm,
+    status: 'completed',
     notes: '',
   })
 
@@ -148,10 +161,48 @@ function PaymentsPage() {
       })
     : students
 
+  const openEditModal = (payment) => {
+    setEditingPayment(payment)
+    setFormData({
+      student_id: payment.student_id || '',
+      amount_paid: payment.amount_paid || '',
+      payment_method: payment.payment_method || 'cash',
+      payment_type: payment.payment_type || 'school_fees',
+      fee_type: payment.fee_type || 'tuition',
+      paid_by: payment.paid_by || '',
+      transaction_reference: payment.transaction_reference || '',
+      academic_year: payment.academic_year || currentYear,
+      term: payment.term || currentTerm,
+      status: payment.status || 'completed',
+      notes: payment.notes || '',
+    })
+    setShowModal(true)
+    setOpenDropdown(null)
+  }
+
+  const openCreateModal = () => {
+    setEditingPayment(null)
+    setFormData({
+      student_id: '',
+      amount_paid: '',
+      payment_method: 'cash',
+      payment_type: 'school_fees',
+      fee_type: 'tuition',
+      paid_by: '',
+      transaction_reference: '',
+      academic_year: currentYear,
+      term: currentTerm,
+      status: 'completed',
+      notes: '',
+    })
+    setStudentSearch('')
+    setShowModal(true)
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    if (!formData.student_id) {
+    if (!editingPayment && !formData.student_id) {
       toast.error('Please select a student')
       return
     }
@@ -162,45 +213,59 @@ function PaymentsPage() {
     
     setSaving(true)
     try {
-      const payload = {
-        student_id: formData.student_id,
-        amount_paid: parseFloat(formData.amount_paid),
-        amount: parseFloat(formData.amount_paid),
-        payment_method: formData.payment_method,
-        payment_type: formData.payment_type,
-        fee_type: formData.fee_type,
-        paid_by: formData.paid_by || undefined,
-        transaction_reference: formData.transaction_reference || undefined,
-        academic_year: formData.academic_year,
-        term: formData.term,
-        notes: formData.notes || undefined,
+      let response
+      
+      if (editingPayment) {
+        // Update existing payment
+        response = await financialAPI.updatePayment(editingPayment._id, {
+          status: formData.status,
+          amount_paid: parseFloat(formData.amount_paid),
+          payment_method: formData.payment_method,
+          notes: formData.notes,
+          transaction_reference: formData.transaction_reference,
+        })
+      } else {
+        // Create new payment
+        const payload = {
+          student_id: formData.student_id,
+          amount_paid: parseFloat(formData.amount_paid),
+          amount: parseFloat(formData.amount_paid),
+          payment_method: formData.payment_method,
+          payment_type: formData.payment_type,
+          fee_type: formData.fee_type,
+          paid_by: formData.paid_by || undefined,
+          transaction_reference: formData.transaction_reference || undefined,
+          academic_year: formData.academic_year,
+          term: formData.term,
+          status: formData.status,
+          notes: formData.notes || undefined,
+        }
+        response = await financialAPI.recordPayment(payload)
       }
       
-      const response = await financialAPI.recordPayment(payload)
       if (response?.success) {
-        toast.success('Payment recorded successfully!')
+        toast.success(editingPayment ? 'Payment updated!' : 'Payment recorded successfully!')
         setShowModal(false)
-        setFormData({
-          student_id: '',
-          amount_paid: '',
-          payment_method: 'cash',
-          payment_type: 'school_fees',
-          fee_type: 'tuition',
-          paid_by: '',
-          transaction_reference: '',
-          academic_year: currentYear,
-          term: currentTerm,
-          notes: '',
-        })
-        setStudentSearch('')
         fetchPayments()
       } else {
-        toast.error(response?.message || 'Failed to record payment')
+        toast.error(response?.message || 'Failed to save payment')
       }
     } catch (error) {
-      toast.error(error.message || 'Failed to record payment')
+      toast.error(error.message || 'Failed to save payment')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!showDelete) return
+    try {
+      await financialAPI.deletePayment(showDelete._id)
+      toast.success('Payment deleted')
+      setShowDelete(null)
+      fetchPayments()
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete payment')
     }
   }
 
@@ -208,10 +273,12 @@ function PaymentsPage() {
     const variants = { completed: 'success', pending: 'warning', failed: 'danger', refunded: 'gray', partial: 'info' }
     const icons = { completed: CheckCircle, pending: Clock, failed: XCircle }
     const Icon = icons[status]
-    return <Badge variant={variants[status] || 'gray'}><span className="flex items-center gap-1">{Icon && <Icon size={12} />}{status}</span></Badge>
+    return <Badge variant={variants[status] || 'gray'}><span className="flex items-center gap-1">{Icon && <Icon size={12} />}{status || 'unknown'}</span></Badge>
   }
 
-  const totalCollected = payments.reduce((s, p) => s + (p.amount_paid || 0), 0)
+  const totalCollected = payments
+    .filter(p => p.status === 'completed')
+    .reduce((s, p) => s + (p.amount_paid || 0), 0)
 
   const studentOptions = [
     { value: '', label: loadingStudents ? 'Loading students...' : '-- Select Student --' },
@@ -226,14 +293,14 @@ function PaymentsPage() {
       <PageHeader
         title="Payments"
         subtitle={`Total collected: SSP ${totalCollected.toLocaleString()}`}
-        actions={<Button onClick={() => setShowModal(true)} variant="primary" icon={<Plus size={18} />}>Record Payment</Button>}
+        actions={<Button onClick={openCreateModal} variant="primary" icon={<Plus size={18} />}>Record Payment</Button>}
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Collected', value: `SSP ${totalCollected.toLocaleString()}`, color: 'bg-green-100 text-green-600', icon: DollarSign },
           { label: 'Completed', value: payments.filter(p => p.status === 'completed').length, color: 'bg-blue-100 text-blue-600', icon: CheckCircle },
-          { label: 'Partial', value: payments.filter(p => p.status === 'partial').length, color: 'bg-yellow-100 text-yellow-600', icon: Clock },
+          { label: 'Pending', value: payments.filter(p => p.status === 'pending').length, color: 'bg-yellow-100 text-yellow-600', icon: Clock },
           { label: 'Failed', value: payments.filter(p => p.status === 'failed').length, color: 'bg-red-100 text-red-600', icon: XCircle },
         ].map((stat, i) => (
           <div key={i} className="stat-card">
@@ -252,7 +319,7 @@ function PaymentsPage() {
       </div>
 
       {loading ? <LoadingSpinner /> : payments.length === 0 ? (
-        <EmptyState icon={<DollarSign size={48} />} title="No payments" description="No payments recorded yet." action={<Button onClick={() => setShowModal(true)} variant="primary">Record Payment</Button>} />
+        <EmptyState icon={<DollarSign size={48} />} title="No payments" description="No payments recorded yet." action={<Button onClick={openCreateModal} variant="primary">Record Payment</Button>} />
       ) : (
         <div className="card p-0 overflow-hidden">
           <div className="table-container">
@@ -264,9 +331,9 @@ function PaymentsPage() {
                   <th>Class</th>
                   <th>Amount</th>
                   <th>Method</th>
-                  <th>Paid By</th>
                   <th>Date</th>
                   <th>Status</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -277,9 +344,22 @@ function PaymentsPage() {
                     <td className="text-sm">{payment.class_name}</td>
                     <td className="text-sm font-semibold text-green-600">SSP {(payment.amount_paid || 0).toLocaleString()}</td>
                     <td className="text-sm capitalize">{payment.payment_method?.replace('_', ' ')}</td>
-                    <td className="text-sm">{payment.paid_by}</td>
                     <td className="text-sm">{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : 'N/A'}</td>
                     <td>{getStatusBadge(payment.status)}</td>
+                    <td className="text-right">
+                      <div className="relative">
+                        <button onClick={() => setOpenDropdown(openDropdown === payment._id ? null : payment._id)} className="btn btn-ghost btn-sm btn-icon"><MoreVertical size={16} /></button>
+                        {openDropdown === payment._id && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
+                            <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border z-20 py-1">
+                              <button onClick={() => openEditModal(payment)} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"><Edit size={14} /> Edit</button>
+                              <button onClick={() => { setShowDelete(payment); setOpenDropdown(null) }} className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 w-full text-left"><Trash2 size={14} /> Delete</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -288,27 +368,36 @@ function PaymentsPage() {
         </div>
       )}
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Record Payment" size="md">
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editingPayment ? 'Edit Payment' : 'Record Payment'} size="md">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="form-label">Student *</label>
-            <div className="flex gap-2 mb-2">
-              <input
-                type="text"
-                value={studentSearch}
-                onChange={(e) => setStudentSearch(e.target.value)}
-                placeholder="Search student by name..."
-                className="form-input flex-1"
+          {!editingPayment && (
+            <div>
+              <label className="form-label">Student *</label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  placeholder="Search student by name..."
+                  className="form-input flex-1"
+                />
+              </div>
+              <FormSelect
+                name="student_id"
+                value={formData.student_id}
+                onChange={(e) => handleStudentSelect(e.target.value)}
+                options={studentOptions}
+                disabled={loadingStudents}
               />
             </div>
-            <FormSelect
-              name="student_id"
-              value={formData.student_id}
-              onChange={(e) => handleStudentSelect(e.target.value)}
-              options={studentOptions}
-              disabled={loadingStudents}
-            />
-          </div>
+          )}
+
+          {editingPayment && (
+            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <p className="text-sm font-medium">{editingPayment.student_name}</p>
+              <p className="text-xs text-gray-500">Receipt: {editingPayment.receipt_number}</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <FormSelect
@@ -316,6 +405,7 @@ function PaymentsPage() {
               name="payment_type"
               value={formData.payment_type}
               onChange={handleChange}
+              disabled={!!editingPayment}
               options={[
                 { value: 'school_fees', label: 'School Fees' },
                 { value: 'registration', label: 'Registration' },
@@ -328,6 +418,7 @@ function PaymentsPage() {
               name="fee_type"
               value={formData.fee_type}
               onChange={handleChange}
+              disabled={!!editingPayment}
               options={[
                 { value: 'tuition', label: 'Tuition' },
                 { value: 'registration', label: 'Registration' },
@@ -361,14 +452,35 @@ function PaymentsPage() {
               onChange={handleChange}
               options={PAYMENT_METHODS}
             />
-            <FormInput
-              label="Paid By"
-              name="paid_by"
-              value={formData.paid_by}
-              onChange={handleChange}
-              placeholder="Name of payer"
-            />
+            {!editingPayment && (
+              <FormInput
+                label="Paid By"
+                name="paid_by"
+                value={formData.paid_by}
+                onChange={handleChange}
+                placeholder="Name of payer"
+              />
+            )}
+            {editingPayment && (
+              <FormSelect
+                label="Status"
+                name="status"
+                value={formData.status}
+                onChange={handleChange}
+                options={STATUS_OPTIONS}
+              />
+            )}
           </div>
+
+          {editingPayment && (
+            <FormSelect
+              label="Status"
+              name="status"
+              value={formData.status}
+              onChange={handleChange}
+              options={STATUS_OPTIONS}
+            />
+          )}
 
           <FormInput
             label="Transaction Reference"
@@ -405,12 +517,22 @@ function PaymentsPage() {
 
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
             <Button type="submit" variant="primary" loading={saving} icon={<DollarSign size={18} />}>
-              Record Payment
+              {editingPayment ? 'Update Payment' : 'Record Payment'}
             </Button>
             <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog 
+        open={!!showDelete} 
+        onClose={() => setShowDelete(null)} 
+        onConfirm={handleDelete} 
+        title="Delete Payment" 
+        message="Are you sure you want to delete this payment? This action cannot be undone." 
+        confirmText="Delete Payment" 
+        variant="danger" 
+      />
     </div>
   )
 }
