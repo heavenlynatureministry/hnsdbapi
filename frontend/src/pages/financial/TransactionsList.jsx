@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import financialAPI from '../../api/financial'
-import api from '../../api/axios'
 import PageHeader from '../../components/common/PageHeader'
 import SearchBar from '../../components/common/SearchBar'
 import Pagination from '../../components/common/Pagination'
@@ -11,8 +10,8 @@ import EmptyState from '../../components/common/EmptyState'
 import Badge from '../../components/common/Badge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { 
-  DollarSign, Plus, Download, Filter, TrendingUp, TrendingDown,
-  Search, MoreVertical, Edit, Trash2, CheckCircle, XCircle, Clock
+  DollarSign, Plus, Download, TrendingUp, TrendingDown,
+  MoreVertical, Edit, Trash2, CheckCircle, XCircle, Clock
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -40,8 +39,8 @@ function TransactionsList() {
     try {
       const response = await financialAPI.listTransactions({
         search: search || undefined,
-        transaction_type: typeFilter || undefined,
-        approval_status: statusFilter || undefined,
+        type: typeFilter || undefined,
+        status: statusFilter || undefined,
         page,
         limit,
       })
@@ -71,8 +70,9 @@ function TransactionsList() {
   const handleDelete = async () => {
     if (!showDelete) return
     try {
-      await api.delete(`/financial/transactions/${showDelete._id}`)
-      toast.success('Transaction deleted permanently')
+      // ✅ Fixed: Use financialAPI instead of direct api call with wrong path
+      await financialAPI.deleteTransaction(showDelete._id)
+      toast.success('Transaction deleted')
       setShowDelete(null)
       fetchTransactions()
     } catch (error) {
@@ -81,20 +81,13 @@ function TransactionsList() {
   }
 
   const getCategoryDisplay = (category) => {
-    const categories = {
-      tuition_fees: 'Tuition Fees', registration_fees: 'Registration Fees',
-      examination_fees: 'Exam Fees', transportation_fees: 'Transport',
-      donations: 'Donations', grants: 'Grants', other_income: 'Other Income',
-      salaries: 'Salaries', utilities: 'Utilities', rent: 'Rent',
-      maintenance: 'Maintenance', supplies: 'Supplies', equipment: 'Equipment',
-      textbooks: 'Textbooks', food_program: 'Food Program', other_expenses: 'Other Expenses',
-    }
-    return categories[category] || category?.replace(/_/g, ' ') || 'N/A'
+    if (!category) return 'N/A'
+    return category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
 
   const getStatusBadge = (status) => {
-    const variants = { approved: 'success', pending: 'warning', rejected: 'danger', cancelled: 'gray' }
-    const icons = { approved: CheckCircle, pending: Clock, rejected: XCircle }
+    const variants = { approved: 'success', completed: 'success', pending: 'warning', rejected: 'danger', cancelled: 'gray' }
+    const icons = { approved: CheckCircle, completed: CheckCircle, pending: Clock, rejected: XCircle }
     const Icon = icons[status]
     return (
       <Badge variant={variants[status] || 'gray'}>
@@ -108,10 +101,10 @@ function TransactionsList() {
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
   const totalIncome = safeTransactions
-    .filter(t => t?.transaction_type === 'income' && t?.approval_status === 'approved')
+    .filter(t => t?.transaction_type === 'income' && (t?.approval_status === 'approved' || t?.approval_status === 'completed'))
     .reduce((s, t) => s + (t?.amount || 0), 0)
   const totalExpenses = safeTransactions
-    .filter(t => t?.transaction_type === 'expense' && t?.approval_status === 'approved')
+    .filter(t => t?.transaction_type === 'expense' && (t?.approval_status === 'approved' || t?.approval_status === 'completed'))
     .reduce((s, t) => s + (t?.amount || 0), 0)
 
   return (
@@ -152,6 +145,7 @@ function TransactionsList() {
           <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} className="form-input w-full sm:w-36">
             <option value="">All Status</option>
             <option value="approved">Approved</option>
+            <option value="completed">Completed</option>
             <option value="pending">Pending</option>
             <option value="rejected">Rejected</option>
           </select>
@@ -196,7 +190,8 @@ function TransactionsList() {
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
                             <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border z-20 py-1">
-                              <Link to={`/financial/${txn?._id}/edit`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Edit size={14} /> Edit</Link>
+                              {/* ✅ Fixed: Edit link goes to /financial/edit/:id */}
+                              <Link to={`/financial/edit/${txn?._id}`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Edit size={14} /> Edit</Link>
                               <button onClick={() => { setShowDelete(txn); setOpenDropdown(null) }} className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 w-full text-left"><Trash2 size={14} /> Delete</button>
                             </div>
                           </>
