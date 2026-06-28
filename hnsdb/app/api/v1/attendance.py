@@ -313,3 +313,74 @@ async def delete_class_attendance_by_date(
     })
     
     return SuccessResponse(success=True, message=f"Deleted {result.deleted_count} attendance records")
+
+
+add this and update the file
+@router.get("/class/{class_id}")
+async def get_attendance_by_class(
+    class_id: str = Path(...),
+    date: Optional[str] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get attendance records for a class"""
+    db = get_database()
+    
+    try:
+        obj_id = ObjectId(class_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid class ID")
+    
+    # Get class info
+    class_doc = await db.classes.find_one({"_id": obj_id})
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    # Get students in class
+    students = await db.students.find({
+        "current_class_id": obj_id,
+        "status": "active"
+    }).to_list(length=None)
+    
+    # Get attendance for the date
+    target_date = date or datetime.utcnow().strftime("%Y-%m-%d")
+    
+    attendance_records = await db.attendance.find({
+        "class_id": obj_id,
+        "date": target_date
+    }).to_list(length=None)
+    
+    # Map attendance to students
+    attendance_map = {}
+    for record in attendance_records:
+        sid = str(record.get("student_id", ""))
+        attendance_map[sid] = record.get("status", "unmarked")
+    
+    student_list = []
+    for student in students:
+        sid = str(student["_id"])
+        student_list.append({
+            "student_id": sid,
+            "student_name": f"{student.get('first_name', '')} {student.get('last_name', '')}".strip(),
+            "status": attendance_map.get(sid, "unmarked"),
+        })
+    
+    # Calculate statistics
+    stats = {"present": 0, "absent": 0, "excused": 0, "late": 0, "unmarked": 0}
+    for s in student_list:
+        stats[s["status"]] = stats.get(s["status"], 0) + 1
+    
+    total = len(student_list)
+    marked = total - stats["unmarked"]
+    attendance_rate = round((stats["present"] + stats["late"]) / total * 100, 1) if total > 0 else 0
+    
+    return {
+        "success": True,
+        "message": "Attendance retrieved",
+        "data": {
+            "class_name": class_doc.get("class_name"),
+            "date": target_date,
+            "students": student_list,
+            "statistics": stats,
+            "attendance_rate": attendance_rate
+        }
+    }
