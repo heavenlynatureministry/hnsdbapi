@@ -7,13 +7,42 @@ import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import Badge from '../../components/common/Badge'
 import { ArrowLeft, Download, DollarSign, TrendingUp, TrendingDown } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { exportToPDF } from '../../utils/exportPDF'
 import toast from 'react-hot-toast'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
+
+function getCurrentAcademicYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const startYear = month === 1 ? year - 1 : year
+  return `${startYear}/${startYear + 1}`
+}
+
+function getCurrentTerm() {
+  const month = new Date().getMonth() + 1
+  if (month >= 2 && month <= 4) return 'Term 1'
+  if (month >= 5 && month <= 7) return 'Term 2'
+  if (month >= 9 && month <= 11) return 'Term 3'
+  return 'Term 2'
+}
+
+const currentYear = getCurrentAcademicYear()
+const currentTerm = getCurrentTerm()
+
+const ACADEMIC_YEAR_OPTIONS = [
+  { value: currentYear, label: currentYear },
+  { value: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}`, label: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}` },
+]
+
+const TERM_OPTIONS = [
+  { value: 'Term 1', label: 'Term 1' },
+  { value: 'Term 2', label: 'Term 2' },
+  { value: 'Term 3', label: 'Term 3' },
+]
 
 function FinancialReport() {
   const navigate = useNavigate()
@@ -23,8 +52,8 @@ function FinancialReport() {
   const [generated, setGenerated] = useState(false)
 
   const [filters, setFilters] = useState({
-    academic_year: '2024/2025',
-    term: 'Term 1',
+    academic_year: currentYear,
+    term: currentTerm,
     report_type: 'summary',
   })
 
@@ -50,10 +79,52 @@ function FinancialReport() {
       })
       
       if (response?.success && response.data) {
-        setReportData(response.data)
+        const data = response.data
+        
+        // Transform API data for charts
+        const formattedData = {
+          ...data,
+          academic_year: data.academic_year || filters.academic_year,
+          profit_margin: data.total_income > 0 
+            ? Math.round(((data.total_income - data.total_expenses) / data.total_income) * 100) 
+            : 0,
+          // Format category data for pie charts
+          income_by_category: data.income_by_category 
+            ? Object.entries(data.income_by_category).map(([name, value]) => ({
+                name: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                value
+              }))
+            : [],
+          expenses_by_category: data.expenses_by_category 
+            ? Object.entries(data.expenses_by_category).map(([name, value]) => ({
+                name: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                value
+              }))
+            : [],
+          // Payment info
+          total_collected: data.payments?.total_collected || 0,
+          total_payments: data.payments?.total_count || 0,
+          collection_rate: data.total_income > 0 
+            ? Math.round(((data.payments?.total_collected || 0) / data.total_income) * 100) 
+            : 0,
+        }
+        
+        setReportData(formattedData)
         setGenerated(true)
       } else if (response?.data) {
-        setReportData(response.data)
+        const data = response.data
+        setReportData({
+          ...data,
+          academic_year: data.academic_year || filters.academic_year,
+          income_by_category: data.income_by_category 
+            ? Object.entries(data.income_by_category).map(([name, value]) => ({
+                name: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), value
+              })) : [],
+          expenses_by_category: data.expenses_by_category 
+            ? Object.entries(data.expenses_by_category).map(([name, value]) => ({
+                name: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), value
+              })) : [],
+        })
         setGenerated(true)
       } else {
         toast.error('Failed to generate report. No data available.')
@@ -72,7 +143,9 @@ function FinancialReport() {
 
   const handleExportPDF = () => {
     if (reportRef.current) {
-      exportToPDF(reportRef.current, `Financial_Report_${filters.academic_year.replace('/', '_')}_${filters.term.replace(' ', '_')}`)
+      const year = filters.academic_year.replace('/', '_')
+      const term = filters.term.replace(' ', '_')
+      exportToPDF(reportRef.current, `Financial_Report_${year}_${term}`)
     }
   }
 
@@ -80,6 +153,7 @@ function FinancialReport() {
     <div className="space-y-6 max-w-5xl animate-fade-in-up">
       <PageHeader
         title="Financial Report"
+        subtitle={`Academic Year ${currentYear}`}
         actions={
           <button onClick={() => navigate('/reports')} className="btn btn-secondary">
             <ArrowLeft size={18} /> Back
@@ -89,16 +163,38 @@ function FinancialReport() {
 
       <Card>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <FormSelect label="Report Type" value={filters.report_type} onChange={(e) => setFilters(prev => ({ ...prev, report_type: e.target.value }))}
-            options={[{ value: 'summary', label: 'Summary' }, { value: 'income_statement', label: 'Income Statement' }, { value: 'fee_collection', label: 'Fee Collection' }]} />
-          <FormSelect label="Academic Year" value={filters.academic_year} onChange={(e) => setFilters(prev => ({ ...prev, academic_year: e.target.value }))}
-            options={[{ value: '2024/2025', label: '2024/2025' }]} />
-          <FormSelect label="Term" value={filters.term} onChange={(e) => setFilters(prev => ({ ...prev, term: e.target.value }))}
-            options={[{ value: 'Term 1', label: 'Term 1' }, { value: 'Term 2', label: 'Term 2' }]} />
+          <FormSelect 
+            label="Report Type" 
+            value={filters.report_type} 
+            onChange={(e) => setFilters(prev => ({ ...prev, report_type: e.target.value }))}
+            options={[
+              { value: 'summary', label: 'Summary' },
+              { value: 'income_statement', label: 'Income Statement' },
+              { value: 'fee_collection', label: 'Fee Collection' },
+            ]} 
+          />
+          <FormSelect 
+            label="Academic Year" 
+            value={filters.academic_year} 
+            onChange={(e) => setFilters(prev => ({ ...prev, academic_year: e.target.value }))}
+            options={ACADEMIC_YEAR_OPTIONS} 
+          />
+          <FormSelect 
+            label="Term" 
+            value={filters.term} 
+            onChange={(e) => setFilters(prev => ({ ...prev, term: e.target.value }))}
+            options={TERM_OPTIONS} 
+          />
         </div>
         <div className="flex gap-3 mt-4">
-          <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<DollarSign size={18} />}>Generate Report</Button>
-          {generated && <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>Export PDF</Button>}
+          <Button onClick={handleGenerate} variant="primary" loading={loading} icon={<DollarSign size={18} />}>
+            Generate Report
+          </Button>
+          {generated && (
+            <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>
+              Export PDF
+            </Button>
+          )}
         </div>
       </Card>
 
@@ -113,11 +209,11 @@ function FinancialReport() {
 
       {generated && reportData && (
         <div ref={reportRef} className="space-y-6">
-          {/* Report Title - visible in print only */}
+          {/* Report Title */}
           <div className="hidden print:block text-center mb-6">
             <h2 className="text-xl font-bold text-gray-900">Financial Report</h2>
             <p className="text-sm text-gray-500">
-              {filters.academic_year} • {filters.term} • {filters.report_type === 'summary' ? 'Summary' : filters.report_type === 'income_statement' ? 'Income Statement' : 'Fee Collection'}
+              {reportData.academic_year || filters.academic_year} • {filters.term}
             </p>
             <hr className="mt-3 border-gray-300" />
           </div>
@@ -125,90 +221,110 @@ function FinancialReport() {
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'Total Income', value: `SSP ${(reportData.total_income || 0).toLocaleString()}`, color: 'text-green-600', icon: TrendingUp },
-              { label: 'Total Expenses', value: `SSP ${(reportData.total_expenses || 0).toLocaleString()}`, color: 'text-red-600', icon: TrendingDown },
-              { label: 'Net Income', value: `SSP ${(reportData.balance || reportData.net_income || 0).toLocaleString()}`, color: 'text-primary-600', icon: DollarSign },
-              { label: 'Profit Margin', value: `${reportData.profit_margin || 0}%`, color: 'text-emerald-600', icon: TrendingUp },
+              { label: 'Total Income', value: `SSP ${(reportData.total_income || 0).toLocaleString()}`, color: 'text-green-600 bg-green-100', icon: TrendingUp },
+              { label: 'Total Expenses', value: `SSP ${(reportData.total_expenses || 0).toLocaleString()}`, color: 'text-red-600 bg-red-100', icon: TrendingDown },
+              { label: 'Balance', value: `SSP ${(reportData.balance || 0).toLocaleString()}`, color: `${(reportData.balance || 0) >= 0 ? 'text-green-600 bg-green-100' : 'text-red-600 bg-red-100'}`, icon: DollarSign },
+              { label: 'Payments', value: `${(reportData.total_payments || 0).toLocaleString()}`, color: 'text-blue-600 bg-blue-100', icon: DollarSign },
             ].map((stat, i) => (
               <div key={i} className="stat-card">
-                <div className="flex items-center gap-2 mb-2">
-                  <stat.icon size={16} className={stat.color} />
-                </div>
-                <div className={`stat-card-value ${stat.color}`}>{stat.value}</div>
+                <div className={`stat-card-icon ${stat.color}`}><stat.icon size={20} /></div>
+                <div className="stat-card-value text-sm">{stat.value}</div>
                 <div className="stat-card-label">{stat.label}</div>
               </div>
             ))}
           </div>
 
-          {/* Charts */}
-          {reportData.monthly_breakdown && reportData.income_by_category && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card title="Monthly Income vs Expenses">
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={reportData.monthly_breakdown}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="expense" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-
-              <Card title="Income by Category">
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={reportData.income_by_category} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                        {reportData.income_by_category.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                      </Pie>
-                      <Tooltip />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-            </div>
+          {/* Collection Rate */}
+          {reportData.collection_rate !== undefined && (
+            <Card title="Fee Collection">
+              <div className="text-center mb-4">
+                <p className="text-4xl font-bold text-primary-600">{reportData.collection_rate || 0}%</p>
+                <p className="text-sm text-gray-500">Collection Rate</p>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-3">
+                <div 
+                  className="bg-primary-600 h-4 rounded-full" 
+                  style={{ width: `${Math.min(reportData.collection_rate || 0, 100)}%` }} 
+                />
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-green-600 font-medium">
+                  Collected: SSP {(reportData.total_collected || 0).toLocaleString()}
+                </span>
+                <span className="text-red-600 font-medium">
+                  Outstanding: SSP {((reportData.total_income || 0) - (reportData.total_collected || 0)).toLocaleString()}
+                </span>
+              </div>
+            </Card>
           )}
 
-          {reportData.expenses_by_category && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card title="Expenses by Category">
-                <div className="h-72">
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Income by Category */}
+            <Card title="Income by Category">
+              <div className="h-72">
+                {reportData.income_by_category && reportData.income_by_category.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={reportData.expenses_by_category} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                        {reportData.expenses_by_category.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
+                      <Pie 
+                        data={reportData.income_by_category} 
+                        cx="50%" cy="50%" 
+                        outerRadius={90} 
+                        dataKey="value" 
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      >
+                        {reportData.income_by_category.map((_, i) => (
+                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        ))}
                       </Pie>
                       <Tooltip />
                       <Legend />
                     </PieChart>
                   </ResponsiveContainer>
-                </div>
-              </Card>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">No income data</div>
+                )}
+              </div>
+            </Card>
 
-              {reportData.collection_rate !== undefined && (
-                <Card title="Fee Collection Status">
-                  <div className="space-y-4">
-                    <div className="text-center">
-                      <p className="text-4xl font-bold text-primary-600">{reportData.collection_rate || 0}%</p>
-                      <p className="text-sm text-gray-500">Collection Rate</p>
-                    </div>
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
-                      <div className="bg-primary-600 h-4 rounded-full" style={{ width: `${Math.min(reportData.collection_rate || 0, 100)}%` }} />
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-green-600">Collected: SSP {(((reportData.total_income || 0) * (reportData.collection_rate || 0) / 100)).toLocaleString()}</span>
-                      <span className="text-red-600">Outstanding: SSP {(reportData.outstanding_fees || 0).toLocaleString()}</span>
-                    </div>
-                  </div>
-                </Card>
-              )}
-            </div>
+            {/* Expenses by Category */}
+            <Card title="Expenses by Category">
+              <div className="h-72">
+                {reportData.expenses_by_category && reportData.expenses_by_category.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie 
+                        data={reportData.expenses_by_category} 
+                        cx="50%" cy="50%" 
+                        outerRadius={90} 
+                        dataKey="value" 
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      >
+                        {reportData.expenses_by_category.map((_, i) => (
+                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">No expense data</div>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          {/* Empty State */}
+          {(!reportData.income_by_category || reportData.income_by_category.length === 0) && 
+           (!reportData.expenses_by_category || reportData.expenses_by_category.length === 0) && (
+            <Card>
+              <div className="text-center py-8 text-gray-500">
+                <DollarSign size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No financial data available for {reportData.academic_year || filters.academic_year}.</p>
+                <p className="text-xs">Record transactions to see financial reports.</p>
+              </div>
+            </Card>
           )}
         </div>
       )}
