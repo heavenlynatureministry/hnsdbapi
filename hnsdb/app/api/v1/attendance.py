@@ -384,3 +384,66 @@ async def get_attendance_by_class(
             "attendance_rate": attendance_rate
         }
     }
+
+
+
+@router.post("/reports/generate")
+async def generate_attendance_report(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Generate attendance report"""
+    db = get_database()
+    
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    class_id = body.get("class_id")
+    month = body.get("month", datetime.utcnow().strftime("%Y-%m"))
+    
+    filter_query = {}
+    if class_id:
+        try:
+            filter_query["class_id"] = ObjectId(class_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid class ID")
+    
+    # Filter by month
+    filter_query["date"] = {"$regex": f"^{month}"}
+    
+    records = await db.attendance.find(filter_query).to_list(length=None)
+    
+    # Generate report data
+    daily_stats = {}
+    for record in records:
+        date = record.get("date", "")
+        status = record.get("status", "unmarked")
+        if date not in daily_stats:
+            daily_stats[date] = {"present": 0, "absent": 0, "excused": 0, "late": 0, "total": 0}
+        daily_stats[date][status] = daily_stats[date].get(status, 0) + 1
+        daily_stats[date]["total"] += 1
+    
+    report = []
+    for date, stats in sorted(daily_stats.items()):
+        rate = round((stats["present"] + stats["late"]) / stats["total"] * 100, 1) if stats["total"] > 0 else 0
+        report.append({
+            "date": date,
+            "present": stats["present"],
+            "absent": stats["absent"],
+            "excused": stats["excused"],
+            "late": stats["late"],
+            "total": stats["total"],
+            "attendance_rate": rate
+        })
+    
+    return {
+        "success": True,
+        "message": "Report generated",
+        "data": {
+            "month": month,
+            "total_records": len(records),
+            "daily_report": report
+        }
+    }
