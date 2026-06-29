@@ -14,6 +14,16 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+function getCurrentAcademicYear() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const startYear = month === 1 ? year - 1 : year
+  return `${startYear}/${startYear + 1}`
+}
+
+const currentYear = getCurrentAcademicYear()
+
 function SettingsPage() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const { theme, toggleTheme } = useTheme()
@@ -26,7 +36,7 @@ function SettingsPage() {
     language: 'en',
     timezone: 'Africa/Juba',
     date_format: 'DD/MM/YYYY',
-    default_academic_year: '2024/2025',
+    default_academic_year: currentYear,
     terms_per_year: '3',
     pass_mark_percentage: '50',
     max_students_per_class: '25',
@@ -61,11 +71,15 @@ function SettingsPage() {
     try {
       const response = await schoolAPI.getSettings()
       if (response?.success && response.data) {
-        setSettings(prev => ({ ...prev, ...response.data }))
+        setSettings(prev => ({ 
+          ...prev, 
+          ...response.data,
+          // Ensure academic year is current if not set
+          default_academic_year: response.data.default_academic_year || response.data.current_academic_year || currentYear,
+        }))
       }
     } catch (error) {
       console.error('Failed to fetch settings:', error)
-      // Use defaults if API fails
     } finally {
       setLoading(false)
     }
@@ -99,7 +113,7 @@ function SettingsPage() {
   const handleReset = () => {
     if (!confirm('Reset all settings to defaults?')) return
     fetchSettings()
-    toast.success('Settings reset to defaults')
+    toast.success('Settings reloaded from server')
   }
 
   const sections = [
@@ -120,7 +134,7 @@ function SettingsPage() {
         actions={
           <div className="flex gap-2">
             <Button onClick={handleReset} variant="secondary" icon={<RotateCcw size={18} />}>
-              Reset
+              Reload
             </Button>
             <Button onClick={handleSave} variant="primary" loading={saving} icon={<Save size={18} />}>
               Save Settings
@@ -160,7 +174,7 @@ function SettingsPage() {
                   <FormSelect label="Language" name="language" value={settings.language} onChange={handleChange}
                     options={[{ value: 'en', label: 'English' }, { value: 'ar', label: 'Arabic' }]} />
                   <FormSelect label="Timezone" name="timezone" value={settings.timezone} onChange={handleChange}
-                    options={[{ value: 'Africa/Juba', label: 'Africa/Juba' }, { value: 'Africa/Nairobi', label: 'Africa/Nairobi' }]} />
+                    options={[{ value: 'Africa/Juba', label: 'Africa/Juba (GMT+2)' }, { value: 'Africa/Nairobi', label: 'Africa/Nairobi (GMT+3)' }]} />
                 </div>
                 <FormSelect label="Date Format" name="date_format" value={settings.date_format} onChange={handleChange}
                   options={[{ value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' }, { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' }]} />
@@ -191,15 +205,15 @@ function SettingsPage() {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <FormInput label="Default Academic Year" name="default_academic_year" value={settings.default_academic_year} onChange={handleChange} />
-                  <FormInput label="Terms Per Year" name="terms_per_year" type="number" value={settings.terms_per_year} onChange={handleChange} />
+                  <FormInput label="Terms Per Year" name="terms_per_year" type="number" value={settings.terms_per_year} onChange={handleChange} min="1" max="4" />
                 </div>
-                <FormInput label="Pass Mark Percentage" name="pass_mark_percentage" type="number" value={settings.pass_mark_percentage} onChange={handleChange} />
+                <FormInput label="Pass Mark Percentage" name="pass_mark_percentage" type="number" value={settings.pass_mark_percentage} onChange={handleChange} min="0" max="100" />
                 <div className="grid grid-cols-3 gap-4">
-                  <FormInput label="Max Students/Class" name="max_students_per_class" type="number" value={settings.max_students_per_class} onChange={handleChange} />
-                  <FormInput label="Nursery Max" name="nursery_max_students" type="number" value={settings.nursery_max_students} onChange={handleChange} />
-                  <FormInput label="Primary Max" name="primary_max_students" type="number" value={settings.primary_max_students} onChange={handleChange} />
+                  <FormInput label="Max Students/Class" name="max_students_per_class" type="number" value={settings.max_students_per_class} onChange={handleChange} min="1" />
+                  <FormInput label="Nursery Max" name="nursery_max_students" type="number" value={settings.nursery_max_students} onChange={handleChange} min="1" />
+                  <FormInput label="Primary Max" name="primary_max_students" type="number" value={settings.primary_max_students} onChange={handleChange} min="1" />
                 </div>
-                <FormInput label="Minimum Enrollment Age" name="min_enrollment_age" type="number" value={settings.min_enrollment_age} onChange={handleChange} />
+                <FormInput label="Minimum Enrollment Age" name="min_enrollment_age" type="number" value={settings.min_enrollment_age} onChange={handleChange} min="2" max="10" />
               </div>
             </Card>
           )}
@@ -208,12 +222,12 @@ function SettingsPage() {
             <Card title="Attendance Settings" icon={<Clock size={20} />}>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="Chronic Absence Threshold (%)" name="chronic_absence_threshold" type="number" value={settings.chronic_absence_threshold} onChange={handleChange} />
-                  <FormInput label="Warning Threshold (%)" name="attendance_warning_threshold" type="number" value={settings.attendance_warning_threshold} onChange={handleChange} />
+                  <FormInput label="Chronic Absence Threshold (%)" name="chronic_absence_threshold" type="number" value={settings.chronic_absence_threshold} onChange={handleChange} min="0" max="100" />
+                  <FormInput label="Warning Threshold (%)" name="attendance_warning_threshold" type="number" value={settings.attendance_warning_threshold} onChange={handleChange} min="0" max="100" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="Consecutive Warning (days)" name="consecutive_absence_warning" type="number" value={settings.consecutive_absence_warning} onChange={handleChange} />
-                  <FormInput label="Consecutive Critical (days)" name="consecutive_absence_critical" type="number" value={settings.consecutive_absence_critical} onChange={handleChange} />
+                  <FormInput label="Consecutive Warning (days)" name="consecutive_absence_warning" type="number" value={settings.consecutive_absence_warning} onChange={handleChange} min="1" />
+                  <FormInput label="Consecutive Critical (days)" name="consecutive_absence_critical" type="number" value={settings.consecutive_absence_critical} onChange={handleChange} min="1" />
                 </div>
               </div>
             </Card>
@@ -246,9 +260,9 @@ function SettingsPage() {
           {activeSection === 'security' && (
             <Card title="Security Settings" icon={<Shield size={20} />}>
               <div className="space-y-4">
-                <FormInput label="Session Timeout (minutes)" name="session_timeout" type="number" value={settings.session_timeout} onChange={handleChange} />
-                <FormInput label="Max Login Attempts" name="max_login_attempts" type="number" value={settings.max_login_attempts} onChange={handleChange} />
-                <FormInput label="Password Expiry (days)" name="password_expiry_days" type="number" value={settings.password_expiry_days} onChange={handleChange} />
+                <FormInput label="Session Timeout (minutes)" name="session_timeout" type="number" value={settings.session_timeout} onChange={handleChange} min="5" max="480" />
+                <FormInput label="Max Login Attempts" name="max_login_attempts" type="number" value={settings.max_login_attempts} onChange={handleChange} min="1" max="10" />
+                <FormInput label="Password Expiry (days)" name="password_expiry_days" type="number" value={settings.password_expiry_days} onChange={handleChange} min="30" max="365" />
               </div>
             </Card>
           )}
