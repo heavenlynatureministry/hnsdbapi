@@ -143,8 +143,7 @@ async def check_school_day(
     if check_date:
         try: target_date = datetime.fromisoformat(check_date)
         except ValueError: raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    else:
-        target_date = datetime.utcnow()
+    else: target_date = datetime.utcnow()
     
     day_of_week = target_date.weekday()
     is_weekend = day_of_week >= 5
@@ -199,10 +198,7 @@ async def create_event(
 
 
 @router.get("/events/{event_id}")
-async def get_event(
-    event_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def get_event(event_id: str = Path(...), current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get single event"""
     db = get_database()
     event = await db.school_events.find_one({"_id": ObjectId(event_id)})
@@ -213,8 +209,7 @@ async def get_event(
 
 @router.put("/events/{event_id}")
 async def update_event(
-    event_id: str = Path(...),
-    event: SchoolEventUpdate = Body(...),
+    event_id: str = Path(...), event: SchoolEventUpdate = Body(...),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
     """Update school event"""
@@ -231,8 +226,7 @@ async def update_event(
 
 @router.delete("/events/{event_id}")
 async def cancel_event(
-    event_id: str = Path(...),
-    reason: Optional[str] = Query(None),
+    event_id: str = Path(...), reason: Optional[str] = Query(None),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
     """Cancel school event"""
@@ -275,16 +269,13 @@ async def add_board_member(
 
 @router.put("/board/{member_id}")
 async def update_board_member(
-    member_id: str = Path(...),
-    member: BoardMemberCreate = Body(...),
+    member_id: str = Path(...), member: BoardMemberCreate = Body(...),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
     """Update board member"""
     db = get_database()
     result = await db.board_members.find_one_and_update(
-        {"_id": ObjectId(member_id)},
-        {"$set": {**member.dict(), "updated_at": datetime.utcnow()}},
-        return_document=True
+        {"_id": ObjectId(member_id)}, {"$set": {**member.dict(), "updated_at": datetime.utcnow()}}, return_document=True
     )
     if not result: raise HTTPException(status_code=404, detail="Member not found")
     result = parse_mongo_document(result)
@@ -293,8 +284,7 @@ async def update_board_member(
 
 @router.delete("/board/{member_id}")
 async def remove_board_member(
-    member_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(require_role("admin"))
+    member_id: str = Path(...), current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
     """Remove board member"""
     db = get_database()
@@ -327,7 +317,8 @@ async def get_subjects(current_user: Dict[str, Any] = Depends(get_current_user))
 async def get_settings(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get school settings"""
     db = get_database()
-    settings_doc = await db.settings.find_one({}) or {}
+    # Try both collection names
+    settings_doc = await db.settings.find_one({}) or await db.system_settings.find_one({}) or {}
     if settings_doc:
         settings_doc = parse_mongo_document(settings_doc)
     settings_doc["current_academic_year"] = _get_current_academic_year()
@@ -345,7 +336,7 @@ async def get_settings(current_user: Dict[str, Any] = Depends(get_current_user))
 
 @router.put("/settings")
 async def update_settings(
-    request: Request = None,
+    request: Request,
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
     """Update school settings"""
@@ -355,10 +346,21 @@ async def update_settings(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     
+    if not body:
+        raise HTTPException(status_code=400, detail="No data to update")
+    
     body["updated_at"] = datetime.utcnow()
-    body["updated_by"] = str(current_user["_id"])
-    await db.settings.update_one({}, {"$set": body}, upsert=True)
-    return {"success": True, "message": "Settings updated"}
+    body["updated_by"] = str(current_user.get("_id", ""))
+    
+    try:
+        # Try settings collection first, fallback to system_settings
+        result = await db.settings.update_one({}, {"$set": body}, upsert=True)
+        if result.matched_count == 0 and result.upserted_id is None:
+            # Try system_settings collection
+            await db.system_settings.update_one({}, {"$set": body}, upsert=True)
+        return {"success": True, "message": "Settings saved successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save settings: {str(e)}")
 
 
 # =========================================================================
@@ -368,7 +370,7 @@ async def update_settings(
 async def initialize_school(current_user: Dict[str, Any] = Depends(require_role("admin"))):
     """Initialize/reinitialize school data"""
     db = get_database()
-    await db.settings.update_one({}, {"$set": {
+    settings_data = {
         "school_name": "Heavenly Nature Nursery & Primary School",
         "motto": "Nurturing Right Leaders",
         "academic_year": _get_current_academic_year(),
@@ -381,7 +383,12 @@ async def initialize_school(current_user: Dict[str, Any] = Depends(require_role(
             "Business Studies", "History", "Geography", "Civics"
         ],
         "updated_at": datetime.utcnow()
-    }}, upsert=True)
+    }
+    
+    try:
+        await db.settings.update_one({}, {"$set": settings_data}, upsert=True)
+    except Exception:
+        await db.system_settings.update_one({}, {"$set": settings_data}, upsert=True)
     
     return {
         "success": True, "message": "School initialized successfully",
