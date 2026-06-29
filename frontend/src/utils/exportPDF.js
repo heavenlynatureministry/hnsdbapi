@@ -50,7 +50,6 @@ export const exportToPDF = (element, filename = 'report') => {
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
           
-          /* Reset and base */
           * { margin: 0; padding: 0; box-sizing: border-box; }
           
           html, body {
@@ -77,45 +76,43 @@ export const exportToPDF = (element, filename = 'report') => {
               background: transparent;
             }
             
-            /* Main container - reduced white background opacity for better watermark visibility */
-            .page-container {
-              position: relative;
-              width: 210mm;
-              min-height: 297mm;
-              margin: 0 auto;
-              padding: 20mm 15mm 20mm 15mm;
-              background: rgba(255, 255, 255, 0.85);
-              backdrop-filter: none;
-            }
-            
-            /* Watermark background on every page */
+            /* Watermark - full page background */
             .watermark {
               position: fixed;
               top: 0;
               left: 0;
               width: 100%;
               height: 100%;
-              z-index: -1;
+              z-index: 0;
               pointer-events: none;
             }
             .watermark img {
               width: 100%;
               height: 100%;
               object-fit: cover;
-              opacity: 0.25;
+              opacity: 0.30;
             }
             
-            /* Letterhead - positioned inside the watermark margins */
+            /* Page container - transparent to show watermark */
+            .page-container {
+              position: relative;
+              width: 210mm;
+              min-height: 297mm;
+              margin: 0 auto;
+              padding: 20mm 15mm 20mm 15mm;
+              background: transparent;
+              z-index: 1;
+            }
+            
+            /* Letterhead */
             .letterhead {
               text-align: center;
-              padding-bottom: 12px;
-              margin-bottom: 20px;
-              border-bottom: 3px double #1a56db;
+              padding-bottom: 10px;
+              margin-bottom: 18px;
+              border-bottom: 3px double rgba(26, 86, 219, 0.6);
               position: relative;
-              z-index: 1;
-              background: rgba(255, 255, 255, 0.7);
-              border-radius: 4px;
-              padding: 12px;
+              z-index: 2;
+              background: transparent;
             }
             .letterhead img {
               max-width: 100%;
@@ -128,82 +125,102 @@ export const exportToPDF = (element, filename = 'report') => {
               display: none;
               text-align: center;
               padding: 8px 0;
+              background: transparent;
             }
             
-            /* Report content area with semi-transparent background */
+            /* Report content - transparent to show watermark */
             .report-content {
               position: relative;
-              z-index: 1;
-              background: rgba(255, 255, 255, 0.75);
-              border-radius: 6px;
-              padding: 16px;
-              margin: 8px 0;
+              z-index: 2;
+              background: transparent;
             }
             
-            /* Tables and cards with semi-transparent backgrounds */
-            .report-content table {
-              background: rgba(255, 255, 255, 0.85);
-            }
-            .report-content table thead {
-              background: rgba(26, 86, 219, 0.15);
-            }
-            .report-content table tbody tr:nth-child(even) {
-              background: rgba(249, 250, 251, 0.6);
-            }
-            .report-content table tbody tr:nth-child(odd) {
-              background: rgba(255, 255, 255, 0.5);
-            }
+            /* Make cards and tables slightly translucent to show watermark */
             .report-content .card,
             .report-content [class*="card"],
-            .report-content [class*="bg-white"],
-            .report-content [class*="bg-gray-50"] {
-              background: rgba(255, 255, 255, 0.8) !important;
+            .report-content table {
+              background: rgba(255, 255, 255, 0.65) !important;
+              backdrop-filter: none;
             }
             
-            /* Footer with semi-transparent background */
-            .report-footer {
-              position: relative;
-              z-index: 1;
-              text-align: center;
-              padding-top: 12px;
-              margin-top: auto;
-              border-top: 1px solid #d1d5db;
-              font-size: 9px;
-              color: #6b7280;
-              background: rgba(255, 255, 255, 0.7);
-              border-radius: 4px;
-              padding: 10px;
-            }
-            .report-footer p {
-              margin: 1px 0;
-              line-height: 1.4;
-            }
-            .report-footer .footer-brand {
-              font-weight: 500;
-              color: #4b5563;
+            .report-content table thead {
+              background: rgba(26, 86, 219, 0.12) !important;
             }
             
-            /* Ensure text remains readable over watermark */
-            h1, h2, h3, h4, h5, h6, p, span, li, td, th, div {
-              text-shadow: 0 0 1px rgba(255, 255, 255, 0.3);
+            .report-content table tbody tr:nth-child(even) {
+              background: rgba(249, 250, 251, 0.5) !important;
             }
             
-            /* Dark backgrounds should be semi-transparent in print */
+            .report-content table tbody tr:nth-child(odd) {
+              background: rgba(255, 255, 255, 0.4) !important;
+            }
+            
+            /* Remove solid white backgrounds */
+            .bg-white,
+            [class*="bg-white"],
+            .bg-gray-50,
+            [class*="bg-gray-50"],
+            .bg-gray-100,
+            [class*="bg-gray-100"],
             .dark .bg-gray-800,
             .dark .bg-gray-900,
             [class*="bg-gray-800"],
             [class*="bg-gray-900"] {
-              background: rgba(249, 250, 251, 0.85) !important;
+              background: rgba(255, 255, 255, 0.55) !important;
             }
+            
+            /* Stat cards - slightly more opaque for readability */
+            .stat-card {
+              background: rgba(255, 255, 255, 0.7) !important;
+            }
+            
+            /* Footer */
+            .report-footer {
+              position: relative;
+              z-index: 2;
+              text-align: center;
+              padding-top: 10px;
+              margin-top: 20px;
+              border-top: 1px solid rgba(209, 213, 219, 0.6);
+              font-size: 9px;
+              color: #4b5563;
+              background: transparent;
+            }
+            .report-footer p {
+              margin: 2px 0;
+              line-height: 1.4;
+            }
+            .report-footer .footer-brand {
+              font-weight: 600;
+              color: #374151;
+            }
+            
+            /* Ensure text is readable */
+            h1, h2, h3, h4, h5, h6 {
+              color: #111827;
+            }
+            p, span, li, td, th, div {
+              color: #1f2937;
+            }
+            
+            /* Dark mode overrides */
+            .dark { 
+              background: transparent !important; 
+              color: #1f2937 !important;
+            }
+            .dark .text-white { color: #1f2937 !important; }
+            .dark .text-gray-300 { color: #374151 !important; }
+            .dark .text-gray-400 { color: #4b5563 !important; }
+            .dark .border-gray-700 { border-color: rgba(209, 213, 219, 0.5) !important; }
           }
           
-          /* Screen preview styles */
+          /* Screen preview */
           @media screen {
             .page-container {
               max-width: 900px;
               margin: 0 auto;
               padding: 30px 25px;
-              background: rgba(255, 255, 255, 0.85);
+              background: transparent;
             }
             .watermark {
               position: fixed;
@@ -211,18 +228,17 @@ export const exportToPDF = (element, filename = 'report') => {
               left: 0;
               width: 100%;
               height: 100%;
-              z-index: -1;
+              z-index: 0;
               pointer-events: none;
             }
             .watermark img {
               width: 100%;
               height: 100%;
               object-fit: cover;
-              opacity: 0.2;
+              opacity: 0.22;
             }
             .letterhead {
-              background: rgba(255, 255, 255, 0.7);
-              border-radius: 4px;
+              background: transparent;
               padding: 12px;
             }
             .letterhead img {
@@ -233,54 +249,37 @@ export const exportToPDF = (element, filename = 'report') => {
               margin: 0 auto;
             }
             .report-content {
-              background: rgba(255, 255, 255, 0.75);
-              border-radius: 6px;
-              padding: 16px;
-              margin: 8px 0;
+              background: transparent;
+            }
+            .report-content .card,
+            .report-content table {
+              background: rgba(255, 255, 255, 0.7) !important;
             }
             .report-footer {
               text-align: center;
               padding-top: 12px;
               margin-top: 30px;
-              border-top: 1px solid #e5e7eb;
+              border-top: 1px solid rgba(209, 213, 219, 0.5);
               font-size: 9px;
-              color: #9ca3af;
-              background: rgba(255, 255, 255, 0.7);
-              border-radius: 4px;
-              padding: 10px;
+              color: #6b7280;
+              background: transparent;
+            }
+            .bg-white,
+            [class*="bg-white"],
+            .bg-gray-50,
+            [class*="bg-gray-50"] {
+              background: rgba(255, 255, 255, 0.6) !important;
             }
           }
-          
-          /* Force light backgrounds to be semi-transparent */
-          .bg-white,
-          [class*="bg-white"],
-          .bg-gray-50,
-          [class*="bg-gray-50"],
-          .bg-gray-100,
-          [class*="bg-gray-100"] {
-            background: rgba(255, 255, 255, 0.8) !important;
-          }
-          
-          /* Dark mode overrides for print */
-          .dark { 
-            background: transparent !important; 
-            color: #1f2937 !important;
-          }
-          .dark .text-white { color: #1f2937 !important; }
-          .dark .bg-gray-800 { background: rgba(249, 250, 251, 0.8) !important; }
-          .dark .bg-gray-900 { background: rgba(243, 244, 246, 0.8) !important; }
-          .dark .text-gray-300 { color: #374151 !important; }
-          .dark .text-gray-400 { color: #4b5563 !important; }
-          .dark .border-gray-700 { border-color: #e5e7eb !important; }
         </style>
       </head>
       <body>
-        <!-- Watermark Background (appears on every page) -->
+        <!-- Watermark Background -->
         <div class="watermark">
           <img src="${window.location.origin}/watermark-A4.jpg" alt="Watermark Background" onerror="this.style.display='none';" />
         </div>
         
-        <!-- Page Container with margins and reduced opacity background -->
+        <!-- Page Container -->
         <div class="page-container">
           <!-- Letterhead Header -->
           <div class="letterhead">
