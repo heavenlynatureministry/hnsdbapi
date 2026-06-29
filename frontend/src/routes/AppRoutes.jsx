@@ -174,12 +174,13 @@ function AppRoutes() {
             </Route>
 
             {/* --------------------------------------------------------- */}
-            {/* FINANCIAL */}
+            {/* FINANCIAL - Available to admin and accountant */}
             {/* --------------------------------------------------------- */}
-            <Route element={<AdminRoute />}>
+            <Route element={<AccountantRoute />}>
               <Route path="/financial">
                 <Route index element={<TransactionsList />} />
                 <Route path="new" element={<TransactionForm />} />
+                <Route path="edit/:id" element={<TransactionForm />} />
                 <Route path="fees" element={<FeeStructures />} />
                 <Route path="payments" element={<PaymentsPage />} />
                 <Route path="budget" element={<BudgetPage />} />
@@ -276,6 +277,8 @@ export const routeMetadata = {
   '/exams/report-cards': { title: 'Report Cards', parent: 'Exams' },
   '/exams/analytics': { title: 'Exam Analytics', parent: 'Exams' },
   '/financial': { title: 'Financial', icon: 'DollarSign' },
+  '/financial/new': { title: 'New Transaction', parent: 'Financial' },
+  '/financial/edit/:id': { title: 'Edit Transaction', parent: 'Financial' },
   '/financial/fees': { title: 'Fee Structures', parent: 'Financial' },
   '/financial/payments': { title: 'Payments', parent: 'Financial' },
   '/financial/budget': { title: 'Budget', parent: 'Financial' },
