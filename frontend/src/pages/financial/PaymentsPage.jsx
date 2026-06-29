@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import financialAPI from '../../api/financial'
 import studentsAPI from '../../api/students'
-import api from '../../api/axios'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -122,41 +121,39 @@ function PaymentsPage() {
   const fetchStudents = async () => {
     setLoadingStudents(true)
     try {
-      // Direct API call to see raw response
-      const response = await api.get('/students', { params: { status: 'active', limit: 200 } })
-      console.log('DIRECT API response:', response)
-      console.log('response.data:', response?.data)
-      console.log('response.data.data:', response?.data?.data)
-      console.log('response.data.data.students:', response?.data?.data?.students)
+      // Try without params first (bypasses the 422 status=active issue)
+      const response = await studentsAPI.getAll({ limit: 200 })
+      console.log('Students response:', response)
 
       let studentList = []
 
-      // Try all possible paths
-      const d = response?.data
-      if (d?.data?.students && Array.isArray(d.data.students)) {
-        studentList = d.data.students
-      } else if (d?.students && Array.isArray(d.students)) {
-        studentList = d.students
-      } else if (Array.isArray(d?.data)) {
-        studentList = d.data
-      } else if (Array.isArray(d)) {
-        studentList = d
-      } else if (d?.data && Array.isArray(d.data)) {
-        studentList = d.data
+      if (response?.data?.students && Array.isArray(response.data.students)) {
+        studentList = response.data.students
+      } else if (response?.data?.data?.students && Array.isArray(response.data.data.students)) {
+        studentList = response.data.data.students
+      } else if (Array.isArray(response?.data?.data)) {
+        studentList = response.data.data
+      } else if (Array.isArray(response?.data)) {
+        studentList = response.data
+      } else if (response?.students && Array.isArray(response.students)) {
+        studentList = response.students
+      } else if (Array.isArray(response)) {
+        studentList = response
       }
 
-      console.log('FINAL studentList length:', studentList.length)
+      // Filter active only on frontend
+      studentList = studentList.filter(s => s.status === 'active')
+
+      console.log('Students loaded:', studentList.length)
       if (studentList.length > 0) {
-        console.log('First student:', studentList[0])
         setStudents(studentList)
       } else {
-        console.warn('NO STUDENTS FOUND - check API response format above')
-        toast.error('No students found. Please enroll students first.')
+        toast.error('No active students found. Please enroll students first.')
         setStudents([])
       }
     } catch (error) {
       console.error('Failed to fetch students:', error)
-      toast.error('Failed to load students')
+      // Don't show error toast if it's just empty
       setStudents([])
     } finally {
       setLoadingStudents(false)
@@ -173,8 +170,6 @@ function PaymentsPage() {
   }
 
   const handleStudentSelect = (studentId) => {
-    console.log('Student ID selected:', studentId)
-
     if (!studentId) {
       setFormData(prev => ({ ...prev, student_id: '', paid_by: '' }))
       return
@@ -185,7 +180,6 @@ function PaymentsPage() {
     )
 
     if (student) {
-      console.log('Found student:', student.first_name, student.last_name)
       const studentName = `${student.first_name || ''} ${student.last_name || ''}`.trim()
       setFormData(prev => ({
         ...prev,
@@ -193,7 +187,6 @@ function PaymentsPage() {
         paid_by: prev.paid_by || studentName,
       }))
     } else {
-      console.warn('Student not found in list for ID:', studentId)
       setFormData(prev => ({ ...prev, student_id: studentId }))
     }
   }
@@ -227,17 +220,11 @@ function PaymentsPage() {
   const openCreateModal = () => {
     setEditingPayment(null)
     setFormData({
-      student_id: '',
-      amount_paid: '',
-      payment_method: 'cash',
-      payment_type: 'school_fees',
-      fee_type: 'tuition',
-      paid_by: '',
-      transaction_reference: '',
-      academic_year: currentYear,
-      term: currentTerm,
-      status: 'completed',
-      notes: '',
+      student_id: '', amount_paid: '', payment_method: 'cash',
+      payment_type: 'school_fees', fee_type: 'tuition',
+      paid_by: '', transaction_reference: '',
+      academic_year: currentYear, term: currentTerm,
+      status: 'completed', notes: '',
     })
     setStudentSearch('')
     setShowModal(true)
@@ -245,7 +232,6 @@ function PaymentsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    console.log('Form data:', formData)
 
     if (!editingPayment && !formData.student_id) {
       toast.error('Please select a student')
@@ -261,14 +247,12 @@ function PaymentsPage() {
       let response
       if (editingPayment) {
         response = await financialAPI.updatePayment(editingPayment._id, {
-          status: formData.status,
-          amount_paid: parseFloat(formData.amount_paid),
-          payment_method: formData.payment_method,
-          notes: formData.notes,
+          status: formData.status, amount_paid: parseFloat(formData.amount_paid),
+          payment_method: formData.payment_method, notes: formData.notes,
           transaction_reference: formData.transaction_reference,
         })
       } else {
-        const payload = {
+        response = await financialAPI.recordPayment({
           student_id: formData.student_id,
           amount_paid: parseFloat(formData.amount_paid),
           amount: parseFloat(formData.amount_paid),
@@ -281,11 +265,8 @@ function PaymentsPage() {
           term: formData.term,
           status: formData.status,
           notes: formData.notes || undefined,
-        }
-        console.log('Sending payload:', payload)
-        response = await financialAPI.recordPayment(payload)
+        })
       }
-      console.log('API response:', response)
 
       if (response?.success) {
         toast.success(editingPayment ? 'Payment updated!' : 'Payment recorded successfully!')
@@ -321,9 +302,7 @@ function PaymentsPage() {
     return <Badge variant={variants[status] || 'gray'}><span className="flex items-center gap-1">{Icon && <Icon size={12} />}{status || 'unknown'}</span></Badge>
   }
 
-  const totalCollected = payments
-    .filter(p => p.status === 'completed')
-    .reduce((s, p) => s + (p.amount_paid || 0), 0)
+  const totalCollected = payments.filter(p => p.status === 'completed').reduce((s, p) => s + (p.amount_paid || 0), 0)
 
   const studentOptions = [
     { value: '', label: loadingStudents ? 'Loading students...' : `-- Select Student (${students.length} available) --` },
@@ -370,16 +349,7 @@ function PaymentsPage() {
           <div className="table-container">
             <table className="table">
               <thead>
-                <tr>
-                  <th>Receipt</th>
-                  <th>Student</th>
-                  <th>Class</th>
-                  <th>Amount</th>
-                  <th>Method</th>
-                  <th>Date</th>
-                  <th>Status</th>
-                  <th className="text-right">Actions</th>
-                </tr>
+                <tr><th>Receipt</th><th>Student</th><th>Class</th><th>Amount</th><th>Method</th><th>Date</th><th>Status</th><th className="text-right">Actions</th></tr>
               </thead>
               <tbody>
                 {payments.map((payment) => (
@@ -419,74 +389,48 @@ function PaymentsPage() {
             <div>
               <label className="form-label">Student *</label>
               <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  value={studentSearch}
-                  onChange={(e) => setStudentSearch(e.target.value)}
-                  placeholder="Search student by name..."
-                  className="form-input flex-1"
-                />
+                <input type="text" value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} placeholder="Search student by name..." className="form-input flex-1" />
               </div>
-              <FormSelect
-                name="student_id"
-                value={formData.student_id}
-                onChange={(e) => handleStudentSelect(e.target.value)}
-                options={studentOptions}
-                disabled={loadingStudents}
-              />
+              <FormSelect name="student_id" value={formData.student_id} onChange={(e) => handleStudentSelect(e.target.value)} options={studentOptions} disabled={loadingStudents} />
               {students.length === 0 && !loadingStudents && (
-                <p className="text-xs text-yellow-600 mt-1">
-                  No students found. Please enroll students first.
-                </p>
+                <p className="text-xs text-yellow-600 mt-1">No students found. Please enroll students first.</p>
               )}
             </div>
           )}
-
           {editingPayment && (
             <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <p className="text-sm font-medium">{editingPayment.student_name}</p>
               <p className="text-xs text-gray-500">Receipt: {editingPayment.receipt_number}</p>
             </div>
           )}
-
           <div className="grid grid-cols-2 gap-4">
             <FormSelect label="Payment Type" name="payment_type" value={formData.payment_type} onChange={handleChange} disabled={!!editingPayment}
               options={[{ value: 'school_fees', label: 'School Fees' }, { value: 'registration', label: 'Registration' }, { value: 'exam', label: 'Exam Fees' }, { value: 'other', label: 'Other' }]} />
             <FormSelect label="Fee Type" name="fee_type" value={formData.fee_type} onChange={handleChange} disabled={!!editingPayment}
               options={[{ value: 'tuition', label: 'Tuition' }, { value: 'registration', label: 'Registration' }, { value: 'exam', label: 'Examination' }, { value: 'library', label: 'Library' }, { value: 'sports', label: 'Sports' }, { value: 'uniform', label: 'Uniform' }, { value: 'transport', label: 'Transport' }, { value: 'other', label: 'Other' }]} />
           </div>
-
           <FormInput label="Amount Paid (SSP) *" name="amount_paid" type="number" value={formData.amount_paid} onChange={handleChange} required min="0" step="0.01" placeholder="0.00" />
-
           <div className="grid grid-cols-2 gap-4">
             <FormSelect label="Payment Method" name="payment_method" value={formData.payment_method} onChange={handleChange} options={PAYMENT_METHODS} />
             {!editingPayment && <FormInput label="Paid By" name="paid_by" value={formData.paid_by} onChange={handleChange} placeholder="Name of payer" />}
             {editingPayment && <FormSelect label="Status" name="status" value={formData.status} onChange={handleChange} options={STATUS_OPTIONS} />}
           </div>
-
           <FormInput label="Transaction Reference" name="transaction_reference" value={formData.transaction_reference} onChange={handleChange} placeholder="e.g., bank transaction ID" />
-
           <div className="grid grid-cols-2 gap-4">
             <FormSelect label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange} options={ACADEMIC_YEAR_OPTIONS} />
             <FormSelect label="Term" name="term" value={formData.term} onChange={handleChange} options={TERM_OPTIONS} />
           </div>
-
           <FormInput label="Notes" name="notes" value={formData.notes} onChange={handleChange} placeholder="Additional notes..." />
-
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <Button type="submit" variant="primary" loading={saving} icon={<DollarSign size={18} />}>
-              {editingPayment ? 'Update Payment' : 'Record Payment'}
-            </Button>
+            <Button type="submit" variant="primary" loading={saving} icon={<DollarSign size={18} />}>{editingPayment ? 'Update Payment' : 'Record Payment'}</Button>
             <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
           </div>
         </form>
       </Modal>
 
-      <ConfirmDialog 
-        open={!!showDelete} onClose={() => setShowDelete(null)} onConfirm={handleDelete}
+      <ConfirmDialog open={!!showDelete} onClose={() => setShowDelete(null)} onConfirm={handleDelete}
         title="Delete Payment" message="Are you sure you want to delete this payment? This action cannot be undone."
-        confirmText="Delete Payment" variant="danger" 
-      />
+        confirmText="Delete Payment" variant="danger" />
     </div>
   )
 }
