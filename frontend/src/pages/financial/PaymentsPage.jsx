@@ -127,6 +127,7 @@ function PaymentsPage() {
         studentList = studentList?.students || studentList?.data || []
       }
       const safeStudents = Array.isArray(studentList) ? studentList : []
+      console.log('Students loaded:', safeStudents.length) // Debug log
       setStudents(safeStudents)
     } catch (error) {
       console.error('Failed to fetch students:', error)
@@ -146,12 +147,31 @@ function PaymentsPage() {
   }
 
   const handleStudentSelect = (studentId) => {
-    const student = students.find(s => (s._id || s.id) === studentId)
-    setFormData(prev => ({
-      ...prev,
-      student_id: studentId,
-      paid_by: student ? `${student.first_name || ''} ${student.last_name || ''}`.trim() : prev.paid_by,
-    }))
+    console.log('Student selected:', studentId) // Debug log
+    
+    if (!studentId) {
+      setFormData(prev => ({ ...prev, student_id: '', paid_by: '' }))
+      return
+    }
+    
+    // Find student by _id, id, or student_id
+    const student = students.find(s => 
+      (s._id === studentId) || (s.id === studentId) || (s.student_id === studentId)
+    )
+    
+    if (student) {
+      console.log('Found student:', student.first_name, student.last_name) // Debug log
+      const studentName = `${student.first_name || ''} ${student.last_name || ''}`.trim()
+      setFormData(prev => ({
+        ...prev,
+        student_id: studentId,
+        paid_by: prev.paid_by || studentName,
+      }))
+    } else {
+      console.warn('Student not found for ID:', studentId) // Debug log
+      // Still set the ID even if student not found in local list
+      setFormData(prev => ({ ...prev, student_id: studentId }))
+    }
   }
 
   const filteredStudents = studentSearch
@@ -202,6 +222,8 @@ function PaymentsPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
+    console.log('Submitting form data:', formData) // Debug log
+    
     if (!editingPayment && !formData.student_id) {
       toast.error('Please select a student')
       return
@@ -216,7 +238,6 @@ function PaymentsPage() {
       let response
       
       if (editingPayment) {
-        // Update existing payment
         response = await financialAPI.updatePayment(editingPayment._id, {
           status: formData.status,
           amount_paid: parseFloat(formData.amount_paid),
@@ -225,7 +246,6 @@ function PaymentsPage() {
           transaction_reference: formData.transaction_reference,
         })
       } else {
-        // Create new payment
         const payload = {
           student_id: formData.student_id,
           amount_paid: parseFloat(formData.amount_paid),
@@ -240,8 +260,11 @@ function PaymentsPage() {
           status: formData.status,
           notes: formData.notes || undefined,
         }
+        console.log('Sending payload:', payload) // Debug log
         response = await financialAPI.recordPayment(payload)
       }
+      
+      console.log('Response:', response) // Debug log
       
       if (response?.success) {
         toast.success(editingPayment ? 'Payment updated!' : 'Payment recorded successfully!')
@@ -251,6 +274,7 @@ function PaymentsPage() {
         toast.error(response?.message || 'Failed to save payment')
       }
     } catch (error) {
+      console.error('Payment save error:', error) // Debug log
       toast.error(error.message || 'Failed to save payment')
     } finally {
       setSaving(false)
@@ -471,16 +495,6 @@ function PaymentsPage() {
               />
             )}
           </div>
-
-          {editingPayment && (
-            <FormSelect
-              label="Status"
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              options={STATUS_OPTIONS}
-            />
-          )}
 
           <FormInput
             label="Transaction Reference"
