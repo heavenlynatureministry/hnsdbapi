@@ -2,7 +2,7 @@ import api from './axios'
 
 const attendanceAPI = {
   mark: async (data) => api.post('/attendance/mark', data),
-  bulkMark: async (data) => api.post('/attendance/mark/bulk', data),
+  bulkMark: async (data) => api.post('/attendance/mark', data),
   update: async (id, data) => api.put(`/attendance/${id}`, data),
   getByClass: async (classId, params = {}) => api.get(`/attendance/class/${classId}`, { params }),
   getByStudent: async (studentId, params = {}) => api.get(`/attendance/student/${studentId}`, { params }),
