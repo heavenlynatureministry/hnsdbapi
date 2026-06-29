@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import financialAPI from '../../api/financial'
 import studentsAPI from '../../api/students'
+import api from '../../api/axios'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -121,36 +122,35 @@ function PaymentsPage() {
   const fetchStudents = async () => {
     setLoadingStudents(true)
     try {
-      const response = await studentsAPI.getAll({ status: 'active', limit: 200 })
-      console.log('Students API raw response:', response)
+      // Direct API call to see raw response
+      const response = await api.get('/students', { params: { status: 'active', limit: 200 } })
+      console.log('DIRECT API response:', response)
+      console.log('response.data:', response?.data)
+      console.log('response.data.data:', response?.data?.data)
+      console.log('response.data.data.students:', response?.data?.data?.students)
 
       let studentList = []
 
-      // Handle ALL possible response formats
-      if (response?.data?.students) {
-        studentList = response.data.students
-      } else if (response?.data?.data) {
-        studentList = response.data.data
-      } else if (Array.isArray(response?.data)) {
-        studentList = response.data
-      } else if (response?.students) {
-        studentList = response.students
-      } else if (Array.isArray(response)) {
-        studentList = response
-      } else if (response?.data && typeof response.data === 'object') {
-        const data = response.data
-        if (Array.isArray(data.students)) studentList = data.students
-        else if (Array.isArray(data.data)) studentList = data.data
-        else if (Array.isArray(data)) studentList = data
+      // Try all possible paths
+      const d = response?.data
+      if (d?.data?.students && Array.isArray(d.data.students)) {
+        studentList = d.data.students
+      } else if (d?.students && Array.isArray(d.students)) {
+        studentList = d.students
+      } else if (Array.isArray(d?.data)) {
+        studentList = d.data
+      } else if (Array.isArray(d)) {
+        studentList = d
+      } else if (d?.data && Array.isArray(d.data)) {
+        studentList = d.data
       }
 
-      console.log('Extracted student list:', studentList?.length || 0, 'students')
-
-      if (Array.isArray(studentList) && studentList.length > 0) {
-        console.log('First student sample:', studentList[0])
+      console.log('FINAL studentList length:', studentList.length)
+      if (studentList.length > 0) {
+        console.log('First student:', studentList[0])
         setStudents(studentList)
       } else {
-        console.warn('No students found in response')
+        console.warn('NO STUDENTS FOUND - check API response format above')
         toast.error('No students found. Please enroll students first.')
         setStudents([])
       }
@@ -180,7 +180,6 @@ function PaymentsPage() {
       return
     }
 
-    // Find student by any possible ID field
     const student = students.find(s =>
       (s._id === studentId) || (s.id === studentId) || (s.student_id === studentId)
     )
@@ -195,7 +194,6 @@ function PaymentsPage() {
       }))
     } else {
       console.warn('Student not found in list for ID:', studentId)
-      // Still set the ID
       setFormData(prev => ({ ...prev, student_id: studentId }))
     }
   }
@@ -247,7 +245,6 @@ function PaymentsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-
     console.log('Form data:', formData)
 
     if (!editingPayment && !formData.student_id) {
@@ -262,7 +259,6 @@ function PaymentsPage() {
     setSaving(true)
     try {
       let response
-
       if (editingPayment) {
         response = await financialAPI.updatePayment(editingPayment._id, {
           status: formData.status,
@@ -289,7 +285,6 @@ function PaymentsPage() {
         console.log('Sending payload:', payload)
         response = await financialAPI.recordPayment(payload)
       }
-
       console.log('API response:', response)
 
       if (response?.success) {
@@ -330,13 +325,12 @@ function PaymentsPage() {
     .filter(p => p.status === 'completed')
     .reduce((s, p) => s + (p.amount_paid || 0), 0)
 
-  // Build student options with proper ID handling
   const studentOptions = [
     { value: '', label: loadingStudents ? 'Loading students...' : `-- Select Student (${students.length} available) --` },
     ...filteredStudents.slice(0, 100).map(s => ({
       value: s._id || s.id || s.student_id || '',
       label: `${s.first_name || ''} ${s.last_name || ''}`.trim() || s.email || `Student ${s.student_id_number || s._id || ''}`,
-    })).filter(opt => opt.value), // Only include options with valid values
+    })).filter(opt => opt.value),
   ]
 
   return (
@@ -456,110 +450,28 @@ function PaymentsPage() {
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <FormSelect
-              label="Payment Type"
-              name="payment_type"
-              value={formData.payment_type}
-              onChange={handleChange}
-              disabled={!!editingPayment}
-              options={[
-                { value: 'school_fees', label: 'School Fees' },
-                { value: 'registration', label: 'Registration' },
-                { value: 'exam', label: 'Exam Fees' },
-                { value: 'other', label: 'Other' },
-              ]}
-            />
-            <FormSelect
-              label="Fee Type"
-              name="fee_type"
-              value={formData.fee_type}
-              onChange={handleChange}
-              disabled={!!editingPayment}
-              options={[
-                { value: 'tuition', label: 'Tuition' },
-                { value: 'registration', label: 'Registration' },
-                { value: 'exam', label: 'Examination' },
-                { value: 'library', label: 'Library' },
-                { value: 'sports', label: 'Sports' },
-                { value: 'uniform', label: 'Uniform' },
-                { value: 'transport', label: 'Transport' },
-                { value: 'other', label: 'Other' },
-              ]}
-            />
+            <FormSelect label="Payment Type" name="payment_type" value={formData.payment_type} onChange={handleChange} disabled={!!editingPayment}
+              options={[{ value: 'school_fees', label: 'School Fees' }, { value: 'registration', label: 'Registration' }, { value: 'exam', label: 'Exam Fees' }, { value: 'other', label: 'Other' }]} />
+            <FormSelect label="Fee Type" name="fee_type" value={formData.fee_type} onChange={handleChange} disabled={!!editingPayment}
+              options={[{ value: 'tuition', label: 'Tuition' }, { value: 'registration', label: 'Registration' }, { value: 'exam', label: 'Examination' }, { value: 'library', label: 'Library' }, { value: 'sports', label: 'Sports' }, { value: 'uniform', label: 'Uniform' }, { value: 'transport', label: 'Transport' }, { value: 'other', label: 'Other' }]} />
           </div>
 
-          <FormInput
-            label="Amount Paid (SSP) *"
-            name="amount_paid"
-            type="number"
-            value={formData.amount_paid}
-            onChange={handleChange}
-            required
-            min="0"
-            step="0.01"
-            placeholder="0.00"
-          />
+          <FormInput label="Amount Paid (SSP) *" name="amount_paid" type="number" value={formData.amount_paid} onChange={handleChange} required min="0" step="0.01" placeholder="0.00" />
 
           <div className="grid grid-cols-2 gap-4">
-            <FormSelect
-              label="Payment Method"
-              name="payment_method"
-              value={formData.payment_method}
-              onChange={handleChange}
-              options={PAYMENT_METHODS}
-            />
-            {!editingPayment && (
-              <FormInput
-                label="Paid By"
-                name="paid_by"
-                value={formData.paid_by}
-                onChange={handleChange}
-                placeholder="Name of payer"
-              />
-            )}
-            {editingPayment && (
-              <FormSelect
-                label="Status"
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-                options={STATUS_OPTIONS}
-              />
-            )}
+            <FormSelect label="Payment Method" name="payment_method" value={formData.payment_method} onChange={handleChange} options={PAYMENT_METHODS} />
+            {!editingPayment && <FormInput label="Paid By" name="paid_by" value={formData.paid_by} onChange={handleChange} placeholder="Name of payer" />}
+            {editingPayment && <FormSelect label="Status" name="status" value={formData.status} onChange={handleChange} options={STATUS_OPTIONS} />}
           </div>
 
-          <FormInput
-            label="Transaction Reference"
-            name="transaction_reference"
-            value={formData.transaction_reference}
-            onChange={handleChange}
-            placeholder="e.g., bank transaction ID"
-          />
+          <FormInput label="Transaction Reference" name="transaction_reference" value={formData.transaction_reference} onChange={handleChange} placeholder="e.g., bank transaction ID" />
 
           <div className="grid grid-cols-2 gap-4">
-            <FormSelect
-              label="Academic Year"
-              name="academic_year"
-              value={formData.academic_year}
-              onChange={handleChange}
-              options={ACADEMIC_YEAR_OPTIONS}
-            />
-            <FormSelect
-              label="Term"
-              name="term"
-              value={formData.term}
-              onChange={handleChange}
-              options={TERM_OPTIONS}
-            />
+            <FormSelect label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange} options={ACADEMIC_YEAR_OPTIONS} />
+            <FormSelect label="Term" name="term" value={formData.term} onChange={handleChange} options={TERM_OPTIONS} />
           </div>
 
-          <FormInput
-            label="Notes"
-            name="notes"
-            value={formData.notes}
-            onChange={handleChange}
-            placeholder="Additional notes..."
-          />
+          <FormInput label="Notes" name="notes" value={formData.notes} onChange={handleChange} placeholder="Additional notes..." />
 
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
             <Button type="submit" variant="primary" loading={saving} icon={<DollarSign size={18} />}>
@@ -571,13 +483,9 @@ function PaymentsPage() {
       </Modal>
 
       <ConfirmDialog 
-        open={!!showDelete} 
-        onClose={() => setShowDelete(null)} 
-        onConfirm={handleDelete} 
-        title="Delete Payment" 
-        message="Are you sure you want to delete this payment? This action cannot be undone." 
-        confirmText="Delete Payment" 
-        variant="danger" 
+        open={!!showDelete} onClose={() => setShowDelete(null)} onConfirm={handleDelete}
+        title="Delete Payment" message="Are you sure you want to delete this payment? This action cannot be undone."
+        confirmText="Delete Payment" variant="danger" 
       />
     </div>
   )
