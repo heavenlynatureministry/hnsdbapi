@@ -45,23 +45,30 @@ def _safe_objectid(value) -> Optional[ObjectId]:
         return None
 
 
+# =========================================================================
+# LIST & SEARCH (must be before /{student_id})
+# =========================================================================
+
 @router.get("")
 @router.get("/")
 async def list_students(
     class_id: Optional[str] = Query(None),
-    status: str = Query(default="active"),
+    status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=200),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """List students with filters"""
     db = get_database()
     filter_query = {}
+    
     if class_id:
         cid = _safe_objectid(class_id)
-        if cid: filter_query["current_class_id"] = cid
-    if status: filter_query["status"] = status
+        if cid:
+            filter_query["current_class_id"] = cid
+    if status:
+        filter_query["status"] = status
     if search:
         filter_query["$or"] = [
             {"first_name": {"$regex": search, "$options": "i"}},
@@ -75,21 +82,26 @@ async def list_students(
     
     for i, s in enumerate(students):
         students[i] = parse_mongo_document(s)
-        # Calculate age
         students[i]["age"] = _calculate_age(s.get("date_of_birth"))
-        # Add class name
         if students[i].get("current_class_id"):
             try:
                 cid = _safe_objectid(students[i]["current_class_id"])
                 if cid:
                     cls = await db.classes.find_one({"_id": cid})
-                    if cls: students[i]["class_name"] = cls.get("class_name", "")
+                    if cls:
+                        students[i]["class_name"] = cls.get("class_name", "")
             except Exception:
                 students[i]["class_name"] = "Unknown"
     
     return {
-        "success": True, "message": "Students retrieved",
-        "data": {"students": students, "total": total, "page": page, "limit": limit}
+        "success": True,
+        "message": "Students retrieved",
+        "data": {
+            "students": students,
+            "total": total,
+            "page": page,
+            "limit": limit
+        }
     }
 
 
@@ -108,7 +120,8 @@ async def student_statistics(current_user: Dict[str, Any] = Depends(get_current_
     ]).to_list(length=None)
     
     return {
-        "success": True, "message": "Statistics retrieved",
+        "success": True,
+        "message": "Statistics retrieved",
         "data": {
             "total_active": total,
             "by_gender": {item["_id"]: item["count"] for item in by_gender},
@@ -116,6 +129,10 @@ async def student_statistics(current_user: Dict[str, Any] = Depends(get_current_
         }
     }
 
+
+# =========================================================================
+# SINGLE STUDENT (after specific routes)
+# =========================================================================
 
 @router.get("/{student_id}")
 async def get_student(
@@ -134,25 +151,21 @@ async def get_student(
         raise HTTPException(status_code=404, detail="Student not found")
     
     student = parse_mongo_document(student)
-    
-    # Calculate age
     student["age"] = _calculate_age(student.get("date_of_birth"))
     
-    # Add class name
     if student.get("current_class_id"):
         try:
             cid = _safe_objectid(student["current_class_id"])
             if cid:
                 cls = await db.classes.find_one({"_id": cid})
-                if cls: student["class_name"] = cls.get("class_name", "")
+                if cls:
+                    student["class_name"] = cls.get("class_name", "")
         except Exception:
             student["class_name"] = "Unknown"
     
-    # Get guardians
     guardians = await db.student_guardians.find({"student_id": sid}).to_list(length=None)
     student["guardians"] = [parse_mongo_document(g) for g in guardians]
     
-    # Get attendance summary
     attendance_total = await db.attendance.count_documents({"student_id": sid})
     attendance_present = await db.attendance.count_documents({
         "student_id": sid, "status": {"$in": ["present", "late"]}
@@ -163,11 +176,12 @@ async def get_student(
         "attendance_rate": round((attendance_present / attendance_total * 100), 1) if attendance_total > 0 else 0
     }
     
-    return {
-        "success": True, "message": "Student retrieved",
-        "data": student
-    }
+    return {"success": True, "message": "Student retrieved", "data": student}
 
+
+# =========================================================================
+# CREATE
+# =========================================================================
 
 @router.post("")
 @router.post("/")
@@ -175,7 +189,7 @@ async def create_student(
     request: Request,
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Create student - accepts raw JSON for flexibility"""
+    """Create student"""
     db = get_database()
     from app.models.student import StudentModel
     
@@ -205,22 +219,15 @@ async def create_student(
             enrollment_date = date.today()
     
     success, message, result = await StudentModel.create_student(
-        db=db,
-        first_name=first_name,
-        last_name=last_name,
-        date_of_birth=date_of_birth,
-        gender=body.get('gender', 'Male'),
+        db=db, first_name=first_name, last_name=last_name,
+        date_of_birth=date_of_birth, gender=body.get('gender', 'Male'),
         student_type=body.get('student_type', 'other'),
         current_class_id=body.get('current_class_id'),
-        middle_name=body.get('middle_name'),
-        place_of_birth=body.get('place_of_birth'),
+        middle_name=body.get('middle_name'), place_of_birth=body.get('place_of_birth'),
         nationality=body.get('nationality', 'South Sudanese'),
-        enrollment_date=enrollment_date,
-        medical_notes=body.get('medical_notes'),
-        special_needs=body.get('special_needs'),
-        address=body.get('address'),
-        created_by=current_user["_id"],
-        photo_url=body.get('photo_url')
+        enrollment_date=enrollment_date, medical_notes=body.get('medical_notes'),
+        special_needs=body.get('special_needs'), address=body.get('address'),
+        created_by=current_user["_id"], photo_url=body.get('photo_url')
     )
     
     if not success:
@@ -231,14 +238,12 @@ async def create_student(
         for guardian in guardians:
             try:
                 await StudentModel.add_guardian(
-                    db=db,
-                    student_id=result["_id"],
+                    db=db, student_id=result["_id"],
                     first_name=guardian.get('first_name', ''),
                     last_name=guardian.get('last_name', ''),
                     relationship=guardian.get('relationship', ''),
                     phone_number=guardian.get('phone_number', ''),
-                    email=guardian.get('email'),
-                    address=guardian.get('address'),
+                    email=guardian.get('email'), address=guardian.get('address'),
                     occupation=guardian.get('occupation'),
                     is_primary=guardian.get('is_primary_contact', False)
                 )
@@ -278,8 +283,10 @@ async def update_student(
         db=db, student_id=student_id, update_data=body, updated_by=current_user["_id"]
     )
     
-    if not success: raise HTTPException(status_code=400, detail=message)
-    if result: result = parse_mongo_document(result)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    if result:
+        result = parse_mongo_document(result)
     
     return {"success": True, "message": message, "data": result}
 
@@ -290,7 +297,7 @@ async def deactivate_student(
     reason: Optional[str] = Query(None),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Deactivate student (soft delete)"""
+    """Deactivate student"""
     db = get_database()
     from app.models.student import StudentModel
     success, message, _ = await StudentModel.update_student(
@@ -298,7 +305,8 @@ async def deactivate_student(
         update_data={"status": "inactive", "status_reason": reason or "Deactivated by admin"},
         updated_by=current_user["_id"]
     )
-    if not success: raise HTTPException(status_code=404, detail="Student not found")
+    if not success:
+        raise HTTPException(status_code=404, detail="Student not found")
     return {"success": True, "message": "Student deactivated"}
 
 
@@ -307,9 +315,8 @@ async def permanently_delete_student(
     student_id: str = Path(...),
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Permanently delete a student and all related records (admin only)"""
+    """Permanently delete student"""
     db = get_database()
-    
     sid = _safe_objectid(student_id)
     if not sid:
         raise HTTPException(status_code=400, detail="Invalid student ID")
@@ -325,24 +332,15 @@ async def permanently_delete_student(
         await db.exam_results.delete_many({"student_id": sid})
         await db.payments.delete_many({"student_id": sid})
         await db.student_guardians.delete_many({"student_id": sid})
-        
         if student.get("current_class_id"):
-            await db.classes.update_one(
-                {"_id": student["current_class_id"]},
-                {"$inc": {"current_enrollment": -1}}
-            )
-        
+            await db.classes.update_one({"_id": student["current_class_id"]}, {"$inc": {"current_enrollment": -1}})
         await db.students.delete_one({"_id": sid})
-        
         await db.audit_log.insert_one({
             "table_name": "students", "record_id": student_id,
-            "operation": "DELETE_PERMANENT",
-            "changed_by": current_user.get("_id"),
-            "details": {"student_name": student_name, "student_id_number": student.get("student_id_number")},
-            "changed_at": datetime.utcnow()
+            "operation": "DELETE_PERMANENT", "changed_by": current_user.get("_id"),
+            "details": {"student_name": student_name}, "changed_at": datetime.utcnow()
         })
-        
-        return {"success": True, "message": f"Student '{student_name}' permanently deleted with all related records"}
+        return {"success": True, "message": f"Student '{student_name}' permanently deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete student: {str(e)}")
 
@@ -358,117 +356,38 @@ async def get_student_guardians(
 ):
     """Get student guardians"""
     db = get_database()
-    
     sid = _safe_objectid(student_id)
     if not sid:
         raise HTTPException(status_code=400, detail="Invalid student ID")
-    
     guardians = await db.student_guardians.find({"student_id": sid}).to_list(length=None)
     guardians = [parse_mongo_document(g) for g in guardians]
-    
     return {"success": True, "message": "Guardians retrieved", "data": {"guardians": guardians, "total": len(guardians)}}
 
 
 @router.post("/{student_id}/guardians")
 async def add_guardian(
-    student_id: str = Path(...),
-    request: Request = None,
+    student_id: str = Path(...), request: Request = None,
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Add guardian to student"""
+    """Add guardian"""
     db = get_database()
     from app.models.student import StudentModel
-    
     sid = _safe_objectid(student_id)
-    if not sid:
-        raise HTTPException(status_code=400, detail="Invalid student ID")
-    
+    if not sid: raise HTTPException(status_code=400, detail="Invalid student ID")
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
-    
     success, message, result = await StudentModel.add_guardian(
-        db=db, student_id=student_id,
-        first_name=body.get('first_name', ''),
-        last_name=body.get('last_name', ''),
-        relationship=body.get('relationship', ''),
-        phone_number=body.get('phone_number', ''),
-        email=body.get('email'),
-        address=body.get('address'),
-        occupation=body.get('occupation'),
+        db=db, student_id=student_id, first_name=body.get('first_name', ''),
+        last_name=body.get('last_name', ''), relationship=body.get('relationship', ''),
+        phone_number=body.get('phone_number', ''), email=body.get('email'),
+        address=body.get('address'), occupation=body.get('occupation'),
         is_primary=body.get('is_primary_contact', False)
     )
-    
     if not success: raise HTTPException(status_code=400, detail=message)
     return {"success": True, "message": message, "data": result}
 
-
-@router.put("/{student_id}/guardians")
-async def update_guardians(
-    student_id: str = Path(...),
-    request: Request = None,
-    current_user: Dict[str, Any] = Depends(require_role("admin"))
-):
-    """Update student guardians (replaces all)"""
-    db = get_database()
-    
-    sid = _safe_objectid(student_id)
-    if not sid:
-        raise HTTPException(status_code=400, detail="Invalid student ID")
-    
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
-    
-    guardians = body.get("guardians", [])
-    
-    # Remove existing guardians
-    await db.student_guardians.delete_many({"student_id": sid})
-    
-    # Add new guardians
-    for g in guardians:
-        await db.student_guardians.insert_one({
-            "student_id": sid,
-            "first_name": g.get("first_name", ""),
-            "last_name": g.get("last_name", ""),
-            "relationship": g.get("relationship", ""),
-            "phone_number": g.get("phone_number", ""),
-            "email": g.get("email", ""),
-            "address": g.get("address", ""),
-            "occupation": g.get("occupation", ""),
-            "is_primary_contact": g.get("is_primary_contact", False),
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        })
-    
-    return {"success": True, "message": f"Updated {len(guardians)} guardians"}
-
-
-@router.delete("/{student_id}/guardians/{guardian_id}")
-async def remove_guardian(
-    student_id: str = Path(...),
-    guardian_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(require_role("admin"))
-):
-    """Remove a guardian"""
-    db = get_database()
-    
-    gid = _safe_objectid(guardian_id)
-    if not gid:
-        raise HTTPException(status_code=400, detail="Invalid guardian ID")
-    
-    result = await db.student_guardians.delete_one({"_id": gid})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Guardian not found")
-    
-    return {"success": True, "message": "Guardian removed"}
-
-
-# =========================================================================
-# ATTENDANCE SUMMARY
-# =========================================================================
 
 @router.get("/{student_id}/attendance-summary")
 async def get_student_attendance_summary(
@@ -477,23 +396,17 @@ async def get_student_attendance_summary(
 ):
     """Get attendance summary for a student"""
     db = get_database()
-    
     sid = _safe_objectid(student_id)
-    if not sid:
-        raise HTTPException(status_code=400, detail="Invalid student ID")
-    
+    if not sid: raise HTTPException(status_code=400, detail="Invalid student ID")
     total = await db.attendance.count_documents({"student_id": sid})
     present = await db.attendance.count_documents({"student_id": sid, "status": {"$in": ["present", "late"]}})
     absent = await db.attendance.count_documents({"student_id": sid, "status": "absent"})
     excused = await db.attendance.count_documents({"student_id": sid, "status": "excused"})
-    
     return {
         "success": True, "message": "Attendance summary retrieved",
         "data": {
-            "total_days": total,
-            "present_days": present,
-            "absent_days": absent,
-            "excused_days": excused,
+            "total_days": total, "present_days": present,
+            "absent_days": absent, "excused_days": excused,
             "attendance_rate": round((present / total * 100), 1) if total > 0 else 0
         }
     }
