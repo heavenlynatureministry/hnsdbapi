@@ -168,6 +168,7 @@ function AppRoutes() {
               <Route index element={<ExamsList />} />
               <Route path="new" element={<ExamForm />} />
               <Route path=":id" element={<ExamDetail />} />
+              <Route path=":id/edit" element={<ExamForm />} />
               <Route path=":id/results" element={<ResultsEntry />} />
               <Route path="report-cards" element={<ReportCard />} />
               <Route path="analytics" element={<ExamAnalytics />} />
@@ -274,6 +275,7 @@ export const routeMetadata = {
   '/attendance/analytics': { title: 'Attendance Analytics', parent: 'Attendance' },
   '/exams': { title: 'Examinations', icon: 'FileText' },
   '/exams/new': { title: 'Create Exam', parent: 'Exams' },
+  '/exams/:id/edit': { title: 'Edit Exam', parent: 'Exams' },
   '/exams/report-cards': { title: 'Report Cards', parent: 'Exams' },
   '/exams/analytics': { title: 'Exam Analytics', parent: 'Exams' },
   '/financial': { title: 'Financial', icon: 'DollarSign' },
