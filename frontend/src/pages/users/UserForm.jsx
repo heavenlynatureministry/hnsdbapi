@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
-import api from '../../api/axios'
+import authAPI from '../../api/auth'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -21,8 +21,20 @@ function UserForm() {
   const [fetching, setFetching] = useState(isEdit)
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState({})
-  const [roles, setRoles] = useState([])
-  const [loadingRoles, setLoadingRoles] = useState(false)
+
+  // Roles are hardcoded since there's no /auth/roles endpoint
+  const roles = [
+    { value: 'admin', label: 'Admin' },
+    { value: 'teacher', label: 'Teacher' },
+    { value: 'accountant', label: 'Accountant' },
+    { value: 'counselor', label: 'Counselor' },
+    { value: 'staff', label: 'Staff' },
+  ]
+
+  const statusOptions = [
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' },
+  ]
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -35,11 +47,6 @@ function UserForm() {
     status: 'active',
   })
 
-  const statusOptions = [
-    { value: 'active', label: 'Active' },
-    { value: 'inactive', label: 'Inactive' },
-  ]
-
   useEffect(() => {
     updatePageTitle(isEdit ? 'Edit User' : 'Add User')
     updateBreadcrumbs([
@@ -50,7 +57,6 @@ function UserForm() {
   }, [isEdit, updatePageTitle, updateBreadcrumbs])
 
   useEffect(() => {
-    fetchRoles()
     if (isEdit) {
       fetchUser()
     } else {
@@ -58,69 +64,36 @@ function UserForm() {
     }
   }, [id])
 
-  const fetchRoles = async () => {
-    setLoadingRoles(true)
-    try {
-      // Try to fetch available roles from the API
-      const response = await api.get('/auth/roles')
-      if (response?.data?.success && Array.isArray(response.data.data)) {
-        setRoles(response.data.data.map(role => ({
-          value: role.value || role,
-          label: role.label || role.charAt(0).toUpperCase() + role.slice(1),
-        })))
-      } else if (Array.isArray(response?.data)) {
-        setRoles(response.data.map(role => ({
-          value: role,
-          label: role.charAt(0).toUpperCase() + role.slice(1),
-        })))
-      } else {
-        // Fallback roles if API doesn't provide them
-        setRoles([
-          { value: 'admin', label: 'Admin' },
-          { value: 'teacher', label: 'Teacher' },
-          { value: 'accountant', label: 'Accountant' },
-          { value: 'counselor', label: 'Counselor' },
-          { value: 'staff', label: 'Staff' },
-        ])
-      }
-    } catch (error) {
-      console.error('Failed to fetch roles:', error)
-      // Fallback to default roles
-      setRoles([
-        { value: 'admin', label: 'Admin' },
-        { value: 'teacher', label: 'Teacher' },
-        { value: 'accountant', label: 'Accountant' },
-        { value: 'counselor', label: 'Counselor' },
-        { value: 'staff', label: 'Staff' },
-      ])
-    } finally {
-      setLoadingRoles(false)
-    }
-  }
-
   const fetchUser = async () => {
     setFetching(true)
     try {
-      // Using direct api call since authAPI doesn't have getUser method
-      const response = await api.get(`/auth/users/${id}`)
+      // Use authAPI.getMe() or the users endpoint
+      const response = await authAPI.getUsers?.({ search: id }) || await authAPI.getUser?.(id)
       const userData = response?.data?.data || response?.data
+      
       if (userData) {
-        const user = userData
-        setFormData({
-          first_name: user.first_name || '',
-          last_name: user.last_name || '',
-          email: user.email || '',
-          password: '',
-          confirm_password: '',
-          role: user.role || 'staff',
-          phone_number: user.phone_number || '',
-          status: user.status || 'active',
-        })
+        const user = Array.isArray(userData) ? userData[0] : userData
+        if (user) {
+          setFormData({
+            first_name: user.first_name || '',
+            last_name: user.last_name || '',
+            email: user.email || '',
+            password: '',
+            confirm_password: '',
+            role: user.role || 'staff',
+            phone_number: user.phone_number || '',
+            status: user.status || 'active',
+          })
+        } else {
+          toast.error('User not found')
+          navigate('/users')
+        }
       } else {
         toast.error('Failed to fetch user details')
         navigate('/users')
       }
     } catch (error) {
+      console.error('Failed to fetch user:', error)
       toast.error('Failed to fetch user')
       navigate('/users')
     } finally {
@@ -181,16 +154,16 @@ function UserForm() {
 
       let response
       if (isEdit) {
-        response = await api.put(`/auth/users/${id}`, payload)
+        response = await authAPI.updateUser(id, payload)
       } else {
-        response = await api.post('/auth/users', payload)
+        response = await authAPI.createUser(payload)
       }
 
-      if (response?.data?.success || response?.success) {
+      if (response?.success || response?.data?.success) {
         toast.success(`User ${isEdit ? 'updated' : 'created'} successfully`)
         navigate('/users')
       } else {
-        toast.error(response?.data?.message || response?.message || 'Failed to save user')
+        toast.error(response?.message || response?.data?.message || 'Failed to save user')
       }
     } catch (error) {
       if (error.status === 422) {
@@ -309,7 +282,6 @@ function UserForm() {
               onChange={handleChange}
               options={roles}
               error={errors.role}
-              disabled={loadingRoles}
             />
             <FormInput
               label="Phone Number"
