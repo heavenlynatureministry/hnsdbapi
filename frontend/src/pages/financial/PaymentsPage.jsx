@@ -122,15 +122,41 @@ function PaymentsPage() {
     setLoadingStudents(true)
     try {
       const response = await studentsAPI.getAll({ status: 'active', limit: 200 })
-      let studentList = response?.data || response || []
-      if (!Array.isArray(studentList)) {
-        studentList = studentList?.students || studentList?.data || []
+      console.log('Students API raw response:', response)
+
+      let studentList = []
+
+      // Handle ALL possible response formats
+      if (response?.data?.students) {
+        studentList = response.data.students
+      } else if (response?.data?.data) {
+        studentList = response.data.data
+      } else if (Array.isArray(response?.data)) {
+        studentList = response.data
+      } else if (response?.students) {
+        studentList = response.students
+      } else if (Array.isArray(response)) {
+        studentList = response
+      } else if (response?.data && typeof response.data === 'object') {
+        const data = response.data
+        if (Array.isArray(data.students)) studentList = data.students
+        else if (Array.isArray(data.data)) studentList = data.data
+        else if (Array.isArray(data)) studentList = data
       }
-      const safeStudents = Array.isArray(studentList) ? studentList : []
-      console.log('Students loaded:', safeStudents.length) // Debug log
-      setStudents(safeStudents)
+
+      console.log('Extracted student list:', studentList?.length || 0, 'students')
+
+      if (Array.isArray(studentList) && studentList.length > 0) {
+        console.log('First student sample:', studentList[0])
+        setStudents(studentList)
+      } else {
+        console.warn('No students found in response')
+        toast.error('No students found. Please enroll students first.')
+        setStudents([])
+      }
     } catch (error) {
       console.error('Failed to fetch students:', error)
+      toast.error('Failed to load students')
       setStudents([])
     } finally {
       setLoadingStudents(false)
@@ -147,20 +173,20 @@ function PaymentsPage() {
   }
 
   const handleStudentSelect = (studentId) => {
-    console.log('Student selected:', studentId) // Debug log
-    
+    console.log('Student ID selected:', studentId)
+
     if (!studentId) {
       setFormData(prev => ({ ...prev, student_id: '', paid_by: '' }))
       return
     }
-    
-    // Find student by _id, id, or student_id
-    const student = students.find(s => 
+
+    // Find student by any possible ID field
+    const student = students.find(s =>
       (s._id === studentId) || (s.id === studentId) || (s.student_id === studentId)
     )
-    
+
     if (student) {
-      console.log('Found student:', student.first_name, student.last_name) // Debug log
+      console.log('Found student:', student.first_name, student.last_name)
       const studentName = `${student.first_name || ''} ${student.last_name || ''}`.trim()
       setFormData(prev => ({
         ...prev,
@@ -168,8 +194,8 @@ function PaymentsPage() {
         paid_by: prev.paid_by || studentName,
       }))
     } else {
-      console.warn('Student not found for ID:', studentId) // Debug log
-      // Still set the ID even if student not found in local list
+      console.warn('Student not found in list for ID:', studentId)
+      // Still set the ID
       setFormData(prev => ({ ...prev, student_id: studentId }))
     }
   }
@@ -221,9 +247,9 @@ function PaymentsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
-    console.log('Submitting form data:', formData) // Debug log
-    
+
+    console.log('Form data:', formData)
+
     if (!editingPayment && !formData.student_id) {
       toast.error('Please select a student')
       return
@@ -232,11 +258,11 @@ function PaymentsPage() {
       toast.error('Please enter a valid amount')
       return
     }
-    
+
     setSaving(true)
     try {
       let response
-      
+
       if (editingPayment) {
         response = await financialAPI.updatePayment(editingPayment._id, {
           status: formData.status,
@@ -260,12 +286,12 @@ function PaymentsPage() {
           status: formData.status,
           notes: formData.notes || undefined,
         }
-        console.log('Sending payload:', payload) // Debug log
+        console.log('Sending payload:', payload)
         response = await financialAPI.recordPayment(payload)
       }
-      
-      console.log('Response:', response) // Debug log
-      
+
+      console.log('API response:', response)
+
       if (response?.success) {
         toast.success(editingPayment ? 'Payment updated!' : 'Payment recorded successfully!')
         setShowModal(false)
@@ -274,7 +300,7 @@ function PaymentsPage() {
         toast.error(response?.message || 'Failed to save payment')
       }
     } catch (error) {
-      console.error('Payment save error:', error) // Debug log
+      console.error('Payment save error:', error)
       toast.error(error.message || 'Failed to save payment')
     } finally {
       setSaving(false)
@@ -304,12 +330,13 @@ function PaymentsPage() {
     .filter(p => p.status === 'completed')
     .reduce((s, p) => s + (p.amount_paid || 0), 0)
 
+  // Build student options with proper ID handling
   const studentOptions = [
-    { value: '', label: loadingStudents ? 'Loading students...' : '-- Select Student --' },
-    ...filteredStudents.slice(0, 50).map(s => ({
-      value: s._id || s.id || '',
-      label: `${s.first_name || ''} ${s.last_name || ''}`.trim() || s.email || 'Unknown Student',
-    })),
+    { value: '', label: loadingStudents ? 'Loading students...' : `-- Select Student (${students.length} available) --` },
+    ...filteredStudents.slice(0, 100).map(s => ({
+      value: s._id || s.id || s.student_id || '',
+      label: `${s.first_name || ''} ${s.last_name || ''}`.trim() || s.email || `Student ${s.student_id_number || s._id || ''}`,
+    })).filter(opt => opt.value), // Only include options with valid values
   ]
 
   return (
@@ -413,6 +440,11 @@ function PaymentsPage() {
                 options={studentOptions}
                 disabled={loadingStudents}
               />
+              {students.length === 0 && !loadingStudents && (
+                <p className="text-xs text-yellow-600 mt-1">
+                  No students found. Please enroll students first.
+                </p>
+              )}
             </div>
           )}
 
