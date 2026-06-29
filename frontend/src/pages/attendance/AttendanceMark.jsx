@@ -29,55 +29,36 @@ function AttendanceMark() {
       { label: 'Mark' },
     ])
     fetchAttendanceData()
-  }, [classId])
+  }, [classId, attendanceDate])
 
   const fetchAttendanceData = async () => {
     setLoading(true)
     setError(null)
     try {
-      // Fetch class info and students
       const response = await attendanceAPI.getByClass(classId, { date: attendanceDate })
-      
-      if (response?.success) {
+      console.log('Attendance data response:', response)
+
+      if (response?.success && response.data) {
+        const data = response.data
         setClassInfo({
-          class_name: response.data?.class_name || 'Unknown',
-          class_level: response.data?.class_level || '',
-          total_students: response.data?.students?.length || 0,
+          class_name: data.class_name || 'Unknown',
+          class_level: data.class_level || '',
+          total_students: data.total || data.students?.length || 0,
         })
-        
-        // Map students with their current attendance status
-        const studentList = (response.data?.students || []).map(s => ({
+
+        // Map students - backend returns 'status' directly, not 'attendance_status'
+        const studentList = (data.students || []).map(s => ({
           student_id: s.student_id || s._id,
           student_name: s.student_name || `${s.first_name || ''} ${s.last_name || ''}`.trim(),
           gender: s.gender || '',
-          status: s.attendance_status || null,
-          notes: s.attendance_notes || '',
+          status: s.status || null,  // Fixed: backend returns 'status' not 'attendance_status'
+          notes: s.notes || '',
         }))
-        
+
         setStudents(studentList)
       } else {
-        // If API fails, try getting today's attendance
-        const todayResponse = await attendanceAPI.getToday({ class_id: classId })
-        if (todayResponse?.success) {
-          setClassInfo({
-            class_name: todayResponse.data?.class_name || 'Unknown',
-            class_level: todayResponse.data?.class_level || '',
-            total_students: todayResponse.data?.students?.length || 0,
-          })
-          
-          const studentList = (todayResponse.data?.students || []).map(s => ({
-            student_id: s.student_id || s._id,
-            student_name: s.student_name || `${s.first_name || ''} ${s.last_name || ''}`.trim(),
-            gender: s.gender || '',
-            status: s.attendance_status || null,
-            notes: s.attendance_notes || '',
-          }))
-          
-          setStudents(studentList)
-        } else {
-          setError('Failed to load students')
-          toast.error('Failed to load class data')
-        }
+        setError('No students found for this class')
+        toast.error('Failed to load class data')
       }
     } catch (error) {
       console.error('Failed to fetch attendance data:', error)
@@ -117,7 +98,7 @@ function AttendanceMark() {
 
     setSaving(true)
     try {
-      const attendanceData = students.map(s => ({
+      const records = students.map(s => ({
         student_id: s.student_id,
         status: s.status,
         notes: s.notes || '',
@@ -126,12 +107,14 @@ function AttendanceMark() {
       const payload = {
         class_id: classId,
         date: attendanceDate,
-        attendance_data: attendanceData,
+        records: records,  // Backend checks 'records' first, then 'attendance_data'
       }
 
+      console.log('Saving attendance payload:', payload)
       const response = await attendanceAPI.bulkMark(payload)
+      console.log('Save response:', response)
 
-      if (response?.success || response) {
+      if (response?.success || response?.data?.success) {
         const counts = { present: 0, absent: 0, excused: 0, late: 0 }
         students.forEach(s => counts[s.status]++)
         toast.success(
@@ -139,19 +122,19 @@ function AttendanceMark() {
         )
         navigate('/attendance')
       } else {
-        toast.error(response?.message || 'Failed to save attendance')
+        toast.error(response?.message || response?.data?.message || 'Failed to save attendance')
       }
     } catch (error) {
+      console.error('Attendance save error:', error)
       if (error.status === 422) {
         toast.error('Invalid attendance data. Please check and try again.')
       } else if (error.status === 409) {
-        toast.error('Attendance already marked for this date. Please edit instead.')
+        toast.error('Attendance already marked for this date.')
       } else if (error.status === 0) {
         toast.error('Server is starting up. Please try again in 30 seconds.')
       } else {
         toast.error(error.message || 'Failed to save attendance')
       }
-      console.error('Attendance save error:', error)
     } finally {
       setSaving(false)
     }
@@ -178,11 +161,7 @@ function AttendanceMark() {
         icon={<Users size={48} />}
         title="No Students Found"
         description={error}
-        action={
-          <Button onClick={fetchAttendanceData} variant="primary">
-            Retry
-          </Button>
-        }
+        action={<Button onClick={fetchAttendanceData} variant="primary">Retry</Button>}
       />
     )
   }
@@ -199,37 +178,18 @@ function AttendanceMark() {
         }
       />
 
-      {/* Status Summary */}
       <Card>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <label className="form-label mb-0">Date:</label>
-            <input
-              type="date"
-              value={attendanceDate}
-              onChange={(e) => setAttendanceDate(e.target.value)}
-              className="form-input w-auto"
-            />
+            <input type="date" value={attendanceDate} onChange={(e) => setAttendanceDate(e.target.value)} className="form-input w-auto" />
           </div>
-          <button onClick={markAllPresent} className="btn btn-secondary btn-sm">
-            Mark All Present
-          </button>
+          <button onClick={markAllPresent} className="btn btn-secondary btn-sm">Mark All Present</button>
         </div>
         <div className="flex gap-2 flex-wrap">
           {statusButtons.map((btn) => (
             <div key={btn.status} className="flex items-center gap-1 text-sm">
-              <btn.icon
-                size={16}
-                className={
-                  btn.status === 'present'
-                    ? 'text-green-600'
-                    : btn.status === 'absent'
-                    ? 'text-red-600'
-                    : btn.status === 'excused'
-                    ? 'text-yellow-600'
-                    : 'text-blue-600'
-                }
-              />
+              <btn.icon size={16} className={btn.status === 'present' ? 'text-green-600' : btn.status === 'absent' ? 'text-red-600' : btn.status === 'excused' ? 'text-yellow-600' : 'text-blue-600'} />
               <span className="capitalize">{btn.status}:</span>
               <span className="font-bold">{statusCounts[btn.status]}</span>
             </div>
@@ -241,17 +201,9 @@ function AttendanceMark() {
         </div>
       </Card>
 
-      {/* Students Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {students.map((student) => (
-          <Card
-            key={student.student_id}
-            className={`transition-all ${
-              student.status
-                ? 'ring-2 ' + statusButtons.find(b => b.status === student.status)?.activeColor
-                : ''
-            }`}
-          >
+          <Card key={student.student_id} className={`transition-all ${student.status ? 'ring-2 ' + statusButtons.find(b => b.status === student.status)?.activeColor : ''}`}>
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 font-bold">
                 {student.student_name?.charAt(0)}
@@ -263,46 +215,25 @@ function AttendanceMark() {
             </div>
             <div className="flex gap-1">
               {statusButtons.map((btn) => (
-                <button
-                  key={btn.status}
-                  onClick={() => setStatus(student.student_id, btn.status)}
-                  className={`flex-1 p-1.5 rounded text-xs font-medium text-white transition-all ${
-                    student.status === btn.status
-                      ? btn.color + ' scale-105'
-                      : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400'
-                  }`}
-                  title={btn.label}
-                >
+                <button key={btn.status} onClick={() => setStatus(student.student_id, btn.status)}
+                  className={`flex-1 p-1.5 rounded text-xs font-medium text-white transition-all ${student.status === btn.status ? btn.color + ' scale-105' : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400'}`}
+                  title={btn.label}>
                   <btn.icon size={14} className="mx-auto" />
                 </button>
               ))}
             </div>
             {(student.status === 'absent' || student.status === 'excused') && (
-              <input
-                type="text"
-                value={student.notes}
-                onChange={(e) => setNote(student.student_id, e.target.value)}
-                className="form-input text-xs mt-2"
-                placeholder="Reason (optional)..."
-              />
+              <input type="text" value={student.notes} onChange={(e) => setNote(student.student_id, e.target.value)}
+                className="form-input text-xs mt-2" placeholder="Reason (optional)..." />
             )}
           </Card>
         ))}
       </div>
 
-      {/* Save Button */}
       <div className="flex justify-end">
-        <Button
-          onClick={handleSubmit}
-          variant="primary"
-          size="lg"
-          loading={saving}
-          icon={<Save size={18} />}
-          disabled={statusCounts.unmarked > 0}
-        >
-          {statusCounts.unmarked > 0
-            ? `Save Attendance (${statusCounts.unmarked} unmarked)`
-            : 'Save Attendance'}
+        <Button onClick={handleSubmit} variant="primary" size="lg" loading={saving} icon={<Save size={18} />}
+          disabled={statusCounts.unmarked > 0}>
+          {statusCounts.unmarked > 0 ? `Save Attendance (${statusCounts.unmarked} unmarked)` : 'Save Attendance'}
         </Button>
       </div>
     </div>
