@@ -24,6 +24,9 @@ function getCurrentAcademicYear() {
 
 const currentYear = getCurrentAcademicYear()
 
+// Immutable fields that should NEVER be sent in update requests
+const IMMUTABLE_FIELDS = ['_id', 'id', 'created_at', 'created_by', 'updated_at']
+
 function SettingsPage() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const { theme, toggleTheme } = useTheme()
@@ -71,9 +74,13 @@ function SettingsPage() {
     try {
       const response = await schoolAPI.getSettings()
       if (response?.success && response.data) {
+        // Clean the data: remove immutable fields before storing
+        const serverData = { ...response.data }
+        IMMUTABLE_FIELDS.forEach(field => delete serverData[field])
+        
         setSettings(prev => ({ 
           ...prev, 
-          ...response.data,
+          ...serverData,
           // Ensure academic year is current if not set
           default_academic_year: response.data.default_academic_year || response.data.current_academic_year || currentYear,
         }))
@@ -90,18 +97,41 @@ function SettingsPage() {
     setSettings(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
   }
 
+  /**
+   * Clean data for update by removing immutable fields
+   */
+  const cleanForUpdate = (data) => {
+    const cleaned = { ...data }
+    IMMUTABLE_FIELDS.forEach(field => delete cleaned[field])
+    return cleaned
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
-      const response = await schoolAPI.updateSetting(settings)
+      // Clean the data before sending - remove immutable fields
+      const cleanedSettings = cleanForUpdate(settings)
+      
+      console.log('Saving settings (cleaned):', cleanedSettings)
+      
+      const response = await schoolAPI.updateSetting(cleanedSettings)
       if (response?.success) {
         toast.success('Settings saved successfully')
       } else {
         toast.error(response?.message || 'Failed to save settings')
       }
     } catch (error) {
+      console.error('Save error:', error)
+      
       if (error.status === 0) {
         toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else if (error.response?.status === 500) {
+        const detail = error.response?.data?.detail || ''
+        if (detail.includes('immutable field')) {
+          toast.error('Server error: Trying to update immutable fields. Please try again or contact support.')
+        } else {
+          toast.error(detail || 'Server error. Please try again.')
+        }
       } else {
         toast.error(error.message || 'Failed to save settings')
       }
