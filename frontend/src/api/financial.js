@@ -19,7 +19,29 @@ const financialAPI = {
   getPaymentById: async (id) => api.get(`/financial/payments/${id}`),
   updatePayment: async (id, data) => api.put(`/financial/payments/${id}`, data),
   deletePayment: async (id) => api.delete(`/financial/payments/${id}`),
-  getStudentPayments: async (studentId, params = {}) => api.get('/financial/payments', { ...params, student_id: studentId }),
+  getStudentPayments: async (studentId, params = {}) => 
+    api.get('/financial/payments', { ...params, student_id: studentId }),
+  
+  // Receipt
+  /**
+   * Get receipt data for a payment
+   * @param {string} paymentId - Payment ID
+   * @returns {Promise} Receipt data with student, school, and payment details
+   */
+  getReceipt: async (paymentId) => api.get(`/financial/receipt/${paymentId}`),
+  
+  /**
+   * Get receipt data for a transaction
+   * @param {string} transactionId - Transaction ID
+   * @returns {Promise} Receipt data
+   */
+  getTransactionReceipt: async (transactionId) => api.get(`/financial/receipt/${transactionId}`),
+  
+  /**
+   * Get the next available receipt number
+   * @returns {Promise} Next receipt number for preview
+   */
+  getNextReceiptNumber: async () => api.get('/financial/next-receipt-number'),
   
   // School Fees
   getFeeStructure: async (params = {}) => api.get('/financial/fees', { params }),
