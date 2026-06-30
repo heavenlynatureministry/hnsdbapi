@@ -1,6 +1,3 @@
-update the user profile
-
-  
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useApp } from '../../context/AppContext'
@@ -145,10 +142,12 @@ function UserProfile() {
     <div className="space-y-6 max-w-2xl animate-fade-in-up">
       <PageHeader title="My Profile" />
 
-      {/* Profile Header */}
+      {/* Profile Header Card */}
       <Card>
-        <div className="flex items-center gap-4">
-          <div className="relative">
+        {/* User Info Section */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          {/* Avatar */}
+          <div className="relative flex-shrink-0">
             <img 
               src={user?.photo_url || "/logo.png"} 
               alt="Profile" 
@@ -158,36 +157,85 @@ function UserProfile() {
                 e.target.nextSibling.style.display = 'flex'
               }}
             />
-            <div className="w-20 h-20 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 text-2xl font-bold" style={{ display: 'none' }}>
+            <div 
+              className="w-20 h-20 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 text-2xl font-bold" 
+              style={{ display: 'none' }}
+            >
               {user.first_name?.[0]}{user.last_name?.[0]}
             </div>
-            <button className="absolute bottom-0 right-0 w-8 h-8 bg-primary-600 text-white rounded-full flex items-center justify-center hover:bg-primary-700 transition-colors">
+            <button className="absolute bottom-0 right-0 w-8 h-8 bg-primary-600 text-white rounded-full flex items-center justify-center hover:bg-primary-700 transition-colors shadow-sm">
               <Camera size={14} />
             </button>
           </div>
-          <div>
+
+          {/* Name and Role */}
+          <div className="flex-1 min-w-0">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">
               {user.first_name} {user.last_name}
             </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{user.email}</p>
-            <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
-              {user.role?.charAt(0).toUpperCase() + user.role?.slice(1)}
-            </span>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
+                {user.role?.charAt(0).toUpperCase() + user.role?.slice(1)}
+              </span>
+              <span className="text-sm text-gray-400 dark:text-gray-500">
+                • {user.permissions?.length || 0} permissions
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Mail size={16} /> {user.email}
+        {/* Contact Info - Organized in a clean grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+          {/* Email */}
+          <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Mail size={16} className="text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Email Address</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 truncate">{user.email || 'Not set'}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Phone size={16} /> {user.phone_number || 'Not set'}
+
+          {/* Phone */}
+          <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+              <Phone size={16} className="text-green-600 dark:text-green-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Phone Number</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 truncate">{user.phone_number || 'Not set'}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Shield size={16} /> {user.permissions?.length || 0} permissions
+
+          {/* Last Login */}
+          <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+              <Clock size={16} className="text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Last Login</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                {user.last_login 
+                  ? new Date(user.last_login).toLocaleDateString('en-US', { 
+                      month: 'short', day: 'numeric', year: 'numeric' 
+                    }) 
+                  : 'N/A'}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Clock size={16} /> {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'N/A'}
+
+          {/* Permissions */}
+          <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+              <Shield size={16} className="text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Access Level</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 capitalize">
+                {user.role || 'User'}
+              </p>
+            </div>
           </div>
         </div>
       </Card>
@@ -214,12 +262,39 @@ function UserProfile() {
         <Card>
           <form onSubmit={handleProfileSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormInput label="First Name" name="first_name" value={profileData.first_name} onChange={handleProfileChange} />
-              <FormInput label="Last Name" name="last_name" value={profileData.last_name} onChange={handleProfileChange} />
+              <FormInput 
+                label="First Name" 
+                name="first_name" 
+                value={profileData.first_name} 
+                onChange={handleProfileChange} 
+                placeholder="Enter first name"
+              />
+              <FormInput 
+                label="Last Name" 
+                name="last_name" 
+                value={profileData.last_name} 
+                onChange={handleProfileChange} 
+                placeholder="Enter last name"
+              />
             </div>
-            <FormInput label="Email Address" value={user.email} disabled helperText="Email cannot be changed" />
-            <FormInput label="Phone Number" name="phone_number" value={profileData.phone_number} onChange={handleProfileChange} placeholder="+211 900 000 000" />
-            <div className="pt-4">
+            
+            <FormInput 
+              label="Email Address" 
+              value={user.email} 
+              disabled 
+              helperText="Email address cannot be changed. Contact administrator for changes."
+            />
+            
+            <FormInput 
+              label="Phone Number" 
+              name="phone_number" 
+              value={profileData.phone_number} 
+              onChange={handleProfileChange} 
+              placeholder="+211 900 000 000" 
+              type="tel"
+            />
+            
+            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
               <Button type="submit" variant="primary" loading={profileLoading} icon={<Save size={18} />}>
                 Update Profile
               </Button>
@@ -232,10 +307,40 @@ function UserProfile() {
       {activeTab === 'password' && (
         <Card>
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <FormInput label="Current Password" name="current_password" type="password" value={passwordData.current_password} onChange={handlePasswordChange} error={passwordErrors.current_password} placeholder="Enter current password" />
-            <FormInput label="New Password" name="new_password" type="password" value={passwordData.new_password} onChange={handlePasswordChange} error={passwordErrors.new_password} placeholder="Enter new password" helperText="Min 8 characters with uppercase, lowercase, number & special character" />
-            <FormInput label="Confirm New Password" name="confirm_new_password" type="password" value={passwordData.confirm_new_password} onChange={handlePasswordChange} error={passwordErrors.confirm_new_password} placeholder="Confirm new password" />
-            <div className="pt-4">
+            <FormInput 
+              label="Current Password" 
+              name="current_password" 
+              type="password" 
+              value={passwordData.current_password} 
+              onChange={handlePasswordChange} 
+              error={passwordErrors.current_password} 
+              placeholder="Enter current password" 
+            />
+            
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <FormInput 
+                label="New Password" 
+                name="new_password" 
+                type="password" 
+                value={passwordData.new_password} 
+                onChange={handlePasswordChange} 
+                error={passwordErrors.new_password} 
+                placeholder="Enter new password" 
+                helperText="Minimum 8 characters with uppercase, lowercase, number & special character" 
+              />
+            </div>
+            
+            <FormInput 
+              label="Confirm New Password" 
+              name="confirm_new_password" 
+              type="password" 
+              value={passwordData.confirm_new_password} 
+              onChange={handlePasswordChange} 
+              error={passwordErrors.confirm_new_password} 
+              placeholder="Confirm new password" 
+            />
+            
+            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
               <Button type="submit" variant="primary" loading={passwordLoading} icon={<Key size={18} />}>
                 Change Password
               </Button>
