@@ -8,7 +8,8 @@ import Button from '../../components/common/Button'
 import FormInput from '../../components/common/FormInput'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { ArrowLeft, Save, DollarSign } from 'lucide-react'
+import ReceiptPrint from '../../components/receipts/ReceiptPrint'
+import { ArrowLeft, Save, DollarSign, Printer, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const TYPE_OPTIONS = [
@@ -59,7 +60,7 @@ const PAYMENT_METHODS = [
 function getCurrentAcademicYear() {
   const now = new Date()
   const year = now.getFullYear()
-  const month = now.getMonth() + 1 // JavaScript months are 0-indexed
+  const month = now.getMonth() + 1
   const startYear = month === 1 ? year - 1 : year
   return `${startYear}/${startYear + 1}`
 }
@@ -69,7 +70,7 @@ function getCurrentTerm() {
   if (month >= 2 && month <= 4) return 'Term 1'
   if (month >= 5 && month <= 7) return 'Term 2'
   if (month >= 9 && month <= 11) return 'Term 3'
-  return 'Term 2' // Default for break periods
+  return 'Term 2'
 }
 
 const ACADEMIC_YEAR_OPTIONS = [
@@ -93,6 +94,11 @@ function TransactionForm() {
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
+
+  // Receipt state
+  const [showReceipt, setShowReceipt] = useState(false)
+  const [receiptData, setReceiptData] = useState(null)
+  const [savedTransactionId, setSavedTransactionId] = useState(null)
 
   const currentYear = getCurrentAcademicYear()
   const currentTerm = getCurrentTerm()
@@ -128,8 +134,10 @@ function TransactionForm() {
     setFetching(true)
     try {
       const response = await financialAPI.getTransaction(id)
-      if (response?.success && response.data) {
-        const t = response.data
+      const data = response?.data || response
+      
+      if (data?.success && data.data) {
+        const t = data.data
         setFormData({
           transaction_date: t.transaction_date?.split('T')[0] || new Date().toISOString().split('T')[0],
           amount: t.amount || '',
@@ -141,11 +149,15 @@ function TransactionForm() {
           term: t.term || currentTerm,
           notes: t.notes || '',
         })
+        
+        // Store the transaction ID for receipt
+        setSavedTransactionId(id)
       } else {
         toast.error('Failed to load transaction')
         navigate('/financial')
       }
     } catch (error) {
+      console.error('Failed to fetch transaction:', error)
       toast.error('Failed to fetch transaction')
       navigate('/financial')
     } finally {
@@ -200,15 +212,41 @@ function TransactionForm() {
         response = await financialAPI.createTransaction(payload)
       }
 
-      if (response && response.success) {
-        toast.success(`Transaction ${isEdit ? 'updated' : 'recorded'} successfully`)
-        navigate('/financial')
+      // Handle different response formats
+      const result = response?.data || response
+      
+      if (result?.success) {
+        const transactionId = result.data?._id || result.data?.id || id
+        
+        toast.success(
+          <div className="flex items-center gap-2">
+            <span>Transaction {isEdit ? 'updated' : 'recorded'} successfully!</span>
+            {!isEdit && (
+              <button
+                onClick={() => handleViewReceipt(transactionId)}
+                className="text-primary-600 underline text-sm font-medium whitespace-nowrap"
+              >
+                View Receipt
+              </button>
+            )}
+          </div>,
+          { duration: 5000 }
+        )
+        
+        // Auto-show receipt for new income transactions
+        if (!isEdit && formData.transaction_type === 'income') {
+          handleViewReceipt(transactionId)
+        } else {
+          navigate('/financial')
+        }
       } else {
-        toast.error(response?.message || 'Failed to save transaction')
+        toast.error(result?.message || 'Failed to save transaction')
       }
     } catch (error) {
-      if (error.status === 422) {
-        const fieldErrors = error.errors || []
+      console.error('Transaction save error:', error)
+      
+      if (error.status === 422 || error.response?.status === 422) {
+        const fieldErrors = error.errors || error.response?.data?.errors || []
         const newErrors = {}
         fieldErrors.forEach(err => {
           const field = err.loc?.[err.loc.length - 1] || 'general'
@@ -219,12 +257,53 @@ function TransactionForm() {
       } else if (error.status === 0) {
         toast.error('Server is starting up. Please try again in 30 seconds.')
       } else {
-        toast.error(error.message || 'Failed to save transaction')
+        const errorMsg = error.response?.data?.detail || error.message || 'Failed to save transaction'
+        toast.error(errorMsg)
       }
-      console.error('Transaction save error:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  /**
+   * Fetch receipt data and show receipt modal
+   */
+  const handleViewReceipt = async (transactionId) => {
+    if (!transactionId) {
+      toast.error('Transaction ID not available')
+      return
+    }
+    
+    try {
+      toast.loading('Generating receipt...')
+      
+      const response = await financialAPI.getTransactionReceipt(transactionId)
+      const result = response?.data || response
+      
+      toast.dismiss()
+      
+      if (result?.success && result.data) {
+        setReceiptData(result.data)
+        setSavedTransactionId(transactionId)
+        setShowReceipt(true)
+      } else {
+        toast.error('Could not generate receipt')
+      }
+    } catch (error) {
+      toast.dismiss()
+      console.error('Receipt fetch error:', error)
+      toast.error('Failed to generate receipt')
+    }
+  }
+
+  /**
+   * Handle receipt close
+   */
+  const handleReceiptClose = () => {
+    setShowReceipt(false)
+    setReceiptData(null)
+    // Navigate back to financial list after closing receipt
+    navigate('/financial')
   }
 
   if (fetching) return <LoadingSpinner fullScreen />
@@ -237,11 +316,29 @@ function TransactionForm() {
     <div className="space-y-6 max-w-2xl animate-fade-in-up">
       <PageHeader
         title={isEdit ? 'Edit Transaction' : 'Record Transaction'}
-        actions={<button onClick={() => navigate('/financial')} className="btn btn-secondary"><ArrowLeft size={18} /> Back</button>}
+        subtitle={isEdit ? 'Update transaction details' : 'Record a new financial transaction'}
+        actions={
+          <div className="flex gap-2">
+            {/* Show View Receipt button in edit mode if transaction exists */}
+            {isEdit && savedTransactionId && (
+              <Button 
+                onClick={() => handleViewReceipt(savedTransactionId)}
+                variant="secondary"
+                icon={<Eye size={18} />}
+              >
+                View Receipt
+              </Button>
+            )}
+            <button onClick={() => navigate('/financial')} className="btn btn-secondary">
+              <ArrowLeft size={18} /> Back
+            </button>
+          </div>
+        }
       />
 
       <Card>
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Transaction Type & Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormSelect 
               label="Transaction Type *" 
@@ -261,6 +358,7 @@ function TransactionForm() {
             />
           </div>
 
+          {/* Amount & Payment Method */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput 
               label="Amount (SSP) *" 
@@ -283,6 +381,7 @@ function TransactionForm() {
             />
           </div>
 
+          {/* Category */}
           <FormSelect 
             label="Category *" 
             name="category" 
@@ -293,6 +392,7 @@ function TransactionForm() {
             disabled={!formData.transaction_type}
           />
 
+          {/* Description */}
           <div>
             <label className="form-label">Description *</label>
             <textarea 
@@ -306,6 +406,7 @@ function TransactionForm() {
             {errors.description && <p className="form-error">{errors.description}</p>}
           </div>
 
+          {/* Academic Year & Term */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormSelect 
               label="Academic Year" 
@@ -323,6 +424,7 @@ function TransactionForm() {
             />
           </div>
 
+          {/* Notes */}
           <div>
             <label className="form-label">Notes</label>
             <textarea 
@@ -335,14 +437,48 @@ function TransactionForm() {
             />
           </div>
 
+          {/* Action Buttons */}
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <Button type="submit" variant="primary" loading={loading} icon={<Save size={18} />}>
-              {isEdit ? 'Update' : 'Record'} Transaction
+            <Button 
+              type="submit" 
+              variant="primary" 
+              loading={loading} 
+              icon={<Save size={18} />}
+              disabled={loading}
+            >
+              {loading ? (isEdit ? 'Updating...' : 'Recording...') : (isEdit ? 'Update' : 'Record')} Transaction
             </Button>
-            <Button type="button" variant="secondary" onClick={() => navigate('/financial')}>Cancel</Button>
+            <Button 
+              type="button" 
+              variant="secondary" 
+              onClick={() => navigate('/financial')}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            
+            {/* Print receipt button in edit mode */}
+            {isEdit && savedTransactionId && (
+              <Button 
+                type="button"
+                variant="secondary" 
+                onClick={() => handleViewReceipt(savedTransactionId)}
+                icon={<Printer size={18} />}
+              >
+                Print Receipt
+              </Button>
+            )}
           </div>
         </form>
       </Card>
+
+      {/* Receipt Modal */}
+      {showReceipt && receiptData && (
+        <ReceiptPrint 
+          receipt={receiptData}
+          onClose={handleReceiptClose}
+        />
+      )}
     </div>
   )
 }
