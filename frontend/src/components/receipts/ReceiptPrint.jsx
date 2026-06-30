@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Printer, Download, X } from 'lucide-react'
 import Button from '../common/Button'
-import './ReceiptPrint.css'
+// REMOVED: import './ReceiptPrint.css' - CSS is now inline
 
 function ReceiptPrint({ receipt, onClose }) {
   const printRef = useRef(null)
@@ -47,7 +47,7 @@ function ReceiptPrint({ receipt, onClose }) {
             font-size: 11px;
             color: #000;
             background: #fff;
-            width: 148mm; /* A5 width */
+            width: 148mm;
             margin: 0 auto;
             padding: 5mm;
           }
@@ -57,7 +57,6 @@ function ReceiptPrint({ receipt, onClose }) {
             max-width: 148mm;
           }
           
-          /* Letterhead Image */
           .letterhead {
             width: 100%;
             height: auto;
@@ -72,7 +71,6 @@ function ReceiptPrint({ receipt, onClose }) {
             object-fit: contain;
           }
           
-          /* Receipt Content */
           .receipt-content {
             padding: 5mm 8mm 8mm 8mm;
           }
@@ -163,7 +161,6 @@ function ReceiptPrint({ receipt, onClose }) {
             border-top: 1px dashed #000;
           }
 
-          /* Print button */
           .no-print {
             text-align: center;
             margin-top: 10px;
@@ -179,21 +176,25 @@ function ReceiptPrint({ receipt, onClose }) {
             cursor: pointer;
             font-size: 14px;
           }
+
+          .header-fallback {
+            text-align: center;
+            padding: 8mm;
+            border-bottom: 2px solid #000;
+          }
         </style>
       </head>
       <body>
         <div class="receipt">
-          <!-- Letterhead Image at the top -->
           <div class="letterhead">
             <img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-            <div class="header-fallback" style="display:none; text-align:center; padding:8mm; border-bottom:2px solid #000;">
+            <div class="header-fallback" style="display:none;">
               <div style="font-size:16px; font-weight:bold; text-transform:uppercase;">${receipt?.school?.name || 'School Name'}</div>
               ${receipt?.school?.motto ? `<div style="font-size:10px; font-style:italic; margin:2mm 0;">"${receipt.school.motto}"</div>` : ''}
               <div style="font-size:9px;">${receipt?.school?.address || ''} | Tel: ${receipt?.school?.phone || ''} | Email: ${receipt?.school?.email || ''}</div>
             </div>
           </div>
           
-          <!-- Receipt Content -->
           <div class="receipt-content">
             <div class="receipt-title">Payment Receipt</div>
             
@@ -273,19 +274,17 @@ function ReceiptPrint({ receipt, onClose }) {
     
     printWindow.document.close()
     
-    // Auto print after a short delay
     setTimeout(() => {
       printWindow.print()
     }, 1000)
   }
 
   const handleDownloadPDF = () => {
-    handlePrint() // Fallback to print which can save as PDF
+    handlePrint()
   }
 
   if (!receipt) return null
 
-  // Get the letterhead image URL
   const letterheadUrl = '/letter-head.jpg'
 
   return (
@@ -319,19 +318,18 @@ function ReceiptPrint({ receipt, onClose }) {
             }}
           >
             {/* Letterhead Image */}
-            <div className="letterhead-preview">
+            <div>
               <img 
                 src={letterheadUrl} 
                 alt="School Letterhead" 
                 className="w-full h-auto block border-b border-gray-300"
                 onError={(e) => {
                   e.target.style.display = 'none'
-                  // Show fallback header
                   const fallback = e.target.nextElementSibling
                   if (fallback) fallback.style.display = 'block'
                 }}
               />
-              {/* Fallback Header (shown if image fails to load) */}
+              {/* Fallback Header */}
               <div 
                 className="text-center p-4 border-b-2 border-black"
                 style={{ display: 'none' }}
@@ -352,17 +350,14 @@ function ReceiptPrint({ receipt, onClose }) {
 
             {/* Receipt Content */}
             <div className="p-4">
-              {/* Receipt Title */}
               <div className="text-center font-bold text-sm border border-black py-1 mb-3 bg-gray-100">
                 PAYMENT RECEIPT
               </div>
 
-              {/* Receipt Number */}
               <div className="text-right text-xs mb-3">
                 <strong>Receipt No:</strong> {receipt?.receipt_number || 'N/A'}
               </div>
 
-              {/* Details */}
               <div className="space-y-1 mb-3">
                 <div className="flex justify-between text-xs">
                   <span className="font-bold">Date:</span>
@@ -392,7 +387,6 @@ function ReceiptPrint({ receipt, onClose }) {
                 </div>
               </div>
 
-              {/* Amount */}
               <div className="border-2 border-black p-3 text-center my-3 bg-gray-50">
                 <div className="text-xs mb-1">AMOUNT PAID</div>
                 <div className="text-xl font-bold font-sans">
@@ -401,7 +395,6 @@ function ReceiptPrint({ receipt, onClose }) {
                 <div className="text-xs italic mt-1">{receipt?.amount_words || ''}</div>
               </div>
 
-              {/* Signatures */}
               <div className="flex justify-between mt-8 pt-3 border-t border-black">
                 <div className="text-center w-2/5">
                   <div className="border-b border-black mb-1 h-8">&nbsp;</div>
@@ -415,7 +408,6 @@ function ReceiptPrint({ receipt, onClose }) {
                 </div>
               </div>
 
-              {/* Footer */}
               <div className="text-center text-xs mt-4 pt-2 border-t border-dashed border-gray-400">
                 <p>This is a computer-generated receipt.</p>
                 <p>Thank you for your payment!</p>
