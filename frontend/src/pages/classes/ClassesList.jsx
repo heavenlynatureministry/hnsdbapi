@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import classesAPI from '../../api/classes'
-import api from '../../api/axios'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Badge from '../../components/common/Badge'
@@ -36,10 +35,23 @@ function ClassesList() {
     setLoading(true)
     try {
       const response = await classesAPI.getAll()
-      const data = response?.data || response
-      const classList = data?.classes || data || []
-      const safeClasses = Array.isArray(classList) ? classList : []
-      setClasses(safeClasses)
+      console.log('Classes response:', response)
+      
+      let classList = []
+      
+      // Backend returns: { success: true, data: [ ... ] } (array directly)
+      if (Array.isArray(response?.data)) {
+        classList = response.data
+      } else if (response?.data?.classes && Array.isArray(response.data.classes)) {
+        classList = response.data.classes
+      } else if (response?.data?.data && Array.isArray(response.data.data)) {
+        classList = response.data.data
+      } else if (Array.isArray(response)) {
+        classList = response
+      }
+      
+      console.log('Classes loaded:', classList.length)
+      setClasses(Array.isArray(classList) ? classList : [])
     } catch (error) {
       console.error('Failed to fetch classes:', error)
       toast.error('Failed to load classes')
@@ -52,12 +64,14 @@ function ClassesList() {
   const handleDelete = async () => {
     if (!deleteClass) return
     try {
-      await api.delete(`/classes/${deleteClass._id}/permanent`)
-      toast.success(`Class "${deleteClass.class_name}" deleted permanently`)
+      // Use classesAPI.delete() which calls DELETE /classes/{id} (soft delete)
+      await classesAPI.delete(deleteClass._id)
+      toast.success(`Class "${deleteClass.class_name}" deactivated successfully`)
       setShowDeleteDialog(false)
       setDeleteClass(null)
       fetchClasses()
     } catch (error) {
+      console.error('Delete error:', error)
       toast.error(error.message || 'Failed to delete class')
     }
   }
@@ -224,8 +238,8 @@ function ClassesList() {
         }}
         onConfirm={handleDelete}
         title="Delete Class"
-        message={`Are you sure you want to permanently delete "${deleteClass?.class_name}"? This action cannot be undone.`}
-        confirmText="Delete Permanently"
+        message={`Are you sure you want to delete "${deleteClass?.class_name}"? This will deactivate the class.`}
+        confirmText="Delete Class"
         variant="danger"
       />
     </div>
