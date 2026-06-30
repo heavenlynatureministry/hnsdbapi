@@ -40,6 +40,13 @@ def _get_current_term() -> str:
     else: return "Annual Break"
 
 
+def _clean_immutable_fields(data: dict) -> dict:
+    """Remove immutable fields that cannot be updated in MongoDB."""
+    immutable_fields = ['_id', 'id', 'created_at', 'created_by']
+    cleaned = {k: v for k, v in data.items() if k not in immutable_fields}
+    return cleaned
+
+
 # =========================================================================
 # SCHOOL INFO
 # =========================================================================
@@ -63,7 +70,11 @@ async def update_school_info(
     """Update school information"""
     db = get_database()
     update_dict = {k: v for k, v in update_data.dict(exclude_unset=True).items() if v is not None}
+    
+    # Clean immutable fields
+    update_dict = _clean_immutable_fields(update_dict)
     update_dict["updated_at"] = datetime.utcnow()
+    
     await db.school_info.update_one({}, {"$set": update_dict}, upsert=True)
     return {"success": True, "message": "School info updated"}
 
@@ -190,7 +201,12 @@ async def create_event(
 ):
     """Create school event"""
     db = get_database()
-    event_doc = {**event.dict(), "created_by": current_user["_id"], "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
+    event_doc = {
+        **event.dict(), 
+        "created_by": current_user["_id"], 
+        "created_at": datetime.utcnow(), 
+        "updated_at": datetime.utcnow()
+    }
     result = await db.school_events.insert_one(event_doc)
     event_doc["_id"] = str(result.inserted_id)
     event_doc = parse_mongo_document(event_doc)
@@ -215,7 +231,11 @@ async def update_event(
     """Update school event"""
     db = get_database()
     update_dict = {k: v for k, v in event.dict(exclude_unset=True).items() if v is not None}
+    
+    # Clean immutable fields
+    update_dict = _clean_immutable_fields(update_dict)
     update_dict["updated_at"] = datetime.utcnow()
+    
     result = await db.school_events.find_one_and_update(
         {"_id": ObjectId(event_id)}, {"$set": update_dict}, return_document=True
     )
@@ -260,7 +280,12 @@ async def add_board_member(
 ):
     """Add board member"""
     db = get_database()
-    member_doc = {**member.dict(), "status": "active", "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
+    member_doc = {
+        **member.dict(), 
+        "status": "active", 
+        "created_at": datetime.utcnow(), 
+        "updated_at": datetime.utcnow()
+    }
     result = await db.board_members.insert_one(member_doc)
     member_doc["_id"] = str(result.inserted_id)
     member_doc = parse_mongo_document(member_doc)
@@ -274,8 +299,13 @@ async def update_board_member(
 ):
     """Update board member"""
     db = get_database()
+    update_dict = {**member.dict(), "updated_at": datetime.utcnow()}
+    
+    # Clean immutable fields
+    update_dict = _clean_immutable_fields(update_dict)
+    
     result = await db.board_members.find_one_and_update(
-        {"_id": ObjectId(member_id)}, {"$set": {**member.dict(), "updated_at": datetime.utcnow()}}, return_document=True
+        {"_id": ObjectId(member_id)}, {"$set": update_dict}, return_document=True
     )
     if not result: raise HTTPException(status_code=404, detail="Member not found")
     result = parse_mongo_document(result)
@@ -289,7 +319,8 @@ async def remove_board_member(
     """Remove board member"""
     db = get_database()
     result = await db.board_members.update_one(
-        {"_id": ObjectId(member_id)}, {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
+        {"_id": ObjectId(member_id)}, 
+        {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
     )
     if result.modified_count == 0: raise HTTPException(status_code=404, detail="Member not found")
     return {"success": True, "message": "Board member removed"}
@@ -331,6 +362,10 @@ async def get_settings(current_user: Dict[str, Any] = Depends(get_current_user))
             "Business Studies", "History", "Geography", "Civics"
         ]
     
+    # Convert _id to string id for frontend reference
+    if "_id" in settings_doc:
+        settings_doc["id"] = str(settings_doc["_id"]) if isinstance(settings_doc["_id"], ObjectId) else str(settings_doc["_id"])
+    
     return {"success": True, "message": "Settings retrieved", "data": settings_doc}
 
 
@@ -349,18 +384,71 @@ async def update_settings(
     if not body:
         raise HTTPException(status_code=400, detail="No data to update")
     
+    # ============================================================
+    # CRITICAL: Remove immutable fields that MongoDB rejects
+    # ============================================================
+    body = _clean_immutable_fields(body)
+    
+    # Add update metadata
     body["updated_at"] = datetime.utcnow()
     body["updated_by"] = str(current_user.get("_id", ""))
     
+    print(f"📝 Saving settings with keys: {list(body.keys())}")
+    
     try:
-        # Try settings collection first, fallback to system_settings
-        result = await db.settings.update_one({}, {"$set": body}, upsert=True)
+        # Try settings collection first
+        result = await db.settings.update_one(
+            {}, 
+            {"$set": body}, 
+            upsert=True
+        )
+        
         if result.matched_count == 0 and result.upserted_id is None:
-            # Try system_settings collection
-            await db.system_settings.update_one({}, {"$set": body}, upsert=True)
-        return {"success": True, "message": "Settings saved successfully"}
+            # Try system_settings collection as fallback
+            result = await db.system_settings.update_one(
+                {}, 
+                {"$set": body}, 
+                upsert=True
+            )
+        
+        # Fetch updated settings to return
+        updated_settings = await db.settings.find_one({}) or await db.system_settings.find_one({})
+        if updated_settings:
+            updated_settings = parse_mongo_document(updated_settings)
+            updated_settings["id"] = str(updated_settings.get("_id", ""))
+            updated_settings["current_academic_year"] = _get_current_academic_year()
+        
+        return {
+            "success": True,
+            "message": "Settings saved successfully",
+            "data": updated_settings
+        }
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save settings: {str(e)}")
+        error_msg = str(e)
+        print(f"❌ Settings save error: {error_msg}")
+        
+        # Check for immutable field error specifically (MongoDB error code 66)
+        if "immutable field" in error_msg.lower() or "code': 66" in error_msg or "code\": 66" in error_msg:
+            print(f"⚠️ Immutable field detected. Performing aggressive cleanup...")
+            
+            # More aggressive cleaning
+            aggressive_immutable = ['_id', 'id', 'created_at', 'created_by', 'updated_at', 'updated_by']
+            for field in aggressive_immutable:
+                body.pop(field, None)
+            
+            body["updated_at"] = datetime.utcnow()
+            
+            try:
+                await db.settings.update_one({}, {"$set": body}, upsert=True)
+                return {"success": True, "message": "Settings saved successfully (after cleanup)"}
+            except Exception as retry_error:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to save settings even after cleanup: {str(retry_error)}"
+                )
+        
+        raise HTTPException(status_code=500, detail=f"Failed to save settings: {error_msg}")
 
 
 # =========================================================================
@@ -375,7 +463,10 @@ async def initialize_school(current_user: Dict[str, Any] = Depends(require_role(
         "motto": "Nurturing Right Leaders",
         "academic_year": _get_current_academic_year(),
         "current_term": _get_current_term(),
-        "terms_per_year": 3, "language": "en", "currency": "SSP", "timezone": "Africa/Juba",
+        "terms_per_year": 3, 
+        "language": "en", 
+        "currency": "SSP", 
+        "timezone": "Africa/Juba",
         "subjects": [
             "English Language", "Mathematics", "Science", "Social Studies",
             "Religious Education", "Creative Arts", "Physical Education",
@@ -391,6 +482,10 @@ async def initialize_school(current_user: Dict[str, Any] = Depends(require_role(
         await db.system_settings.update_one({}, {"$set": settings_data}, upsert=True)
     
     return {
-        "success": True, "message": "School initialized successfully",
-        "data": {"academic_year": _get_current_academic_year(), "current_term": _get_current_term()}
+        "success": True, 
+        "message": "School initialized successfully",
+        "data": {
+            "academic_year": _get_current_academic_year(),
+            "current_term": _get_current_term()
+        }
     }
