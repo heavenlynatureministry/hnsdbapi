@@ -7,6 +7,7 @@ const classesAPI = {
   createAllForYear: async (academicYear) => api.post('/classes/create-all', { academic_year: academicYear }),
   update: async (id, data) => api.put(`/classes/${id}`, data),
   archive: async (id) => api.delete(`/classes/${id}`),
+  delete: async (id) => api.delete(`/classes/${id}`),
   getStudents: async (classId, includeInactive = false) => api.get(`/classes/${classId}/students`, { params: { include_inactive: includeInactive } }),
   getStudentCount: async (classId) => api.get(`/classes/${classId}/students/count`),
   promoteStudents: async (data) => api.post('/classes/promote', data),
