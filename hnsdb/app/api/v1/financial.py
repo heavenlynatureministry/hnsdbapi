@@ -103,26 +103,30 @@ def _number_to_words(amount: float) -> str:
     return result + " Only"
 
 
-def _generate_receipt_number(transaction_id: str = None, db=None) -> str:
+async def _generate_receipt_number(db) -> str:
     """Generate a sequential receipt number."""
     year = datetime.utcnow().strftime("%y")
     
     if db is not None:
-        # Find last receipt number for this year
-        last_payment = db.payments.find_one(
-            {"receipt_number": {"$regex": f"^RCP-{year}"}},
-            sort=[("created_at", -1)]
-        )
-        
-        if last_payment and last_payment.get("receipt_number"):
-            try:
-                last_num = int(last_payment["receipt_number"].split("-")[-1])
-                return f"RCP-{year}{last_num + 1:04d}"
-            except (ValueError, IndexError):
-                pass
+        try:
+            # Find last receipt number for this year
+            last_payment = await db.payments.find_one(
+                {"receipt_number": {"$regex": f"^RCP-{year}"}},
+                sort=[("created_at", -1)]
+            )
+            
+            if last_payment and last_payment.get("receipt_number"):
+                try:
+                    last_num = int(last_payment["receipt_number"].split("-")[-1])
+                    return f"RCP-{year}{last_num + 1:04d}"
+                except (ValueError, IndexError, AttributeError):
+                    pass
+        except Exception as e:
+            print(f"⚠️ Receipt number generation error: {e}")
     
     # Fallback: use timestamp-based number
-    return f"RCP-{year}{datetime.utcnow().strftime('%m%d%H%M%S')}"
+    timestamp = datetime.utcnow().strftime('%m%d%H%M%S')
+    return f"RCP-{year}{timestamp}"
 
 
 # =========================================================================
@@ -255,35 +259,70 @@ async def record_payment(
     
     try:
         body = await request.json()
-    except Exception:
+        print(f"📝 Payment request: {body}")
+    except Exception as e:
+        print(f"❌ JSON parse error: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     
     student_id = body.get('student_id', '')
     amount_paid = body.get('amount_paid', body.get('amount', 0))
     
-    if not student_id or not amount_paid:
-        raise HTTPException(status_code=400, detail="Student ID and amount are required")
+    if not student_id:
+        raise HTTPException(status_code=400, detail="Student ID is required")
+    
+    if not amount_paid or float(amount_paid) <= 0:
+        raise HTTPException(status_code=400, detail="Valid amount is required")
     
     sid = _safe_objectid(student_id)
     if not sid:
-        raise HTTPException(status_code=400, detail="Invalid student ID")
+        raise HTTPException(status_code=400, detail="Invalid student ID format")
     
-    student = await db.students.find_one({"_id": sid})
+    # Get student info
+    try:
+        student = await db.students.find_one({"_id": sid})
+    except Exception as e:
+        print(f"❌ Student lookup error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error looking up student: {str(e)}")
+    
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
+    # Build student name safely
     student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
     
+    # Get class name
     class_name = ""
-    if student.get("current_class_id"):
-        cls = await db.classes.find_one({"_id": student["current_class_id"]})
-        if cls: class_name = cls.get("class_name", "")
+    try:
+        if student.get("current_class_id"):
+            cls = await db.classes.find_one({"_id": student["current_class_id"]})
+            if cls:
+                class_name = cls.get("class_name", "")
+    except Exception:
+        pass
     
     # Generate receipt number if not provided
-    receipt_number = body.get('receipt_number') or _generate_receipt_number(db=db)
+    receipt_number = body.get('receipt_number')
+    if not receipt_number:
+        try:
+            receipt_number = await _generate_receipt_number(db)
+        except Exception as e:
+            print(f"⚠️ Receipt number error, using fallback: {e}")
+            receipt_number = f"RCP-{datetime.utcnow().strftime('%y%m%d%H%M%S')}"
+    
     academic_year = body.get('academic_year') or _get_current_academic_year()
     payment_status = body.get('status', 'completed')
     
+    # Safely get recorded by name
+    recorded_by_name = "System"
+    try:
+        first = current_user.get("first_name", "")
+        last = current_user.get("last_name", "")
+        if first or last:
+            recorded_by_name = f"{first} {last}".strip()
+    except Exception:
+        pass
+    
+    # Build document with safe defaults
     doc = {
         "student_id": sid,
         "student_name": student_name,
@@ -297,20 +336,34 @@ async def record_payment(
         "receipt_number": receipt_number,
         "status": payment_status,
         "recorded_by": current_user.get("_id"),
-        "recorded_by_name": current_user.get("first_name", "") + " " + current_user.get("last_name", ""),
+        "recorded_by_name": recorded_by_name,
         "academic_year": academic_year,
         "term": body.get('term') or _get_current_term(),
-        "notes": body.get('notes'),
-        "transaction_reference": body.get('transaction_reference'),
+        "notes": body.get('notes', ''),
+        "transaction_reference": body.get('transaction_reference', ''),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
     
-    result = await db.payments.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-    doc = parse_mongo_document(doc)
+    # Remove None values
+    doc = {k: v for k, v in doc.items() if v is not None}
     
-    return {"success": True, "message": "Payment recorded", "data": doc}
+    try:
+        result = await db.payments.insert_one(doc)
+        doc["_id"] = str(result.inserted_id)
+        doc = parse_mongo_document(doc)
+        
+        print(f"✅ Payment recorded: {receipt_number}")
+        
+        return {
+            "success": True, 
+            "message": "Payment recorded successfully", 
+            "data": doc
+        }
+    except Exception as e:
+        print(f"❌ Payment insert error: {str(e)}")
+        print(f"❌ Document: {doc}")
+        raise HTTPException(status_code=500, detail=f"Failed to record payment: {str(e)}")
 
 
 @router.get("/payments/{payment_id}")
@@ -392,7 +445,7 @@ async def get_next_receipt_number(
 ):
     """Get the next receipt number for preview"""
     db = get_database()
-    receipt_number = _generate_receipt_number(db=db)
+    receipt_number = await _generate_receipt_number(db)
     
     return {
         "success": True,
@@ -425,16 +478,20 @@ async def get_payment_receipt(
     # Get student details if student_id exists
     student_name = payment.get("student_name", "")
     class_name = payment.get("class_name", "")
+    paid_by = payment.get("paid_by", "")
     
     if payment.get("student_id") and not student_name:
-        student = await db.students.find_one({"_id": payment["student_id"]})
-        if student:
-            student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
-            
-            if student.get("current_class_id") and not class_name:
-                cls = await db.classes.find_one({"_id": student["current_class_id"]})
-                if cls:
-                    class_name = cls.get("class_name", "")
+        try:
+            student = await db.students.find_one({"_id": payment["student_id"]})
+            if student:
+                student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
+                
+                if student.get("current_class_id") and not class_name:
+                    cls = await db.classes.find_one({"_id": student["current_class_id"]})
+                    if cls:
+                        class_name = cls.get("class_name", "")
+        except Exception:
+            pass
     
     # Get school info
     school = await db.school_info.find_one({}) or {}
@@ -456,6 +513,7 @@ async def get_payment_receipt(
         "term": payment.get("term", ""),
         "academic_year": payment.get("academic_year", ""),
         "received_by": payment.get("recorded_by_name", ""),
+        "paid_by": paid_by,
         "school": {
             "name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
             "address": school.get("address", ""),
@@ -613,7 +671,7 @@ async def create_transaction(
         "recorded_by_name": current_user.get("first_name", "") + " " + current_user.get("last_name", ""),
         "approval_status": approval_status,
         "academic_year": academic_year, "term": term,
-        "notes": body.get('notes'),
+        "notes": body.get('notes', ''),
         "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
     }
     
