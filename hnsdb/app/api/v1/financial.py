@@ -44,6 +44,87 @@ def _get_current_term() -> str:
     else: return "Annual Break"
 
 
+def _number_to_words(amount: float) -> str:
+    """Convert number to words for receipt."""
+    ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
+    teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", 
+             "Seventeen", "Eighteen", "Nineteen"]
+    tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+    thousands = ["", "Thousand", "Million", "Billion"]
+    
+    def convert_less_than_thousand(n: int) -> str:
+        if n == 0:
+            return ""
+        elif n < 10:
+            return ones[n]
+        elif n < 20:
+            return teens[n - 10]
+        elif n < 100:
+            return tens[n // 10] + (" " + ones[n % 10] if n % 10 != 0 else "")
+        else:
+            return ones[n // 100] + " Hundred" + (" and " + convert_less_than_thousand(n % 100) if n % 100 != 0 else "")
+    
+    def convert_integer(n: int) -> str:
+        if n == 0:
+            return "Zero"
+        
+        result = ""
+        thousand_counter = 0
+        
+        while n > 0:
+            if n % 1000 != 0:
+                prefix = convert_less_than_thousand(n % 1000)
+                if thousand_counter > 0:
+                    prefix += " " + thousands[thousand_counter]
+                if result:
+                    result = prefix + " " + result
+                else:
+                    result = prefix
+            n //= 1000
+            thousand_counter += 1
+        
+        return result
+    
+    if amount == 0:
+        return "Zero South Sudanese Pounds Only"
+    
+    whole = int(amount)
+    decimal = int(round((amount - whole) * 100))
+    
+    result = convert_integer(whole) + " South Sudanese Pound"
+    if whole != 1:
+        result += "s"
+    
+    if decimal > 0:
+        result += " and " + convert_integer(decimal) + " Piaster"
+        if decimal != 1:
+            result += "s"
+    
+    return result + " Only"
+
+
+def _generate_receipt_number(transaction_id: str = None, db=None) -> str:
+    """Generate a sequential receipt number."""
+    year = datetime.utcnow().strftime("%y")
+    
+    if db is not None:
+        # Find last receipt number for this year
+        last_payment = db.payments.find_one(
+            {"receipt_number": {"$regex": f"^RCP-{year}"}},
+            sort=[("created_at", -1)]
+        )
+        
+        if last_payment and last_payment.get("receipt_number"):
+            try:
+                last_num = int(last_payment["receipt_number"].split("-")[-1])
+                return f"RCP-{year}{last_num + 1:04d}"
+            except (ValueError, IndexError):
+                pass
+    
+    # Fallback: use timestamp-based number
+    return f"RCP-{year}{datetime.utcnow().strftime('%m%d%H%M%S')}"
+
+
 # =========================================================================
 # SUMMARY & DASHBOARD (specific routes BEFORE /{id})
 # =========================================================================
@@ -198,10 +279,9 @@ async def record_payment(
         cls = await db.classes.find_one({"_id": student["current_class_id"]})
         if cls: class_name = cls.get("class_name", "")
     
-    receipt_number = body.get('receipt_number') or f"RCP-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    # Generate receipt number if not provided
+    receipt_number = body.get('receipt_number') or _generate_receipt_number(db=db)
     academic_year = body.get('academic_year') or _get_current_academic_year()
-    
-    # ✅ FIXED: Use status from request, default to 'completed'
     payment_status = body.get('status', 'completed')
     
     doc = {
@@ -215,8 +295,9 @@ async def record_payment(
         "paid_by": body.get('paid_by', student_name),
         "payment_date": datetime.utcnow(),
         "receipt_number": receipt_number,
-        "status": payment_status,  # ✅ Now uses request value
+        "status": payment_status,
         "recorded_by": current_user.get("_id"),
+        "recorded_by_name": current_user.get("first_name", "") + " " + current_user.get("last_name", ""),
         "academic_year": academic_year,
         "term": body.get('term') or _get_current_term(),
         "notes": body.get('notes'),
@@ -267,7 +348,6 @@ async def update_payment(
     
     if not body: raise HTTPException(status_code=400, detail="No fields to update")
     
-    # Only allow updating certain fields
     allowed_fields = ["status", "notes", "payment_method", "transaction_reference", "academic_year", "term"]
     update_data = {k: v for k, v in body.items() if k in allowed_fields}
     
@@ -300,6 +380,97 @@ async def delete_payment(
     
     await db.payments.delete_one({"_id": obj_id})
     return {"success": True, "message": "Payment deleted"}
+
+
+# =========================================================================
+# RECEIPT ENDPOINTS
+# =========================================================================
+
+@router.get("/next-receipt-number")
+async def get_next_receipt_number(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get the next receipt number for preview"""
+    db = get_database()
+    receipt_number = _generate_receipt_number(db=db)
+    
+    return {
+        "success": True,
+        "message": "Next receipt number generated",
+        "data": {"receipt_number": receipt_number}
+    }
+
+
+@router.get("/receipt/{payment_id}")
+async def get_payment_receipt(
+    payment_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get receipt data for a payment"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(payment_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid payment ID")
+    
+    # Get payment with student info
+    payment = await db.payments.find_one({"_id": obj_id})
+    
+    if not payment:
+        # Try financial_records collection
+        payment = await db.financial_records.find_one({"_id": obj_id})
+        if not payment:
+            raise HTTPException(status_code=404, detail="Payment not found")
+    
+    # Get student details if student_id exists
+    student_name = payment.get("student_name", "")
+    class_name = payment.get("class_name", "")
+    
+    if payment.get("student_id") and not student_name:
+        student = await db.students.find_one({"_id": payment["student_id"]})
+        if student:
+            student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
+            
+            if student.get("current_class_id") and not class_name:
+                cls = await db.classes.find_one({"_id": student["current_class_id"]})
+                if cls:
+                    class_name = cls.get("class_name", "")
+    
+    # Get school info
+    school = await db.school_info.find_one({}) or {}
+    
+    # Determine amount field
+    amount = payment.get("amount_paid") or payment.get("amount", 0)
+    
+    receipt_data = {
+        "receipt_number": payment.get("receipt_number", ""),
+        "payment_id": str(payment["_id"]),
+        "date": payment.get("payment_date") or payment.get("transaction_date") or payment.get("created_at"),
+        "student_name": student_name,
+        "student_id": str(payment.get("student_id", "")),
+        "class_name": class_name,
+        "amount": float(amount),
+        "amount_words": _number_to_words(float(amount)),
+        "payment_method": payment.get("payment_method", "Cash"),
+        "payment_for": payment.get("payment_type") or payment.get("fee_type") or payment.get("description", "School Fees"),
+        "term": payment.get("term", ""),
+        "academic_year": payment.get("academic_year", ""),
+        "received_by": payment.get("recorded_by_name", ""),
+        "school": {
+            "name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
+            "address": school.get("address", ""),
+            "phone": school.get("phone", ""),
+            "email": school.get("email", ""),
+            "motto": school.get("motto", "Nurturing Right Leaders"),
+            "logo_url": school.get("logo_url", "/logo.png")
+        }
+    }
+    
+    return {
+        "success": True,
+        "message": "Receipt data retrieved",
+        "data": receipt_data
+    }
 
 
 # =========================================================================
@@ -430,8 +601,6 @@ async def create_transaction(
     
     academic_year = body.get('academic_year') or _get_current_academic_year()
     term = body.get('term') or _get_current_term()
-    
-    # ✅ Use status from request, default to 'completed' for immediate entries
     approval_status = body.get('status', body.get('approval_status', 'completed'))
     
     doc = {
@@ -441,7 +610,8 @@ async def create_transaction(
         "payment_method": body.get('payment_method', 'cash'),
         "reference_number": body.get('reference_number') or f"TXN-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
         "recorded_by": current_user.get("_id"),
-        "approval_status": approval_status,  # ✅ Uses request value
+        "recorded_by_name": current_user.get("first_name", "") + " " + current_user.get("last_name", ""),
+        "approval_status": approval_status,
         "academic_year": academic_year, "term": term,
         "notes": body.get('notes'),
         "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
@@ -492,7 +662,6 @@ async def update_transaction(
     
     if not body: raise HTTPException(status_code=400, detail="No fields to update")
     
-    # Map status to approval_status if needed
     if 'status' in body and 'approval_status' not in body:
         body['approval_status'] = body.pop('status')
     
