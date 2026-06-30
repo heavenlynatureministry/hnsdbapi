@@ -9,7 +9,6 @@ import Button from '../../components/common/Button'
 import FormInput from '../../components/common/FormInput'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import ReceiptPrint from '../../components/receipts/ReceiptPrint'
 import { ArrowLeft, Save, DollarSign, Printer, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 
