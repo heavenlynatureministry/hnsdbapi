@@ -387,22 +387,54 @@ async def create_class(
     if class_level == "primary" and class_name not in valid_primary:
         raise HTTPException(status_code=400, detail=f"Invalid primary class name. Must be: {', '.join(valid_primary)}")
     
+    # Check for existing class (active OR inactive)
     existing = await db.classes.find_one({
-        "class_name": class_name, "class_level": class_level,
-        "academic_year": academic_year, "status": "active"
+        "class_name": class_name, 
+        "class_level": class_level,
+        "academic_year": academic_year
     })
+    
     if existing:
-        raise HTTPException(status_code=400, detail=f"Class {class_name} already exists for {academic_year}")
+        if existing.get("status") == "inactive":
+            # Reactivate the inactive class
+            await db.classes.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {
+                    "status": "active",
+                    "updated_at": datetime.utcnow(),
+                    "max_capacity": body.get("max_capacity", existing.get("max_capacity", 20)),
+                    "section": body.get("section", existing.get("section")),
+                    "stream": body.get("stream", existing.get("stream"))
+                }}
+            )
+            existing = parse_mongo_document(existing)
+            existing["id"] = existing.get("_id")
+            return {
+                "success": True, 
+                "message": f"Class {class_name} reactivated for {academic_year}",
+                "data": existing
+            }
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Class {class_name} already exists for {academic_year}"
+            )
     
     doc = {
-        "class_name": class_name, "class_level": class_level,
+        "class_name": class_name, 
+        "class_level": class_level,
         "academic_year": academic_year,
         "max_capacity": body.get("max_capacity", 20 if class_level == "nursery" else 25),
-        "current_enrollment": 0, "section": body.get("section"), "stream": body.get("stream"),
+        "current_enrollment": 0, 
+        "section": body.get("section"), 
+        "stream": body.get("stream"),
         "status": "active",
-        "schedule": body.get("schedule", {"monday": [], "tuesday": [], "wednesday": [], "thursday": [], "friday": []}),
+        "schedule": body.get("schedule", {
+            "monday": [], "tuesday": [], "wednesday": [], "thursday": [], "friday": []
+        }),
         "created_by": current_user.get("_id"),
-        "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
+        "created_at": datetime.utcnow(), 
+        "updated_at": datetime.utcnow()
     }
     
     teacher_id = _safe_objectid(body.get("class_teacher_id"))
@@ -419,7 +451,11 @@ async def create_class(
         doc["id"] = doc["_id"]
         if doc.get("class_teacher_id"): doc["class_teacher_id"] = str(doc["class_teacher_id"])
         if doc.get("classroom_id"): doc["classroom_id"] = str(doc["classroom_id"])
-        return {"success": True, "message": f"Class {class_name} created successfully", "data": doc}
+        return {
+            "success": True, 
+            "message": f"Class {class_name} created successfully", 
+            "data": doc
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create class: {str(e)}")
 
@@ -499,3 +535,147 @@ async def delete_class(
         raise HTTPException(status_code=404, detail="Class not found")
     
     return {"success": True, "message": "Class deactivated"}
+
+
+# =========================================================================
+# PERMANENT DELETE - Hard delete endpoint
+# =========================================================================
+@router.delete("/{class_id}/permanent")
+async def permanent_delete_class(
+    class_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """
+    Permanently delete a class from the database.
+    WARNING: This action cannot be undone.
+    Also removes the class reference from all associated students and teachers.
+    """
+    db = get_database()
+    
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid class ID format")
+    
+    # Check if class exists
+    class_doc = await db.classes.find_one({"_id": obj_id})
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    class_name = class_doc.get("class_name", "Unknown")
+    class_level = class_doc.get("class_level", "Unknown")
+    academic_year = class_doc.get("academic_year", "Unknown")
+    
+    # Check for active students in this class
+    active_students = await db.students.count_documents({
+        "current_class_id": obj_id, 
+        "status": "active"
+    })
+    
+    if active_students > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot permanently delete class with {active_students} active students. "
+                   f"Transfer or deactivate students first."
+        )
+    
+    # Remove class reference from all students (including inactive ones)
+    update_students_result = await db.students.update_many(
+        {"current_class_id": obj_id},
+        {"$set": {
+            "current_class_id": None,
+            "previous_class_id": obj_id,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    # Remove class reference from teachers
+    update_teachers_result = await db.teachers.update_many(
+        {"class_id": obj_id},
+        {"$set": {
+            "class_id": None,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    # Permanently delete the class
+    result = await db.classes.delete_one({"_id": obj_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Class not found or already deleted")
+    
+    return {
+        "success": True,
+        "message": f"Class '{class_name}' ({class_level}) for {academic_year} permanently deleted",
+        "data": {
+            "deleted_class": {
+                "id": class_id,
+                "class_name": class_name,
+                "class_level": class_level,
+                "academic_year": academic_year
+            },
+            "students_updated": update_students_result.modified_count,
+            "teachers_updated": update_teachers_result.modified_count
+        }
+    }
+
+
+# =========================================================================
+# REACTIVATE CLASS - Reactivate an inactive class
+# =========================================================================
+@router.put("/{class_id}/reactivate")
+async def reactivate_class(
+    class_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Reactivate a soft-deleted (inactive) class"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(class_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid class ID format")
+    
+    # Check if class exists and is inactive
+    class_doc = await db.classes.find_one({"_id": obj_id})
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    if class_doc.get("status") == "active":
+        return {
+            "success": True, 
+            "message": f"Class '{class_doc.get('class_name')}' is already active",
+            "data": parse_mongo_document(class_doc)
+        }
+    
+    # Check for duplicate active class
+    existing_active = await db.classes.find_one({
+        "class_name": class_doc["class_name"],
+        "class_level": class_doc["class_level"],
+        "academic_year": class_doc["academic_year"],
+        "status": "active"
+    })
+    
+    if existing_active:
+        raise HTTPException(
+            status_code=400,
+            detail=f"An active class with name '{class_doc['class_name']}' already exists "
+                   f"for {class_doc['academic_year']}. Cannot reactivate duplicate."
+        )
+    
+    # Reactivate the class
+    result = await db.classes.find_one_and_update(
+        {"_id": obj_id},
+        {"$set": {
+            "status": "active",
+            "updated_at": datetime.utcnow()
+        }},
+        return_document=True
+    )
+    
+    result = parse_mongo_document(result)
+    result["id"] = result.get("_id")
+    
+    return {
+        "success": True,
+        "message": f"Class '{result.get('class_name')}' reactivated successfully",
+        "data": result
+    }
