@@ -4,7 +4,7 @@ import FormSelect from '../common/FormSelect'
 import Button from '../common/Button'
 import Card from '../common/Card'
 import LoadingSpinner from '../common/LoadingSpinner'
-import { Save, DollarSign, Search, User, X } from 'lucide-react'
+import { Save, DollarSign, Search, User, X, Printer, Receipt } from 'lucide-react'
 
 function getCurrentAcademicYear() {
   const now = new Date()
@@ -56,7 +56,15 @@ const FEE_TYPES = [
   { value: 'other', label: 'Other' },
 ]
 
-function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, loading = false }) {
+function PaymentForm({ 
+  initialData = null, 
+  students = [], 
+  onSubmit, 
+  onCancel, 
+  loading = false,
+  receiptNumber = '', // Pre-generated receipt number
+  onPrintReceipt = null, // Callback to print receipt after payment
+}) {
   const [formData, setFormData] = useState({
     student_id: initialData?.student_id || '',
     amount_paid: initialData?.amount_paid || '',
@@ -65,6 +73,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
     fee_type: initialData?.fee_type || 'tuition',
     paid_by: initialData?.paid_by || '',
     transaction_reference: initialData?.transaction_reference || '',
+    receipt_number: initialData?.receipt_number || receiptNumber || '',
     academic_year: initialData?.academic_year || currentYear,
     term: initialData?.term || currentTerm,
     notes: initialData?.notes || '',
@@ -74,6 +83,13 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
   const [studentSearch, setStudentSearch] = useState('')
   const [showResults, setShowResults] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
+
+  // Update receipt number when prop changes
+  useEffect(() => {
+    if (receiptNumber && !formData.receipt_number) {
+      setFormData(prev => ({ ...prev, receipt_number: receiptNumber }))
+    }
+  }, [receiptNumber])
 
   // Set initial student if editing
   useEffect(() => {
@@ -87,7 +103,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
         setSelectedStudent(student)
         const studentName = student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim()
         setStudentSearch(studentName)
-        // Auto-fill paid_by with student name
+        // Auto-fill paid_by with student name if not already set
         setFormData(prev => ({ ...prev, paid_by: prev.paid_by || studentName }))
       }
     }
@@ -156,6 +172,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
       ...formData,
       amount_paid: parseFloat(formData.amount_paid),
       amount: parseFloat(formData.amount_paid), // Backend also checks 'amount'
+      receipt_number: formData.receipt_number || undefined, // Send receipt number if available
     }
     
     onSubmit?.(payload)
@@ -165,6 +182,31 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
     <form onSubmit={handleSubmit} className="space-y-6 max-w-lg">
       <Card>
         <div className="space-y-4">
+          {/* Receipt Number Display (if available) */}
+          {formData.receipt_number && (
+            <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <Receipt size={18} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Receipt Number</p>
+                <p className="text-sm font-mono font-bold text-blue-800 dark:text-blue-300 truncate">
+                  {formData.receipt_number}
+                </p>
+              </div>
+              {onPrintReceipt && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onPrintReceipt}
+                  icon={<Printer size={14} />}
+                  className="text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800/30"
+                >
+                  Print
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* Student Search */}
           <div>
             <label className="form-label">Student *</label>
@@ -243,6 +285,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
             )}
           </div>
 
+          {/* Payment Type & Fee Type */}
           <div className="grid grid-cols-2 gap-4">
             <FormSelect
               label="Payment Type"
@@ -260,6 +303,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
             />
           </div>
 
+          {/* Amount */}
           <FormInput
             label="Amount Paid (SSP) *"
             name="amount_paid"
@@ -272,6 +316,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
             placeholder="0.00"
           />
           
+          {/* Payment Method & Paid By */}
           <div className="grid grid-cols-2 gap-4">
             <FormSelect
               label="Payment Method"
@@ -290,6 +335,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
             />
           </div>
 
+          {/* Transaction Reference */}
           <FormInput
             label="Transaction Reference"
             name="transaction_reference"
@@ -298,6 +344,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
             placeholder="Bank ref, mobile ref, etc."
           />
           
+          {/* Academic Year & Term */}
           <div className="grid grid-cols-2 gap-4">
             <FormInput
               label="Academic Year"
@@ -315,6 +362,7 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
             />
           </div>
           
+          {/* Notes */}
           <div>
             <label className="form-label">Notes</label>
             <textarea
@@ -329,11 +377,26 @@ function PaymentForm({ initialData = null, students = [], onSubmit, onCancel, lo
         </div>
       </Card>
 
+      {/* Action Buttons */}
       <div className="flex gap-3">
         <Button type="submit" variant="primary" loading={loading} icon={<DollarSign size={18} />}>
-          Record Payment
+          {loading ? 'Recording...' : 'Record Payment'}
         </Button>
-        {onCancel && <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>}
+        {onCancel && (
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+        )}
+        {onPrintReceipt && formData.receipt_number && (
+          <Button 
+            type="button" 
+            variant="secondary" 
+            onClick={onPrintReceipt}
+            icon={<Printer size={18} />}
+          >
+            Print Receipt
+          </Button>
+        )}
       </div>
     </form>
   )
