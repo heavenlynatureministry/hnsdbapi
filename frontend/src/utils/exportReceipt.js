@@ -15,14 +15,8 @@ export const exportReceipt = (receipt) => {
   const printWindow = window.open('', '_blank', 'width=400,height=600')
   
   if (!printWindow) {
-    alert(
-      'Unable to open print window.\n\n' +
-      'Please allow pop-ups for this site.\n\n' +
-      'On mobile:\n' +
-      '• Chrome: Settings > Site Settings > Pop-ups\n' +
-      '• Safari: Settings > Safari > Block Pop-ups (disable)\n\n' +
-      'Or use "Open in New Tab" option.'
-    )
+    // Fallback to direct print if popup blocked
+    printReceiptDirect(receipt)
     return
   }
 
@@ -384,13 +378,364 @@ export const exportReceipt = (receipt) => {
 }
 
 /**
+ * DIRECT PRINT - Opens receipt in new tab as a full printable page
+ * Works on all devices including mobile where popups are blocked
+ */
+export const printReceiptDirect = (receipt) => {
+  if (!receipt) return
+
+  const letterheadUrl = window.location.origin + '/letter-head.jpg'
+  
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A'
+    return new Date(dateStr).toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'long', year: 'numeric'
+    })
+  }
+  
+  const formatAmount = (amount) => {
+    return Number(amount || 0).toLocaleString('en', { minimumFractionDigits: 2 })
+  }
+
+  const printPage = window.open('', '_blank')
+  
+  if (!printPage) {
+    alert('Unable to open print window. Please allow pop-ups for this site.')
+    return
+  }
+  
+  printPage.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Receipt - ${receipt?.receipt_number || 'Payment'}</title>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        @page {
+          size: A5;
+          margin: 3mm;
+        }
+        
+        @media print {
+          body { 
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            margin: 0;
+            padding: 0;
+            background: white;
+          }
+          .no-print { display: none !important; }
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+          font-family: 'Courier New', 'Courier', monospace;
+          font-size: 10px;
+          color: #000;
+          background: #f0f0f0;
+          padding: 10px;
+        }
+        
+        .receipt-container {
+          max-width: 148mm;
+          margin: 0 auto;
+          background: white;
+          border: 1.5px solid #000;
+        }
+        
+        .letterhead-wrapper {
+          width: 100%;
+          border-bottom: 1px solid #000;
+        }
+        
+        .letterhead-wrapper img {
+          width: 100%;
+          height: auto;
+          display: block;
+        }
+        
+        .letterhead-fallback {
+          display: none;
+          text-align: center;
+          padding: 6mm;
+          border-bottom: 2px solid #000;
+          background: #fff;
+        }
+        
+        .receipt-content {
+          padding: 5mm 6mm 6mm 6mm;
+          background: white;
+        }
+        
+        .receipt-title {
+          text-align: center;
+          font-size: 14px;
+          font-weight: bold;
+          margin: 4mm 0;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          border: 1.5px solid #000;
+          padding: 2mm;
+          background: #f5f5f5;
+        }
+        
+        .receipt-number {
+          text-align: right;
+          font-size: 10px;
+          margin-bottom: 4mm;
+          padding: 2mm 0;
+          border-bottom: 1px dashed #ccc;
+        }
+        
+        .info-row {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 2mm;
+          font-size: 11px;
+          padding: 1mm 0;
+        }
+        
+        .info-label {
+          font-weight: bold;
+          width: 38%;
+          white-space: nowrap;
+        }
+        
+        .info-value {
+          width: 62%;
+          border-bottom: 1px dotted #ccc;
+          text-align: right;
+        }
+        
+        .amount-section {
+          border: 2px solid #000;
+          padding: 4mm;
+          margin: 5mm 0;
+          text-align: center;
+          background: #fafafa;
+        }
+        
+        .amount-label {
+          font-size: 10px;
+          margin-bottom: 2mm;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        
+        .amount-value {
+          font-size: 24px;
+          font-weight: bold;
+          font-family: 'Arial', 'Helvetica', sans-serif;
+          margin: 2mm 0;
+        }
+        
+        .amount-words {
+          font-size: 10px;
+          font-style: italic;
+          margin-top: 2mm;
+          line-height: 1.3;
+        }
+        
+        .signature-section {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 10mm;
+          padding-top: 4mm;
+          border-top: 1px solid #000;
+        }
+        
+        .signature-box {
+          text-align: center;
+          width: 45%;
+        }
+        
+        .signature-line {
+          border-bottom: 1px solid #000;
+          margin-bottom: 2mm;
+          height: 12mm;
+        }
+        
+        .signature-label {
+          font-size: 9px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        
+        .signature-name {
+          font-size: 10px;
+          margin-top: 1mm;
+        }
+        
+        .receipt-footer {
+          text-align: center;
+          font-size: 9px;
+          margin-top: 5mm;
+          padding-top: 3mm;
+          border-top: 1px dashed #999;
+          color: #666;
+        }
+        
+        @media screen {
+          .print-toolbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 12px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+          }
+          
+          .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+          }
+          
+          .btn-print {
+            background: #2563eb;
+            color: white;
+          }
+          
+          .btn-close {
+            background: #6b7280;
+            color: white;
+          }
+          
+          .btn-back {
+            background: #059669;
+            color: white;
+          }
+          
+          body {
+            padding-bottom: 80px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="receipt-container">
+        <div class="letterhead-wrapper">
+          <img 
+            src="${letterheadUrl}" 
+            alt="School Letterhead" 
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" 
+          />
+          <div class="letterhead-fallback">
+            <div style="font-size:15px; font-weight:bold; text-transform:uppercase; color:#000;">
+              ${receipt?.school?.name || 'Heavenly Nature Nursery & Primary School'}
+            </div>
+            ${receipt?.school?.motto ? `<div style="font-size:9px; font-style:italic; margin:1mm 0; color:#333;">"${receipt.school.motto}"</div>` : ''}
+            <div style="font-size:8px; color:#555; margin-top:1mm;">
+              ${receipt?.school?.address || ''} 
+              ${receipt?.school?.phone ? ' | Tel: ' + receipt.school.phone : ''}
+              ${receipt?.school?.email ? ' | ' + receipt.school.email : ''}
+            </div>
+          </div>
+        </div>
+        
+        <div class="receipt-content">
+          <div class="receipt-title">Payment Receipt</div>
+          
+          <div class="receipt-number">
+            <strong>Receipt No:</strong> ${receipt?.receipt_number || 'N/A'}
+          </div>
+          
+          <div class="info-row">
+            <span class="info-label">Date:</span>
+            <span class="info-value">${formatDate(receipt?.date)}</span>
+          </div>
+          
+          <div class="info-row">
+            <span class="info-label">Student Name:</span>
+            <span class="info-value">${receipt?.student_name || 'N/A'}</span>
+          </div>
+          
+          <div class="info-row">
+            <span class="info-label">Class:</span>
+            <span class="info-value">${receipt?.class_name || 'N/A'}</span>
+          </div>
+          
+          <div class="info-row">
+            <span class="info-label">Payment For:</span>
+            <span class="info-value">${receipt?.payment_for || 'School Fees'}</span>
+          </div>
+          
+          ${receipt?.term ? `
+          <div class="info-row">
+            <span class="info-label">Term:</span>
+            <span class="info-value">${receipt.term}</span>
+          </div>` : ''}
+          
+          ${receipt?.academic_year ? `
+          <div class="info-row">
+            <span class="info-label">Academic Year:</span>
+            <span class="info-value">${receipt.academic_year}</span>
+          </div>` : ''}
+          
+          <div class="info-row">
+            <span class="info-label">Payment Method:</span>
+            <span class="info-value">${receipt?.payment_method || 'Cash'}</span>
+          </div>
+
+          ${receipt?.transaction_reference ? `
+          <div class="info-row">
+            <span class="info-label">Reference:</span>
+            <span class="info-value">${receipt.transaction_reference}</span>
+          </div>` : ''}
+          
+          <div class="amount-section">
+            <div class="amount-label">Amount Paid</div>
+            <div class="amount-value">SSP ${formatAmount(receipt?.amount)}</div>
+            <div class="amount-words">${receipt?.amount_words || ''}</div>
+          </div>
+          
+          <div class="signature-section">
+            <div class="signature-box">
+              <div class="signature-line"></div>
+              <div class="signature-label">Received By</div>
+              <div class="signature-name">${receipt?.received_by || '________________'}</div>
+            </div>
+            <div class="signature-box">
+              <div class="signature-line"></div>
+              <div class="signature-label">Paid By</div>
+              <div class="signature-name">${receipt?.paid_by || '________________'}</div>
+            </div>
+          </div>
+          
+          <div class="receipt-footer">
+            <p>This is a computer-generated receipt.</p>
+            <p>Thank you for your payment! | ${receipt?.school?.name || 'School'}</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="print-toolbar no-print">
+        <button class="btn btn-back" onclick="window.close()">← Back</button>
+        <button class="btn btn-print" onclick="window.print()">🖨️ Print Receipt</button>
+        <button class="btn btn-close" onclick="window.close()">✕ Close</button>
+      </div>
+    </body>
+    </html>
+  `)
+  
+  printPage.document.close()
+}
+
+/**
  * Generate receipt as PDF download
  */
 export const downloadReceiptPDF = (receipt) => {
   if (!receipt) return
-  
-  // For now, use the print method with "Save as PDF" option
-  // The print dialog allows users to save as PDF
   exportReceipt(receipt)
 }
 
@@ -526,4 +871,4 @@ export const openReceiptInNewTab = (receipt) => {
     </html>
   `)
   newTab.document.close()
-}
+    }
