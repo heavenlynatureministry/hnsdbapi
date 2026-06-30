@@ -1,3 +1,6 @@
+update the user profile
+
+  
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useApp } from '../../context/AppContext'
