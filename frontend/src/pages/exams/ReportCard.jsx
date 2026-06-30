@@ -10,7 +10,7 @@ import FormSelect from '../../components/common/FormSelect'
 import Badge from '../../components/common/Badge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
-import { ArrowLeft, Download, Printer, GraduationCap, CheckCircle, XCircle, Calendar, FileText } from 'lucide-react'
+import { ArrowLeft, Download, Printer, GraduationCap, CheckCircle, XCircle, Calendar, FileText, Shield, ExternalLink } from 'lucide-react'
 import { exportToPDF } from '../../utils/exportPDF'
 import { exportAnnualReportCard } from '../../utils/exportReportCard'
 import toast from 'react-hot-toast'
@@ -51,7 +51,7 @@ function ReportCard() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
-  const [reportType, setReportType] = useState('term') // 'term' or 'annual'
+  const [reportType, setReportType] = useState('term')
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [students, setStudents] = useState([])
   
@@ -127,7 +127,6 @@ function ReportCard() {
 
     try {
       if (reportType === 'annual') {
-        // Generate annual report card
         const response = await examsAPI.generateAnnualReportCard({
           student_id: filters.student_id,
           academic_year: filters.academic_year,
@@ -135,33 +134,35 @@ function ReportCard() {
 
         console.log('Annual report card response:', response)
 
-        if (response?.success && response.data) {
-          const data = response.data
+        const data = response?.data || response
+        if (data?.success && data.data) {
+          const d = data.data
           setAnnualReport({
-            student: data.student,
-            term1: data.term1,
-            term2: data.term2,
-            term3: data.term3,
-            academic_year: data.academic_year,
-            school: data.school,
+            student: d.student,
+            term1: d.term1,
+            term2: d.term2,
+            term3: d.term3,
+            academic_year: d.academic_year,
+            school: d.school,
+            verify_url: d.verify_url || '',
           })
           setGenerated(true)
-        } else if (response?.data) {
-          const data = response.data
+        } else if (data?.data) {
+          const d = data.data
           setAnnualReport({
-            student: data.student,
-            term1: data.term1,
-            term2: data.term2,
-            term3: data.term3,
-            academic_year: data.academic_year,
-            school: data.school,
+            student: d.student,
+            term1: d.term1,
+            term2: d.term2,
+            term3: d.term3,
+            academic_year: d.academic_year,
+            school: d.school,
+            verify_url: d.verify_url || '',
           })
           setGenerated(true)
         } else {
           toast.error('Failed to generate annual report card')
         }
       } else {
-        // Generate single-term report card
         const response = await examsAPI.generateReportCard({
           student_id: filters.student_id,
           academic_year: filters.academic_year,
@@ -170,66 +171,71 @@ function ReportCard() {
 
         console.log('Report card response:', response)
 
-        if (response?.success && response.data) {
-          const data = response.data
+        const data = response?.data || response
+        if (data?.success && data.data) {
+          const d = data.data
           setReportCard({
-            student: data.student || {
-              name: data.student_name || 'Unknown',
-              student_id: data.student_id || '',
+            student: d.student || {
+              name: d.student_name || 'Unknown',
+              student_id: d.student_id || '',
+              class_name: d.class_name || '',
             },
-            results: data.results || {
-              subjects: (data.subjects || []).map(s => ({
-                name: s.subject || s.subject_name || 'Unknown',
+            results: d.results || {
+              subjects: (d.subjects || []).map(s => ({
+                name: s.subject || s.subject_name || s.name || 'Unknown',
                 score: s.score || 0,
                 max_score: s.max_score || 100,
                 percentage: s.percentage || s.average_percentage || 0,
                 grade: s.grade || 'N/A',
               })),
-              total_score: data.total_score || 0,
-              total_max: data.total_max || 0,
-              percentage: data.average_percentage || 0,
-              grade: data.grade || 'N/A',
-              position: data.position || 'N/A',
-              out_of: data.out_of || 'N/A',
-              result: data.result || 'N/A',
-              remarks: data.remarks || '',
-              conduct: data.conduct || 'Good',
+              total_score: d.total_score || 0,
+              total_max: d.total_max || 0,
+              percentage: d.average_percentage || d.percentage || 0,
+              grade: d.grade || 'N/A',
+              position: d.position || 'N/A',
+              out_of: d.out_of || 'N/A',
+              result: d.result || 'N/A',
+              remarks: d.remarks || '',
+              conduct: d.conduct || 'Good',
             },
-            term: data.term || filters.term,
-            academic_year: data.academic_year || filters.academic_year,
-            attendance: data.attendance || null,
-            school: data.school || {},
+            term: d.term || filters.term,
+            academic_year: d.academic_year || filters.academic_year,
+            verify_url: d.verify_url || '',
+            attendance: d.attendance || null,
+            school: d.school || {},
           })
           setGenerated(true)
-        } else if (response?.data) {
-          const data = response.data
+        } else if (data?.data) {
+          const d = data.data
           setReportCard({
-            student: data.student || {
-              name: data.student_name || 'Unknown',
-              student_id: data.student_id || '',
+            student: d.student || {
+              name: d.student_name || 'Unknown',
+              student_id: d.student_id || '',
+              class_name: d.class_name || '',
             },
-            results: data.results || {
-              subjects: (data.subjects || []).map(s => ({
-                name: s.subject || s.subject_name || 'Unknown',
+            results: d.results || {
+              subjects: (d.subjects || []).map(s => ({
+                name: s.subject || s.subject_name || s.name || 'Unknown',
                 score: s.score || 0,
                 max_score: s.max_score || 100,
                 percentage: s.percentage || s.average_percentage || 0,
                 grade: s.grade || 'N/A',
               })),
-              total_score: data.total_score || 0,
-              total_max: data.total_max || 0,
-              percentage: data.average_percentage || 0,
-              grade: data.grade || 'N/A',
-              position: data.position || 'N/A',
-              out_of: data.out_of || 'N/A',
-              result: data.result || 'N/A',
-              remarks: data.remarks || '',
-              conduct: data.conduct || 'Good',
+              total_score: d.total_score || 0,
+              total_max: d.total_max || 0,
+              percentage: d.average_percentage || d.percentage || 0,
+              grade: d.grade || 'N/A',
+              position: d.position || 'N/A',
+              out_of: d.out_of || 'N/A',
+              result: d.result || 'N/A',
+              remarks: d.remarks || '',
+              conduct: d.conduct || 'Good',
             },
-            term: data.term || filters.term,
-            academic_year: data.academic_year || filters.academic_year,
-            attendance: data.attendance || null,
-            school: data.school || {},
+            term: d.term || filters.term,
+            academic_year: d.academic_year || filters.academic_year,
+            verify_url: d.verify_url || '',
+            attendance: d.attendance || null,
+            school: d.school || {},
           })
           setGenerated(true)
         } else {
@@ -260,7 +266,7 @@ function ReportCard() {
     }
   }
 
-  const handlePrintAnnual = () => {
+  const handlePrintAnnualPortrait = () => {
     if (annualReport) {
       exportAnnualReportCard({
         student: annualReport.student,
@@ -269,7 +275,22 @@ function ReportCard() {
         term3: annualReport.term3,
         academic_year: annualReport.academic_year,
         school: annualReport.school,
-      })
+        verify_url: annualReport.verify_url,
+      }, 'portrait')
+    }
+  }
+
+  const handlePrintAnnualLandscape = () => {
+    if (annualReport) {
+      exportAnnualReportCard({
+        student: annualReport.student,
+        term1: annualReport.term1,
+        term2: annualReport.term2,
+        term3: annualReport.term3,
+        academic_year: annualReport.academic_year,
+        school: annualReport.school,
+        verify_url: annualReport.verify_url,
+      }, 'landscape')
     }
   }
 
@@ -278,12 +299,18 @@ function ReportCard() {
     return <Badge variant={variants[grade] || 'gray'}>{grade || 'N/A'}</Badge>
   }
 
+  // ✅ Show proper HNS student ID in dropdown
   const studentOptions = [
     { value: '', label: loadingStudents ? 'Loading students...' : `-- Select Student (${students.length} available) --` },
-    ...students.map(s => ({
-      value: s._id || s.id || s.student_id || '',
-      label: `${s.first_name || ''} ${s.last_name || ''}`.trim() || s.email || `Student ${s.student_id_number || ''}`,
-    })).filter(opt => opt.value),
+    ...students.map(s => {
+      // Get the HNS student ID
+      const hnsId = s.student_id || s.student_id_number || s.id_number || s.admission_number || ''
+      const name = `${s.first_name || ''} ${s.last_name || ''}`.trim()
+      return {
+        value: s._id || s.id || s.student_id || '',
+        label: `${name} - ${hnsId || s._id || ''}`,
+      }
+    }).filter(opt => opt.value),
   ]
 
   return (
@@ -349,7 +376,7 @@ function ReportCard() {
           />
           <Button
             onClick={handleGenerate}
-            variant={reportType === 'annual' ? 'primary' : 'primary'}
+            variant="primary"
             loading={loading}
             icon={<GraduationCap size={18} />}
             disabled={!filters.student_id}
@@ -370,7 +397,9 @@ function ReportCard() {
         />
       )}
 
-      {/* Single Term Report Card */}
+      {/* ================================================================ */}
+      {/* SINGLE TERM REPORT CARD */}
+      {/* ================================================================ */}
       {generated && reportCard && reportType === 'term' && (
         <div ref={reportRef} className="space-y-6 print:space-y-4">
           {/* Report Card Header with Letterhead */}
@@ -395,7 +424,7 @@ function ReportCard() {
               </div>
               <div>
                 <span className="text-gray-500">Pupil's ID:</span>{' '}
-                <span className="font-medium">{reportCard.student?.student_id || 'N/A'}</span>
+                <span className="font-medium font-mono">{reportCard.student?.student_id || 'N/A'}</span>
               </div>
               <div>
                 <span className="text-gray-500">Class:</span>{' '}
@@ -528,10 +557,31 @@ function ReportCard() {
             </p>
           </Card>
 
+          {/* ✅ Verified Link Footer */}
+          {reportCard.verify_url && (
+            <Card className="print:shadow-none print:border bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-2 text-sm">
+                <Shield size={16} className="text-blue-600 flex-shrink-0" />
+                <div>
+                  <p className="text-gray-600 dark:text-gray-400">Verify this report card online:</p>
+                  <a 
+                    href={reportCard.verify_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 font-medium underline hover:text-blue-800 break-all"
+                  >
+                    {reportCard.verify_url}
+                    <ExternalLink size={12} className="inline ml-1" />
+                  </a>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Actions */}
           <div className="flex gap-3 justify-end no-print">
             <Button variant="secondary" icon={<Printer size={18} />} onClick={handlePrint}>
-              Print
+              Print (Screen)
             </Button>
             <Button variant="primary" icon={<Download size={18} />} onClick={handleDownloadPDF}>
               Download PDF
@@ -540,7 +590,9 @@ function ReportCard() {
         </div>
       )}
 
-      {/* Annual Report Card */}
+      {/* ================================================================ */}
+      {/* ANNUAL REPORT CARD */}
+      {/* ================================================================ */}
       {generated && annualReport && reportType === 'annual' && (
         <div ref={reportRef} className="space-y-6 print:space-y-4">
           <Card className="print:shadow-none print:border">
@@ -562,7 +614,7 @@ function ReportCard() {
               </div>
               <div>
                 <span className="text-gray-500">Pupil's ID:</span>{' '}
-                <span className="font-medium">{annualReport.student?.student_id || 'N/A'}</span>
+                <span className="font-medium font-mono">{annualReport.student?.student_id || 'N/A'}</span>
               </div>
               <div>
                 <span className="text-gray-500">Class:</span>{' '}
@@ -575,7 +627,7 @@ function ReportCard() {
             </div>
           </Card>
 
-          {/* Annual Subject Table - 3 Terms in columns */}
+          {/* Annual Subject Table */}
           <Card className="print:shadow-none print:border overflow-x-auto">
             <div className="table-container">
               <table className="table text-xs">
@@ -690,18 +742,37 @@ function ReportCard() {
             </div>
           </Card>
 
+          {/* ✅ Verified Link Footer */}
+          {annualReport.verify_url && (
+            <Card className="print:shadow-none print:border bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-2 text-sm">
+                <Shield size={16} className="text-blue-600 flex-shrink-0" />
+                <div>
+                  <p className="text-gray-600 dark:text-gray-400">Verify this report card online:</p>
+                  <a 
+                    href={annualReport.verify_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 font-medium underline hover:text-blue-800 break-all"
+                  >
+                    {annualReport.verify_url}
+                    <ExternalLink size={12} className="inline ml-1" />
+                  </a>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Actions */}
           <div className="flex gap-3 justify-end no-print">
             <Button variant="secondary" icon={<Printer size={18} />} onClick={handlePrint}>
-              Print
+              Print (Screen)
             </Button>
-            <Button 
-              variant="primary" 
-              icon={<Download size={18} />} 
-              onClick={handlePrintAnnual}
-              style={{ background: '#059669' }}
-            >
-              Print Annual (Landscape)
+            <Button variant="primary" icon={<Download size={18} />} onClick={handlePrintAnnualPortrait}>
+              📄 Portrait
+            </Button>
+            <Button variant="primary" icon={<Download size={18} />} onClick={handlePrintAnnualLandscape} style={{ background: '#059669' }}>
+              🖼️ Landscape
             </Button>
           </div>
         </div>
@@ -710,9 +781,6 @@ function ReportCard() {
   )
 }
 
-/**
- * Get all unique subjects across all 3 terms
- */
 function getAllAnnualSubjects(annualReport) {
   const subjects = new Set()
   ;['term1', 'term2', 'term3'].forEach(termKey => {
