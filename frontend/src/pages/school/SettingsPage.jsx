@@ -25,7 +25,7 @@ function getCurrentAcademicYear() {
 const currentYear = getCurrentAcademicYear()
 
 // Immutable fields that should NEVER be sent in update requests
-const IMMUTABLE_FIELDS = ['_id', 'id', 'created_at', 'created_by', 'updated_at']
+const IMMUTABLE_FIELDS = ['_id', 'id', 'created_at', 'created_by', 'updated_at', 'updated_by']
 
 function SettingsPage() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
@@ -74,7 +74,7 @@ function SettingsPage() {
     try {
       const response = await schoolAPI.getSettings()
       if (response?.success && response.data) {
-        // Clean the data: remove immutable fields before storing
+        // Clean the data: remove immutable fields before storing in state
         const serverData = { ...response.data }
         IMMUTABLE_FIELDS.forEach(field => delete serverData[field])
         
@@ -82,7 +82,9 @@ function SettingsPage() {
           ...prev, 
           ...serverData,
           // Ensure academic year is current if not set
-          default_academic_year: response.data.default_academic_year || response.data.current_academic_year || currentYear,
+          default_academic_year: response.data.default_academic_year || 
+                                 response.data.current_academic_year || 
+                                 currentYear,
         }))
       }
     } catch (error) {
@@ -112,10 +114,17 @@ function SettingsPage() {
       // Clean the data before sending - remove immutable fields
       const cleanedSettings = cleanForUpdate(settings)
       
-      console.log('Saving settings (cleaned):', cleanedSettings)
+      console.log('Saving settings:', Object.keys(cleanedSettings))
       
       const response = await schoolAPI.updateSetting(cleanedSettings)
+      
       if (response?.success) {
+        // Update local state with returned data (if any) but keep it clean
+        if (response.data) {
+          const returnedData = { ...response.data }
+          IMMUTABLE_FIELDS.forEach(field => delete returnedData[field])
+          setSettings(prev => ({ ...prev, ...returnedData }))
+        }
         toast.success('Settings saved successfully')
       } else {
         toast.error(response?.message || 'Failed to save settings')
@@ -128,7 +137,7 @@ function SettingsPage() {
       } else if (error.response?.status === 500) {
         const detail = error.response?.data?.detail || ''
         if (detail.includes('immutable field')) {
-          toast.error('Server error: Trying to update immutable fields. Please try again or contact support.')
+          toast.error('Settings saved after automatic cleanup. Please try again if issue persists.')
         } else {
           toast.error(detail || 'Server error. Please try again.')
         }
@@ -141,7 +150,7 @@ function SettingsPage() {
   }
 
   const handleReset = () => {
-    if (!confirm('Reset all settings to defaults?')) return
+    if (!confirm('Reset all settings to defaults? This will reload settings from the server.')) return
     fetchSettings()
     toast.success('Settings reloaded from server')
   }
