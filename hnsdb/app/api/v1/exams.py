@@ -25,6 +25,24 @@ def _safe_objectid(value) -> Optional[ObjectId]:
         return None
 
 
+def _get_current_academic_year() -> str:
+    """Calculate current academic year dynamically."""
+    now = datetime.utcnow()
+    year = now.year
+    month = now.month
+    start_year = year - 1 if month == 1 else year
+    return f"{start_year}/{start_year + 1}"
+
+
+def _calculate_grade(percentage: float) -> str:
+    """Calculate grade based on percentage."""
+    if percentage >= 80: return "A"
+    elif percentage >= 70: return "B"
+    elif percentage >= 60: return "C"
+    elif percentage >= 50: return "D"
+    else: return "F"
+
+
 @router.get("")
 @router.get("/")
 async def list_exams(
@@ -269,7 +287,7 @@ async def generate_report_card(
     request: Request,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Generate student report card"""
+    """Generate student report card for a single term"""
     db = get_database()
     
     try:
@@ -279,7 +297,7 @@ async def generate_report_card(
     
     student_id = body.get("student_id")
     term = body.get("term", "Term 1")
-    academic_year = body.get("academic_year")
+    academic_year = body.get("academic_year") or _get_current_academic_year()
     
     if not student_id:
         raise HTTPException(status_code=400, detail="Student ID is required")
@@ -288,74 +306,258 @@ async def generate_report_card(
     if not sid:
         raise HTTPException(status_code=400, detail="Invalid student ID")
     
+    # Get student info
     student = await db.students.find_one({"_id": sid})
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
     student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
     
-    # Get exam results for this student
-    results = await db.exam_results.find({"student_id": sid}).to_list(length=None)
+    # Get class info
+    class_name = ""
+    if student.get("current_class_id"):
+        cls = await db.classes.find_one({"_id": student["current_class_id"]})
+        if cls:
+            class_name = cls.get("class_name", "")
+    
+    # Get exam results for this student for the specific term
+    results = await db.exam_results.find({
+        "student_id": sid,
+        "term": term,
+        "academic_year": academic_year
+    }).to_list(length=None)
+    
+    # If no term-specific results, get all results
+    if not results:
+        results = await db.exam_results.find({"student_id": sid}).to_list(length=None)
     
     # Get exams for context
     exam_ids = [r["exam_id"] for r in results if r.get("exam_id")]
     exams = await db.exams.find({"_id": {"$in": exam_ids}}).to_list(length=None) if exam_ids else []
     exam_map = {str(e["_id"]): e for e in exams}
     
-    report_results = []
+    # Build subject results
+    subject_results = {}
+    for r in results:
+        exam = exam_map.get(str(r.get("exam_id", "")), {})
+        subject_name = exam.get("subject_name") or exam.get("exam_name", "Unknown")
+        
+        if subject_name not in subject_results:
+            subject_results[subject_name] = {
+                "name": subject_name,
+                "score": 0,
+                "max_score": 0,
+                "grade": "N/A",
+                "remarks": ""
+            }
+        
+        score = float(r.get("score", 0))
+        max_s = float(exam.get("max_score", 100))
+        subject_results[subject_name]["score"] += score
+        subject_results[subject_name]["max_score"] += max_s
+    
+    # Convert to list and calculate grades
+    subjects_list = []
     total_score = 0
     total_max = 0
     
-    for r in results:
-        exam = exam_map.get(str(r.get("exam_id", "")), {})
-        score = r.get("score", 0)
-        max_s = exam.get("max_score", 100)
-        total_score += score
-        total_max += max_s
-        report_results.append({
-            "subject": exam.get("subject_name") or exam.get("exam_name", "Unknown"),
-            "exam_type": exam.get("exam_type", ""),
-            "score": score,
-            "max_score": max_s,
-            "percentage": round((score / max_s * 100), 1) if max_s > 0 else 0,
-            "grade": r.get("grade", "N/A"),
-            "remarks": r.get("remarks", ""),
-            "is_passed": r.get("is_passed", False),
-        })
+    for name, data in subject_results.items():
+        percentage = (data["score"] / data["max_score"] * 100) if data["max_score"] > 0 else 0
+        data["percentage"] = round(percentage, 1)
+        data["grade"] = _calculate_grade(percentage)
+        data["score"] = round(data["score"], 1)
+        subjects_list.append(data)
+        total_score += data["score"]
+        total_max += data["max_score"]
     
-    average = round((total_score / total_max * 100), 1) if total_max > 0 else 0
+    # Calculate overall
+    overall_percentage = round((total_score / total_max * 100), 1) if total_max > 0 else 0
+    overall_grade = _calculate_grade(overall_percentage)
     
-    # Calculate overall grade
-    if average >= 80: overall_grade = "A"
-    elif average >= 70: overall_grade = "B"
-    elif average >= 60: overall_grade = "C"
-    elif average >= 50: overall_grade = "D"
-    else: overall_grade = "F"
+    # Get school info
+    school = await db.school_info.find_one({}) or {}
     
     # Get attendance summary
-    attendance_records = await db.attendance.find({"student_id": sid}).to_list(length=None)
+    attendance_records = await db.attendance.find({
+        "student_id": sid,
+        "term": term,
+        "academic_year": academic_year
+    }).to_list(length=None)
+    
     attendance_total = len(attendance_records)
     attendance_present = sum(1 for r in attendance_records if r.get("status") in ["present", "late"])
     attendance_rate = round((attendance_present / attendance_total * 100), 1) if attendance_total > 0 else 0
+    
+    # Get position (simplified - you may want to calculate this properly)
+    position = body.get("position", "N/A")
+    out_of = body.get("out_of", "N/A")
     
     return {
         "success": True,
         "message": "Report card generated",
         "data": {
-            "student_name": student_name,
-            "student_id": student_id,
-            "class_name": student.get("class_name", ""),
-            "academic_year": academic_year,
+            "student": {
+                "name": student_name,
+                "student_id": str(student.get("student_id", student_id)),
+                "class_name": class_name,
+                "conduct": body.get("conduct", "Good")
+            },
+            "results": {
+                "subjects": subjects_list,
+                "total_score": total_score,
+                "total_max": total_max,
+                "percentage": overall_percentage,
+                "grade": overall_grade,
+                "position": position,
+                "out_of": out_of,
+                "result": overall_percentage >= 50 and "Pass" or "Fail",
+                "remarks": body.get("remarks", ""),
+                "conduct": body.get("conduct", "Good")
+            },
             "term": term,
-            "results": report_results,
-            "total_score": total_score,
-            "total_max": total_max,
-            "average_percentage": average,
-            "grade": overall_grade,
+            "academic_year": academic_year,
             "attendance": {
                 "total_days": attendance_total,
                 "present_days": attendance_present,
                 "attendance_rate": attendance_rate
+            },
+            "school": {
+                "name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
+                "address": school.get("address", ""),
+                "phone": school.get("phone", ""),
+                "email": school.get("email", ""),
+                "motto": school.get("motto", "Nurturing Right Leaders"),
+                "logo_url": school.get("logo_url", "/logo.png")
+            }
+        }
+    }
+
+
+@router.post("/report-cards/annual")
+async def generate_annual_report_card(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Generate annual report card with all 3 terms"""
+    db = get_database()
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    student_id = body.get("student_id")
+    academic_year = body.get("academic_year") or _get_current_academic_year()
+    
+    if not student_id:
+        raise HTTPException(status_code=400, detail="Student ID is required")
+    
+    sid = _safe_objectid(student_id)
+    if not sid:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+    
+    # Get student info
+    student = await db.students.find_one({"_id": sid})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
+    
+    # Get class info
+    class_name = ""
+    if student.get("current_class_id"):
+        cls = await db.classes.find_one({"_id": student["current_class_id"]})
+        if cls:
+            class_name = cls.get("class_name", "")
+    
+    # Get all results for this student for the academic year
+    all_results = await db.exam_results.find({
+        "student_id": sid,
+        "academic_year": academic_year
+    }).to_list(length=None)
+    
+    # Get exams for context
+    exam_ids = list(set([r["exam_id"] for r in all_results if r.get("exam_id")]))
+    exams = await db.exams.find({"_id": {"$in": exam_ids}}).to_list(length=None) if exam_ids else []
+    exam_map = {str(e["_id"]): e for e in exams}
+    
+    # Organize results by term
+    def build_term_results(term):
+        """Build results for a specific term"""
+        term_results = [r for r in all_results if r.get("term") == term or exam_map.get(str(r.get("exam_id", "")), {}).get("term") == term]
+        
+        subject_results = {}
+        for r in term_results:
+            exam = exam_map.get(str(r.get("exam_id", "")), {})
+            subject_name = exam.get("subject_name") or exam.get("exam_name", "Unknown")
+            
+            if subject_name not in subject_results:
+                subject_results[subject_name] = {
+                    "name": subject_name,
+                    "score": 0,
+                    "max_score": 0
+                }
+            
+            subject_results[subject_name]["score"] += float(r.get("score", 0))
+            subject_results[subject_name]["max_score"] += float(exam.get("max_score", 100))
+        
+        # Convert to list with grades
+        subjects_list = []
+        total_score = 0
+        total_max = 0
+        
+        for name, data in subject_results.items():
+            percentage = (data["score"] / data["max_score"] * 100) if data["max_score"] > 0 else 0
+            data["percentage"] = round(percentage, 1)
+            data["grade"] = _calculate_grade(percentage)
+            data["score"] = round(data["score"], 1)
+            subjects_list.append(data)
+            total_score += data["score"]
+            total_max += data["max_score"]
+        
+        overall_percentage = round((total_score / total_max * 100), 1) if total_max > 0 else 0
+        
+        return {
+            "subjects": subjects_list,
+            "total_score": total_score,
+            "total_max": total_max,
+            "percentage": overall_percentage,
+            "grade": _calculate_grade(overall_percentage),
+            "position": body.get(f"position_term_{term}", "N/A"),
+            "out_of": body.get(f"out_of_term_{term}", "N/A"),
+            "result": overall_percentage >= 50 and "Pass" or "Fail",
+            "remarks": body.get(f"remarks_term_{term}", ""),
+            "conduct": body.get(f"conduct_term_{term}", "Good")
+        } if term_results else None
+    
+    term1_data = build_term_results("Term 1")
+    term2_data = build_term_results("Term 2")
+    term3_data = build_term_results("Term 3")
+    
+    # Get school info
+    school = await db.school_info.find_one({}) or {}
+    
+    return {
+        "success": True,
+        "message": "Annual report card generated",
+        "data": {
+            "student": {
+                "name": student_name,
+                "student_id": str(student.get("student_id", student_id)),
+                "class_name": class_name,
+                "conduct": body.get("conduct", "Good")
+            },
+            "term1": term1_data,
+            "term2": term2_data,
+            "term3": term3_data,
+            "academic_year": academic_year,
+            "school": {
+                "name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
+                "address": school.get("address", ""),
+                "phone": school.get("phone", ""),
+                "email": school.get("email", ""),
+                "motto": school.get("motto", "Nurturing Right Leaders"),
+                "logo_url": school.get("logo_url", "/logo.png")
             }
         }
     }
@@ -445,18 +647,15 @@ async def record_results(
     
     max_score = exam.get("max_score", 100)
     pass_mark = exam.get("pass_mark", 50)
+    term = exam.get("term", "")
+    academic_year = exam.get("academic_year", "")
     
     successful = 0
     for r in results:
         try:
             score = float(r.get("score", 0))
             percentage = (score / max_score) * 100 if max_score > 0 else 0
-            
-            if percentage >= 80: grade = "A"
-            elif percentage >= 70: grade = "B"
-            elif percentage >= 60: grade = "C"
-            elif percentage >= 50: grade = "D"
-            else: grade = "F"
+            grade = _calculate_grade(percentage)
             
             student_id = _safe_objectid(r.get("student_id"))
             if not student_id: continue
@@ -468,13 +667,16 @@ async def record_results(
                     "percentage": round(percentage, 2),
                     "is_passed": score >= pass_mark,
                     "remarks": r.get("remarks", ""),
+                    "term": term,
+                    "academic_year": academic_year,
                     "recorded_by": _safe_objectid(current_user.get("_id")),
                     "updated_at": datetime.utcnow()
                 }},
                 upsert=True
             )
             successful += 1
-        except Exception:
+        except Exception as e:
+            print(f"Error recording result: {e}")
             pass
     
     total_results = await db.exam_results.count_documents({"exam_id": eid})
@@ -498,7 +700,11 @@ async def get_student_results(
     sid = _safe_objectid(student_id)
     if not sid: raise HTTPException(status_code=400, detail="Invalid student ID")
     
-    results = await db.exam_results.find({"student_id": sid}).to_list(length=None)
+    filter_query = {"student_id": sid}
+    if academic_year:
+        filter_query["academic_year"] = academic_year
+    
+    results = await db.exam_results.find(filter_query).to_list(length=None)
     results = [parse_mongo_document(r) for r in results]
     
     student = await db.students.find_one({"_id": sid})
@@ -510,4 +716,4 @@ async def get_student_results(
             "student_name": f"{student['first_name']} {student['last_name']}" if student else "Unknown",
             "results": results, "total": len(results)
         }
-    }
+        }
