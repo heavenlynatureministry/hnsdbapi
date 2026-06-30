@@ -8,7 +8,7 @@ import Button from '../../components/common/Button'
 import FormInput from '../../components/common/FormInput'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { ArrowLeft, Save, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, Save, Eye, EyeOff, Shield } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function UserForm() {
@@ -22,19 +22,32 @@ function UserForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState({})
 
-  // Roles are hardcoded since there's no /auth/roles endpoint
+  // Updated roles with all available options
   const roles = [
-    { value: 'admin', label: 'Admin' },
+    { value: 'admin', label: 'Administrator' },
     { value: 'teacher', label: 'Teacher' },
     { value: 'accountant', label: 'Accountant' },
     { value: 'counselor', label: 'Counselor' },
-    { value: 'staff', label: 'Staff' },
+    { value: 'secretary', label: 'Secretary' },
+    { value: 'staff', label: 'General Staff' },
+    { value: 'librarian', label: 'Librarian' },
   ]
 
   const statusOptions = [
     { value: 'active', label: 'Active' },
     { value: 'inactive', label: 'Inactive' },
   ]
+
+  // Role descriptions for better UX
+  const roleDescriptions = {
+    admin: 'Full system access and management',
+    teacher: 'Class, attendance, and exam management',
+    accountant: 'Financial management and reports',
+    counselor: 'Student counseling and guidance',
+    secretary: 'Student enrollment and records',
+    staff: 'Basic view access',
+    librarian: 'Library and book management',
+  }
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -57,44 +70,54 @@ function UserForm() {
   }, [isEdit, updatePageTitle, updateBreadcrumbs])
 
   useEffect(() => {
-    if (isEdit) {
+    if (isEdit && id) {
       fetchUser()
     } else {
       setFetching(false)
     }
-  }, [id])
+  }, [id, isEdit])
 
   const fetchUser = async () => {
     setFetching(true)
     try {
-      // Use authAPI.getMe() or the users endpoint
-      const response = await authAPI.getUsers?.({ search: id }) || await authAPI.getUser?.(id)
-      const userData = response?.data?.data || response?.data
+      // Try to get user by ID from the users endpoint
+      const response = await authAPI.getUser(id)
+      console.log('User response:', response)
+      
+      let userData = null
+      
+      // Handle different response formats
+      if (response?.data?.data) {
+        userData = response.data.data
+      } else if (response?.data) {
+        userData = response.data
+      } else if (response?.success && response?.data) {
+        userData = response.data
+      }
       
       if (userData) {
-        const user = Array.isArray(userData) ? userData[0] : userData
-        if (user) {
-          setFormData({
-            first_name: user.first_name || '',
-            last_name: user.last_name || '',
-            email: user.email || '',
-            password: '',
-            confirm_password: '',
-            role: user.role || 'staff',
-            phone_number: user.phone_number || '',
-            status: user.status || 'active',
-          })
-        } else {
-          toast.error('User not found')
-          navigate('/users')
-        }
+        setFormData({
+          first_name: userData.first_name || '',
+          last_name: userData.last_name || '',
+          email: userData.email || '',
+          password: '',
+          confirm_password: '',
+          role: userData.role || 'staff',
+          phone_number: userData.phone_number || '',
+          status: userData.status || 'active',
+        })
       } else {
-        toast.error('Failed to fetch user details')
+        toast.error('User not found')
         navigate('/users')
       }
     } catch (error) {
       console.error('Failed to fetch user:', error)
-      toast.error('Failed to fetch user')
+      
+      if (error.status === 404) {
+        toast.error('User not found')
+      } else {
+        toast.error('Failed to fetch user details')
+      }
       navigate('/users')
     } finally {
       setFetching(false)
@@ -112,29 +135,51 @@ function UserForm() {
   const validateForm = () => {
     const newErrors = {}
 
-    if (!formData.first_name.trim()) newErrors.first_name = 'First name is required'
-    if (!formData.last_name.trim()) newErrors.last_name = 'Last name is required'
+    if (!formData.first_name.trim()) {
+      newErrors.first_name = 'First name is required'
+    }
+    
+    if (!formData.last_name.trim()) {
+      newErrors.last_name = 'Last name is required'
+    }
 
     if (!formData.email.trim()) {
       newErrors.email = 'Email is required'
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Invalid email format'
+      newErrors.email = 'Please enter a valid email address'
     }
 
+    // Password validation
     if (!isEdit) {
+      // Creating new user - password is required
       if (!formData.password) {
         newErrors.password = 'Password is required'
-      } else if (formData.password.length < 8) {
-        newErrors.password = 'Password must be at least 8 characters'
+      } else if (formData.password.length < 6) {
+        newErrors.password = 'Password must be at least 6 characters'
       }
-      if (formData.password !== formData.confirm_password) {
+      
+      if (formData.password && formData.password !== formData.confirm_password) {
         newErrors.confirm_password = 'Passwords do not match'
       }
-    } else if (formData.password && formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters'
+    } else {
+      // Editing user - password is optional
+      if (formData.password && formData.password.length < 6) {
+        newErrors.password = 'Password must be at least 6 characters'
+      }
+      
+      if (formData.password && formData.password !== formData.confirm_password) {
+        newErrors.confirm_password = 'Passwords do not match'
+      }
     }
 
-    if (!formData.role) newErrors.role = 'Role is required'
+    if (!formData.role) {
+      newErrors.role = 'Role is required'
+    }
+
+    // Phone number validation (optional but validate format if provided)
+    if (formData.phone_number && !/^[\+]?[\d\s\-\(\)]{7,15}$/.test(formData.phone_number)) {
+      newErrors.phone_number = 'Please enter a valid phone number'
+    }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -146,11 +191,26 @@ function UserForm() {
 
     setLoading(true)
     try {
-      const payload = { ...formData }
-      delete payload.confirm_password
-      if (isEdit && !payload.password) {
-        delete payload.password
+      // Build payload
+      const payload = {
+        first_name: formData.first_name.trim(),
+        last_name: formData.last_name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        role: formData.role,
+        phone_number: formData.phone_number.trim(),
       }
+
+      // Only include password if provided
+      if (formData.password) {
+        payload.password = formData.password
+      }
+
+      // Only include status for edit
+      if (isEdit) {
+        payload.status = formData.status
+      }
+
+      console.log('Saving user payload:', { ...payload, password: payload.password ? '***' : undefined })
 
       let response
       if (isEdit) {
@@ -159,51 +219,78 @@ function UserForm() {
         response = await authAPI.createUser(payload)
       }
 
-      if (response?.success || response?.data?.success) {
-        toast.success(`User ${isEdit ? 'updated' : 'created'} successfully`)
+      console.log('Save response:', response)
+
+      // Handle different response formats
+      const success = response?.success || response?.data?.success
+      const message = response?.message || response?.data?.message
+
+      if (success) {
+        toast.success(message || `User ${isEdit ? 'updated' : 'created'} successfully`)
         navigate('/users')
       } else {
-        toast.error(response?.message || response?.data?.message || 'Failed to save user')
+        toast.error(message || 'Failed to save user')
       }
     } catch (error) {
-      if (error.status === 422) {
-        const fieldErrors = error.errors || error.data?.errors || []
+      console.error('User save error:', error)
+      
+      // Handle validation errors (422)
+      if (error.status === 422 || error.response?.status === 422) {
+        const fieldErrors = error.errors || error.data?.errors || error.response?.data?.errors || []
         const newErrors = {}
-        fieldErrors.forEach(err => {
-          const field = err.loc?.[err.loc.length - 1] || 'general'
-          newErrors[field] = err.msg
-        })
+        
+        if (Array.isArray(fieldErrors)) {
+          fieldErrors.forEach(err => {
+            const field = err.loc?.[err.loc.length - 1] || err.field || 'general'
+            newErrors[field] = err.msg || err.message
+          })
+        }
+        
         setErrors(newErrors)
         toast.error('Please fix the validation errors')
-      } else if (error.status === 409) {
+      } 
+      // Handle duplicate email (409)
+      else if (error.status === 409 || error.response?.status === 409) {
+        setErrors(prev => ({ ...prev, email: 'A user with this email already exists' }))
         toast.error('A user with this email already exists')
-      } else if (error.status === 0) {
-        toast.error('Server is starting up. Please try again in 30 seconds.')
-      } else {
-        toast.error(error.message || 'Failed to save user')
+      } 
+      // Handle bad request (400)
+      else if (error.status === 400 || error.response?.status === 400) {
+        const detail = error.response?.data?.detail || error.message || 'Invalid data'
+        toast.error(detail)
       }
-      console.error('User save error:', error)
+      // Handle server down (0)
+      else if (error.status === 0) {
+        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } 
+      // Generic error
+      else {
+        const errorMsg = error.response?.data?.detail || error.message || 'Failed to save user'
+        toast.error(errorMsg)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  if (fetching) return <LoadingSpinner fullScreen />
+  if (fetching) return <LoadingSpinner />
 
   return (
     <div className="space-y-6 max-w-2xl animate-fade-in-up">
       <PageHeader
         title={isEdit ? 'Edit User' : 'Add New User'}
+        subtitle={isEdit ? `Editing ${formData.first_name} ${formData.last_name}` : 'Create a new user account'}
         actions={
           <button onClick={() => navigate('/users')} className="btn btn-secondary">
             <ArrowLeft size={18} />
-            Back
+            Back to Users
           </button>
         }
       />
 
       <Card>
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Name Fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput
               label="First Name *"
@@ -223,6 +310,7 @@ function UserForm() {
             />
           </div>
 
+          {/* Email */}
           <FormInput
             label="Email Address *"
             name="email"
@@ -230,83 +318,138 @@ function UserForm() {
             value={formData.email}
             onChange={handleChange}
             error={errors.email}
-            placeholder="Enter email address"
+            placeholder="user@school.edu"
+            helperText="This will be used for login"
           />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">
-                Password {isEdit && '(leave blank to keep unchanged)'}
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  className={`form-input pr-10 ${errors.password ? 'error' : ''}`}
-                  placeholder={isEdit ? 'New password (optional)' : 'Enter password'}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
+          {/* Password Fields */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              {isEdit ? 'Change Password (optional)' : 'Password *'}
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">
+                  {isEdit ? 'New Password' : 'Password'} {!isEdit && '*'}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    className={`form-input pr-10 ${errors.password ? 'error' : ''}`}
+                    placeholder={isEdit ? 'Leave blank to keep current' : 'Enter password (min 6 characters)'}
+                    autoComplete={isEdit ? 'new-password' : 'new-password'}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    tabIndex={-1}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                {errors.password && <p className="form-error">{errors.password}</p>}
+                {!isEdit && (
+                  <p className="form-helper">Minimum 6 characters</p>
+                )}
               </div>
-              {errors.password && <p className="form-error">{errors.password}</p>}
+              <div>
+                <label className="form-label">
+                  Confirm Password {!isEdit && '*'}
+                </label>
+                <input
+                  type="password"
+                  name="confirm_password"
+                  value={formData.confirm_password}
+                  onChange={handleChange}
+                  className={`form-input ${errors.confirm_password ? 'error' : ''}`}
+                  placeholder="Confirm password"
+                  autoComplete="new-password"
+                />
+                {errors.confirm_password && (
+                  <p className="form-error">{errors.confirm_password}</p>
+                )}
+              </div>
             </div>
-            <div>
-              <label className="form-label">Confirm Password</label>
-              <input
-                type="password"
-                name="confirm_password"
-                value={formData.confirm_password}
+          </div>
+
+          {/* Role and Phone */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              Role & Contact
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <FormSelect
+                  label="Role *"
+                  name="role"
+                  value={formData.role}
+                  onChange={handleChange}
+                  options={roles}
+                  error={errors.role}
+                />
+                {/* Show role description */}
+                {formData.role && roleDescriptions[formData.role] && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                    <Shield size={12} />
+                    {roleDescriptions[formData.role]}
+                  </p>
+                )}
+              </div>
+              <FormInput
+                label="Phone Number"
+                name="phone_number"
+                type="tel"
+                value={formData.phone_number}
                 onChange={handleChange}
-                className={`form-input ${errors.confirm_password ? 'error' : ''}`}
-                placeholder="Confirm password"
+                error={errors.phone_number}
+                placeholder="+211 900 000 000"
+                helperText="Optional contact number"
               />
-              {errors.confirm_password && (
-                <p className="form-error">{errors.confirm_password}</p>
-              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect
-              label="Role *"
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              options={roles}
-              error={errors.role}
-            />
-            <FormInput
-              label="Phone Number"
-              name="phone_number"
-              value={formData.phone_number}
-              onChange={handleChange}
-              placeholder="+211 900 000 000"
-            />
-          </div>
-
+          {/* Status (Edit only) */}
           {isEdit && (
-            <FormSelect
-              label="Status"
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              options={statusOptions}
-            />
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                Account Status
+              </h3>
+              <FormSelect
+                label="Status"
+                name="status"
+                value={formData.status}
+                onChange={handleChange}
+                options={statusOptions}
+                helperText="Inactive accounts cannot login"
+              />
+            </div>
           )}
 
+          {/* Submit Buttons */}
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <Button type="submit" variant="primary" loading={loading} icon={<Save size={18} />}>
-              {isEdit ? 'Update User' : 'Create User'}
+            <Button 
+              type="submit" 
+              variant="primary" 
+              loading={loading} 
+              icon={<Save size={18} />}
+              disabled={loading}
+            >
+              {loading 
+                ? (isEdit ? 'Updating...' : 'Creating...') 
+                : (isEdit ? 'Update User' : 'Create User')
+              }
             </Button>
-            <Button type="button" variant="secondary" onClick={() => navigate('/users')}>
+            <Button 
+              type="button" 
+              variant="secondary" 
+              onClick={() => navigate('/users')}
+              disabled={loading}
+            >
               Cancel
             </Button>
           </div>
