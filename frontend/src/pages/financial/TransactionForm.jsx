@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
+import ReceiptPrint from '../../components/receipts/ReceiptPrint'
 import financialAPI from '../../api/financial'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
