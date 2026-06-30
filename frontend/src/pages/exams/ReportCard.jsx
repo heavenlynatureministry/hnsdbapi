@@ -10,8 +10,9 @@ import FormSelect from '../../components/common/FormSelect'
 import Badge from '../../components/common/Badge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
-import { ArrowLeft, Download, Printer, GraduationCap, CheckCircle, XCircle } from 'lucide-react'
+import { ArrowLeft, Download, Printer, GraduationCap, CheckCircle, XCircle, Calendar, FileText } from 'lucide-react'
 import { exportToPDF } from '../../utils/exportPDF'
+import { exportAnnualReportCard } from '../../utils/exportReportCard'
 import toast from 'react-hot-toast'
 
 function getCurrentAcademicYear() {
@@ -50,6 +51,7 @@ function ReportCard() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
+  const [reportType, setReportType] = useState('term') // 'term' or 'annual'
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [students, setStudents] = useState([])
   
@@ -60,6 +62,7 @@ function ReportCard() {
   })
   
   const [reportCard, setReportCard] = useState(null)
+  const [annualReport, setAnnualReport] = useState(null)
 
   useEffect(() => {
     updatePageTitle('Report Cards')
@@ -119,90 +122,119 @@ function ReportCard() {
 
     setLoading(true)
     setReportCard(null)
+    setAnnualReport(null)
     setGenerated(false)
 
     try {
-      const response = await examsAPI.generateReportCard({
-        student_id: filters.student_id,
-        academic_year: filters.academic_year,
-        term: filters.term,
-      })
-
-      console.log('Report card response:', response)
-
-      if (response?.success && response.data) {
-        // Transform API data to match display format
-        const data = response.data
-        setReportCard({
-          student: {
-            name: data.student_name || 'Unknown',
-            id_number: data.student_id || '',
-            gender: data.gender || 'N/A',
-          },
-          class: {
-            name: data.class_name || 'N/A',
-            academic_year: data.academic_year || filters.academic_year,
-            term: data.term || filters.term,
-          },
-          subjects: (data.results || data.subjects || []).map(s => ({
-            subject_name: s.subject || s.subject_name || 'Unknown',
-            total_score: s.score || 0,
-            total_max: s.max_score || 100,
-            average_percentage: s.percentage || s.average_percentage || 0,
-            grade: s.grade || 'N/A',
-          })),
-          overall: {
-            total_score: data.total_score || 0,
-            total_max: data.total_max || 0,
-            percentage: data.average_percentage || 0,
-            grade: data.grade || 'N/A',
-          },
-          attendance: data.attendance ? {
-            rate: data.attendance.attendance_rate || 0,
-            present: data.attendance.present_days || 0,
-            total: data.attendance.total_days || 0,
-          } : null,
-          class_teacher_remarks: data.class_teacher_remarks || '',
-          head_teacher_remarks: data.head_teacher_remarks || '',
+      if (reportType === 'annual') {
+        // Generate annual report card
+        const response = await examsAPI.generateAnnualReportCard({
+          student_id: filters.student_id,
+          academic_year: filters.academic_year,
         })
-        setGenerated(true)
-      } else if (response?.data) {
-        const data = response.data
-        setReportCard({
-          student: {
-            name: data.student_name || 'Unknown',
-            id_number: data.student_id || '',
-            gender: data.gender || 'N/A',
-          },
-          class: {
-            name: data.class_name || 'N/A',
-            academic_year: data.academic_year || filters.academic_year,
-            term: data.term || filters.term,
-          },
-          subjects: (data.results || data.subjects || []).map(s => ({
-            subject_name: s.subject || s.subject_name || 'Unknown',
-            total_score: s.score || 0,
-            total_max: s.max_score || 100,
-            average_percentage: s.percentage || s.average_percentage || 0,
-            grade: s.grade || 'N/A',
-          })),
-          overall: {
-            total_score: data.total_score || 0,
-            total_max: data.total_max || 0,
-            percentage: data.average_percentage || 0,
-            grade: data.grade || 'N/A',
-          },
-          attendance: data.attendance ? {
-            rate: data.attendance.attendance_rate || 0,
-            present: data.attendance.present_days || 0,
-            total: data.attendance.total_days || 0,
-          } : null,
-          class_teacher_remarks: data.class_teacher_remarks || '',
-          head_teacher_remarks: data.head_teacher_remarks || '',
-        })
-        setGenerated(true)
+
+        console.log('Annual report card response:', response)
+
+        if (response?.success && response.data) {
+          const data = response.data
+          setAnnualReport({
+            student: data.student,
+            term1: data.term1,
+            term2: data.term2,
+            term3: data.term3,
+            academic_year: data.academic_year,
+            school: data.school,
+          })
+          setGenerated(true)
+        } else if (response?.data) {
+          const data = response.data
+          setAnnualReport({
+            student: data.student,
+            term1: data.term1,
+            term2: data.term2,
+            term3: data.term3,
+            academic_year: data.academic_year,
+            school: data.school,
+          })
+          setGenerated(true)
+        } else {
+          toast.error('Failed to generate annual report card')
+        }
       } else {
-        toast.error('Failed to generate report card. No data available.')
+        // Generate single-term report card
+        const response = await examsAPI.generateReportCard({
+          student_id: filters.student_id,
+          academic_year: filters.academic_year,
+          term: filters.term,
+        })
+
+        console.log('Report card response:', response)
+
+        if (response?.success && response.data) {
+          const data = response.data
+          setReportCard({
+            student: data.student || {
+              name: data.student_name || 'Unknown',
+              student_id: data.student_id || '',
+            },
+            results: data.results || {
+              subjects: (data.subjects || []).map(s => ({
+                name: s.subject || s.subject_name || 'Unknown',
+                score: s.score || 0,
+                max_score: s.max_score || 100,
+                percentage: s.percentage || s.average_percentage || 0,
+                grade: s.grade || 'N/A',
+              })),
+              total_score: data.total_score || 0,
+              total_max: data.total_max || 0,
+              percentage: data.average_percentage || 0,
+              grade: data.grade || 'N/A',
+              position: data.position || 'N/A',
+              out_of: data.out_of || 'N/A',
+              result: data.result || 'N/A',
+              remarks: data.remarks || '',
+              conduct: data.conduct || 'Good',
+            },
+            term: data.term || filters.term,
+            academic_year: data.academic_year || filters.academic_year,
+            attendance: data.attendance || null,
+            school: data.school || {},
+          })
+          setGenerated(true)
+        } else if (response?.data) {
+          const data = response.data
+          setReportCard({
+            student: data.student || {
+              name: data.student_name || 'Unknown',
+              student_id: data.student_id || '',
+            },
+            results: data.results || {
+              subjects: (data.subjects || []).map(s => ({
+                name: s.subject || s.subject_name || 'Unknown',
+                score: s.score || 0,
+                max_score: s.max_score || 100,
+                percentage: s.percentage || s.average_percentage || 0,
+                grade: s.grade || 'N/A',
+              })),
+              total_score: data.total_score || 0,
+              total_max: data.total_max || 0,
+              percentage: data.average_percentage || 0,
+              grade: data.grade || 'N/A',
+              position: data.position || 'N/A',
+              out_of: data.out_of || 'N/A',
+              result: data.result || 'N/A',
+              remarks: data.remarks || '',
+              conduct: data.conduct || 'Good',
+            },
+            term: data.term || filters.term,
+            academic_year: data.academic_year || filters.academic_year,
+            attendance: data.attendance || null,
+            school: data.school || {},
+          })
+          setGenerated(true)
+        } else {
+          toast.error('Failed to generate report card')
+        }
       }
     } catch (error) {
       console.error('Failed to generate report card:', error)
@@ -223,8 +255,21 @@ function ReportCard() {
   const handleDownloadPDF = () => {
     if (reportRef.current && reportCard) {
       const name = (reportCard.student?.name || 'Student').replace(/\s+/g, '_')
-      const term = (reportCard.class?.term || 'Term').replace(/\s+/g, '_')
+      const term = (reportCard.term || 'Term').replace(/\s+/g, '_')
       exportToPDF(reportRef.current, `Report_Card_${name}_${term}`)
+    }
+  }
+
+  const handlePrintAnnual = () => {
+    if (annualReport) {
+      exportAnnualReportCard({
+        student: annualReport.student,
+        term1: annualReport.term1,
+        term2: annualReport.term2,
+        term3: annualReport.term3,
+        academic_year: annualReport.academic_year,
+        school: annualReport.school,
+      })
     }
   }
 
@@ -244,8 +289,8 @@ function ReportCard() {
   return (
     <div className="space-y-6 max-w-4xl animate-fade-in-up">
       <PageHeader
-        title="Student Report Card"
-        subtitle={`Generate and print student report cards • ${currentYear}`}
+        title="Student Report Cards"
+        subtitle={`Generate and print report cards • ${currentYear}`}
         actions={
           <button onClick={() => navigate('/exams')} className="btn btn-secondary">
             <ArrowLeft size={18} /> Back
@@ -253,7 +298,27 @@ function ReportCard() {
         }
       />
 
+      {/* Report Type Selector */}
       <Card>
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => { setReportType('term'); setGenerated(false); setReportCard(null); setAnnualReport(null) }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              reportType === 'term' ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
+            }`}
+          >
+            <FileText size={16} className="inline mr-1" /> Single Term
+          </button>
+          <button
+            onClick={() => { setReportType('annual'); setGenerated(false); setReportCard(null); setAnnualReport(null) }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              reportType === 'annual' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
+            }`}
+          >
+            <Calendar size={16} className="inline mr-1" /> Annual Report
+          </button>
+        </div>
+
         <div className="flex flex-col sm:flex-row items-end gap-4">
           <div className="flex-1 w-full">
             <FormSelect
@@ -268,12 +333,14 @@ function ReportCard() {
               <p className="text-xs text-yellow-600 mt-1">No students found. Please enroll students first.</p>
             )}
           </div>
-          <FormSelect
-            label="Term"
-            value={filters.term}
-            onChange={(e) => setFilters(prev => ({ ...prev, term: e.target.value }))}
-            options={TERM_OPTIONS}
-          />
+          {reportType === 'term' && (
+            <FormSelect
+              label="Term"
+              value={filters.term}
+              onChange={(e) => setFilters(prev => ({ ...prev, term: e.target.value }))}
+              options={TERM_OPTIONS}
+            />
+          )}
           <FormSelect
             label="Academic Year"
             value={filters.academic_year}
@@ -282,12 +349,13 @@ function ReportCard() {
           />
           <Button
             onClick={handleGenerate}
-            variant="primary"
+            variant={reportType === 'annual' ? 'primary' : 'primary'}
             loading={loading}
             icon={<GraduationCap size={18} />}
             disabled={!filters.student_id}
+            style={reportType === 'annual' ? { background: '#059669' } : {}}
           >
-            Generate
+            {reportType === 'annual' ? 'Generate Annual' : 'Generate'}
           </Button>
         </div>
       </Card>
@@ -298,22 +366,26 @@ function ReportCard() {
         <EmptyState
           icon={<GraduationCap size={48} />}
           title="Generate Report Card"
-          description="Select a student, term, and academic year to generate their report card."
+          description={`Select a student${reportType === 'term' ? ', term,' : ''} and academic year to generate their report card.`}
         />
       )}
 
-      {generated && reportCard && (
+      {/* Single Term Report Card */}
+      {generated && reportCard && reportType === 'term' && (
         <div ref={reportRef} className="space-y-6 print:space-y-4">
-          {/* Report Card Header */}
+          {/* Report Card Header with Letterhead */}
           <Card className="print:shadow-none print:border">
             <div className="text-center border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                Heavenly Nature Nursery & Primary School
-              </h2>
-              <p className="text-sm text-gray-500">Nurturing Right Leaders</p>
-              <h3 className="text-lg font-semibold mt-2">Student Report Card</h3>
+              <img 
+                src="/letter-head.jpg" 
+                alt="School Letterhead" 
+                className="max-w-full h-auto mx-auto mb-2"
+                style={{ maxHeight: '80px' }}
+                onError={(e) => { e.target.style.display = 'none' }}
+              />
+              <h3 className="text-lg font-semibold mt-2">ACADEMIC REPORT CARD</h3>
               <p className="text-sm text-gray-500">
-                {reportCard.class?.academic_year} • {reportCard.class?.term}
+                {reportCard.academic_year} • {reportCard.term}
               </p>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
@@ -322,23 +394,23 @@ function ReportCard() {
                 <span className="font-medium">{reportCard.student?.name || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-gray-500">ID:</span>{' '}
-                <span className="font-medium">{reportCard.student?.id_number || 'N/A'}</span>
+                <span className="text-gray-500">Pupil's ID:</span>{' '}
+                <span className="font-medium">{reportCard.student?.student_id || 'N/A'}</span>
               </div>
               <div>
                 <span className="text-gray-500">Class:</span>{' '}
-                <span className="font-medium">{reportCard.class?.name || 'N/A'}</span>
+                <span className="font-medium">{reportCard.student?.class_name || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-gray-500">Gender:</span>{' '}
-                <span className="font-medium">{reportCard.student?.gender || 'N/A'}</span>
+                <span className="text-gray-500">Conduct:</span>{' '}
+                <span className="font-medium">{reportCard.results?.conduct || 'Good'}</span>
               </div>
             </div>
           </Card>
 
           {/* Subject Grades */}
           <Card className="print:shadow-none print:border">
-            {(reportCard.subjects || []).length === 0 ? (
+            {(reportCard.results?.subjects || []).length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <p>No exam results available for this student.</p>
                 <p className="text-sm">Enter exam results to see subject grades.</p>
@@ -350,24 +422,24 @@ function ReportCard() {
                     <tr>
                       <th>Subject</th>
                       <th className="text-center">Score</th>
-                      <th className="text-center">Average</th>
+                      <th className="text-center">Percentage</th>
                       <th className="text-center">Grade</th>
                       <th className="text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(reportCard.subjects || []).map((subject, i) => (
+                    {(reportCard.results?.subjects || []).map((subject, i) => (
                       <tr key={i}>
-                        <td className="font-medium">{subject.subject_name}</td>
+                        <td className="font-medium">{subject.name}</td>
                         <td className="text-center">
-                          {subject.total_score}/{subject.total_max}
+                          {subject.score}/{subject.max_score}
                         </td>
                         <td className="text-center font-semibold">
-                          {subject.average_percentage}%
+                          {subject.percentage}%
                         </td>
                         <td className="text-center">{getGradeBadge(subject.grade)}</td>
                         <td className="text-center">
-                          {subject.average_percentage >= 50 ? (
+                          {subject.percentage >= 50 ? (
                             <CheckCircle size={16} className="text-green-500 inline" />
                           ) : (
                             <XCircle size={16} className="text-red-500 inline" />
@@ -376,67 +448,85 @@ function ReportCard() {
                       </tr>
                     ))}
                   </tbody>
-                  {reportCard.overall && reportCard.overall.total_max > 0 && (
-                    <tfoot>
-                      <tr className="bg-gray-50 dark:bg-gray-800 font-bold">
-                        <td>Overall</td>
-                        <td className="text-center">
-                          {reportCard.overall.total_score}/{reportCard.overall.total_max}
-                        </td>
-                        <td className="text-center">{reportCard.overall.percentage}%</td>
-                        <td className="text-center">{getGradeBadge(reportCard.overall.grade)}</td>
-                        <td className="text-center">
-                          {reportCard.overall.percentage >= 50 ? (
-                            <CheckCircle size={16} className="text-green-500 inline" />
-                          ) : (
-                            <XCircle size={16} className="text-red-500 inline" />
-                          )}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
+                  <tfoot>
+                    <tr className="bg-gray-50 dark:bg-gray-800 font-bold">
+                      <td>TOTAL</td>
+                      <td className="text-center">
+                        {reportCard.results?.total_score}/{reportCard.results?.total_max}
+                      </td>
+                      <td className="text-center">{reportCard.results?.percentage}%</td>
+                      <td className="text-center">{getGradeBadge(reportCard.results?.grade)}</td>
+                      <td className="text-center">
+                        {reportCard.results?.percentage >= 50 ? (
+                          <CheckCircle size={16} className="text-green-500 inline" />
+                        ) : (
+                          <XCircle size={16} className="text-red-500 inline" />
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}
           </Card>
 
-          {/* Attendance & Remarks */}
+          {/* Summary & Remarks */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:gap-4">
-            {reportCard.attendance && (
-              <Card className="print:shadow-none print:border">
-                <h4 className="font-semibold mb-2">Attendance</h4>
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-primary-600">
-                    {reportCard.attendance.rate}%
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {reportCard.attendance.present} of {reportCard.attendance.total} days present
-                  </p>
+            <Card className="print:shadow-none print:border">
+              <h4 className="font-semibold mb-3">Summary</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Percentage:</span>
+                  <span className="font-bold">{reportCard.results?.percentage}%</span>
                 </div>
-              </Card>
-            )}
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Position in Class:</span>
+                  <span className="font-bold">{reportCard.results?.position || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Out of:</span>
+                  <span className="font-bold">{reportCard.results?.out_of || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Result:</span>
+                  <span className="font-bold">{reportCard.results?.result || 'N/A'}</span>
+                </div>
+              </div>
+            </Card>
             <Card className="print:shadow-none print:border">
               <h4 className="font-semibold mb-2">Remarks</h4>
               <div className="space-y-3 text-sm">
-                {reportCard.class_teacher_remarks ? (
-                  <div>
-                    <p className="text-gray-500">Class Teacher:</p>
-                    <p className="italic">{reportCard.class_teacher_remarks}</p>
+                <div>
+                  <p className="text-gray-500 font-medium">Director of Studies:</p>
+                  <p className="italic">{reportCard.results?.remarks || 'No remarks yet.'}</p>
+                </div>
+                {reportCard.attendance && (
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-gray-500 font-medium">Attendance:</p>
+                    <p className="font-bold text-primary-600">{reportCard.attendance.attendance_rate}%</p>
+                    <p className="text-xs">{reportCard.attendance.present_days} of {reportCard.attendance.total_days} days</p>
                   </div>
-                ) : (
-                  <p className="text-gray-400 italic">No remarks yet.</p>
-                )}
-                {reportCard.head_teacher_remarks ? (
-                  <div>
-                    <p className="text-gray-500">Head Teacher:</p>
-                    <p className="italic">{reportCard.head_teacher_remarks}</p>
-                  </div>
-                ) : (
-                  <p className="text-gray-400 italic">No remarks yet.</p>
                 )}
               </div>
             </Card>
           </div>
+
+          {/* Signatures */}
+          <Card className="print:shadow-none print:border">
+            <div className="flex justify-between text-sm text-center pt-4">
+              <div className="w-2/5">
+                <div className="border-b border-black mb-1 h-8">&nbsp;</div>
+                <p className="font-medium">Director of Studies</p>
+              </div>
+              <div className="w-2/5">
+                <div className="border-b border-black mb-1 h-8">&nbsp;</div>
+                <p className="font-medium">Head Teacher</p>
+              </div>
+            </div>
+            <p className="text-xs text-center text-gray-500 mt-4">
+              Next Academic Year will Commence on: January {String(parseInt(reportCard.academic_year?.split('/')[1] || '2027'))}
+            </p>
+          </Card>
 
           {/* Actions */}
           <div className="flex gap-3 justify-end no-print">
@@ -449,8 +539,191 @@ function ReportCard() {
           </div>
         </div>
       )}
+
+      {/* Annual Report Card */}
+      {generated && annualReport && reportType === 'annual' && (
+        <div ref={reportRef} className="space-y-6 print:space-y-4">
+          <Card className="print:shadow-none print:border">
+            <div className="text-center border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
+              <img 
+                src="/letter-head.jpg" 
+                alt="School Letterhead" 
+                className="max-w-full h-auto mx-auto mb-2"
+                style={{ maxHeight: '80px' }}
+                onError={(e) => { e.target.style.display = 'none' }}
+              />
+              <h3 className="text-xl font-bold mt-2">ANNUAL ACADEMIC REPORT CARD</h3>
+              <p className="text-sm text-gray-500">{annualReport.academic_year}</p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+              <div>
+                <span className="text-gray-500">Name:</span>{' '}
+                <span className="font-medium">{annualReport.student?.name || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Pupil's ID:</span>{' '}
+                <span className="font-medium">{annualReport.student?.student_id || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Class:</span>{' '}
+                <span className="font-medium">{annualReport.student?.class_name || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Conduct:</span>{' '}
+                <span className="font-medium">{annualReport.student?.conduct || 'Good'}</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Annual Subject Table - 3 Terms in columns */}
+          <Card className="print:shadow-none print:border overflow-x-auto">
+            <div className="table-container">
+              <table className="table text-xs">
+                <thead>
+                  <tr>
+                    <th>SUBJECTS</th>
+                    <th className="text-center">TERM I<br/>Score</th>
+                    <th className="text-center">Grade</th>
+                    <th className="text-center">TERM II<br/>Score</th>
+                    <th className="text-center">Grade</th>
+                    <th className="text-center">TERM III<br/>Score</th>
+                    <th className="text-center">Grade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {getAllAnnualSubjects(annualReport).map((subject, i) => {
+                    const t1 = annualReport.term1?.subjects?.find(s => s.name === subject) || {}
+                    const t2 = annualReport.term2?.subjects?.find(s => s.name === subject) || {}
+                    const t3 = annualReport.term3?.subjects?.find(s => s.name === subject) || {}
+                    return (
+                      <tr key={i}>
+                        <td className="font-medium">{subject}</td>
+                        <td className="text-center">{t1.score || '-'}</td>
+                        <td className="text-center">{t1.grade ? getGradeBadge(t1.grade) : '-'}</td>
+                        <td className="text-center">{t2.score || '-'}</td>
+                        <td className="text-center">{t2.grade ? getGradeBadge(t2.grade) : '-'}</td>
+                        <td className="text-center">{t3.score || '-'}</td>
+                        <td className="text-center">{t3.grade ? getGradeBadge(t3.grade) : '-'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 dark:bg-gray-800 font-bold">
+                    <td>TOTAL</td>
+                    <td className="text-center" colSpan={2}>
+                      {annualReport.term1 ? `${annualReport.term1.total_score}/${annualReport.term1.total_max}` : '-'}
+                    </td>
+                    <td className="text-center" colSpan={2}>
+                      {annualReport.term2 ? `${annualReport.term2.total_score}/${annualReport.term2.total_max}` : '-'}
+                    </td>
+                    <td className="text-center" colSpan={2}>
+                      {annualReport.term3 ? `${annualReport.term3.total_score}/${annualReport.term3.total_max}` : '-'}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
+
+          {/* Term Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {['term1', 'term2', 'term3'].map((termKey, idx) => {
+              const term = annualReport[termKey]
+              const termLabel = `Term ${idx + 1}`
+              return (
+                <Card key={termKey} className="print:shadow-none print:border">
+                  <h4 className="font-semibold mb-2 text-sm">{termLabel}</h4>
+                  {term ? (
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span>Percentage:</span>
+                        <span className="font-bold">{term.percentage}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Position:</span>
+                        <span>{term.position || 'N/A'}/{term.out_of || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Grade:</span>
+                        <span>{getGradeBadge(term.grade)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Result:</span>
+                        <span className={term.result === 'Pass' ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
+                          {term.result || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 text-xs">No data</p>
+                  )}
+                </Card>
+              )
+            })}
+          </div>
+
+          {/* Remarks & Signatures */}
+          <Card className="print:shadow-none print:border">
+            <div className="mb-4">
+              <h4 className="font-semibold text-sm">Director of Studies' Remarks:</h4>
+              <p className="text-sm italic">
+                {annualReport.term3?.remarks || annualReport.term2?.remarks || annualReport.term1?.remarks || 'No remarks.'}
+              </p>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              <strong>Next Academic Year Commences on:</strong> January {String(parseInt(annualReport.academic_year?.split('/')[1] || '2027'))}
+            </p>
+            <div className="flex justify-between text-sm text-center pt-4 border-t">
+              <div className="w-1/4">
+                <div className="border-b border-black mb-1 h-8">&nbsp;</div>
+                <p className="font-medium">Director of Studies</p>
+              </div>
+              <div className="w-1/4">
+                <div className="border-b border-black mb-1 h-8">&nbsp;</div>
+                <p className="font-medium">Head Teacher</p>
+              </div>
+              <div className="w-1/4">
+                <div className="border-b border-black mb-1 h-8">&nbsp;</div>
+                <p className="font-medium">Parent/Guardian</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Actions */}
+          <div className="flex gap-3 justify-end no-print">
+            <Button variant="secondary" icon={<Printer size={18} />} onClick={handlePrint}>
+              Print
+            </Button>
+            <Button 
+              variant="primary" 
+              icon={<Download size={18} />} 
+              onClick={handlePrintAnnual}
+              style={{ background: '#059669' }}
+            >
+              Print Annual (Landscape)
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+/**
+ * Get all unique subjects across all 3 terms
+ */
+function getAllAnnualSubjects(annualReport) {
+  const subjects = new Set()
+  ;['term1', 'term2', 'term3'].forEach(termKey => {
+    const term = annualReport[termKey]
+    if (term?.subjects) {
+      term.subjects.forEach(s => {
+        if (s.name) subjects.add(s.name)
+      })
+    }
+  })
+  return Array.from(subjects)
 }
 
 export default ReportCard
