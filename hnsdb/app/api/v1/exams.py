@@ -45,7 +45,6 @@ def _calculate_grade(percentage: float) -> str:
 
 def _get_student_id_number(student: dict) -> str:
     """Get the proper student ID number (HNS format) from student document."""
-    # Try multiple fields where the HNS ID might be stored
     student_id = (
         student.get("student_id") or 
         student.get("student_id_number") or 
@@ -315,14 +314,12 @@ async def generate_report_card(
     if not student_id:
         raise HTTPException(status_code=400, detail="Student ID is required")
     
-    # Try to find student by HNS ID first, then by MongoDB _id
     sid = _safe_objectid(student_id)
     student = None
     
     if sid:
         student = await db.students.find_one({"_id": sid})
     
-    # If not found by _id, try finding by student_id field (HNS format)
     if not student:
         student = await db.students.find_one({
             "$or": [
@@ -337,11 +334,8 @@ async def generate_report_card(
         raise HTTPException(status_code=404, detail="Student not found")
     
     student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
-    
-    # ✅ Get the PROPER student ID (HNS format like HNS-2026-0037)
     student_id_number = _get_student_id_number(student)
     
-    # Get class info
     class_name = ""
     if student.get("current_class_id"):
         try:
@@ -351,26 +345,21 @@ async def generate_report_card(
         except Exception:
             pass
     
-    # Use the MongoDB _id for querying results
     student_oid = student.get("_id")
     
-    # Get exam results for this student for the specific term
     results = await db.exam_results.find({
         "student_id": student_oid,
         "term": term,
         "academic_year": academic_year
     }).to_list(length=None)
     
-    # If no term-specific results, get all results
     if not results:
         results = await db.exam_results.find({"student_id": student_oid}).to_list(length=None)
     
-    # Get exams for context
     exam_ids = [r["exam_id"] for r in results if r.get("exam_id")]
     exams = await db.exams.find({"_id": {"$in": exam_ids}}).to_list(length=None) if exam_ids else []
     exam_map = {str(e["_id"]): e for e in exams}
     
-    # Build subject results
     subject_results = {}
     for r in results:
         exam = exam_map.get(str(r.get("exam_id", "")), {})
@@ -390,7 +379,6 @@ async def generate_report_card(
         subject_results[subject_name]["score"] += score
         subject_results[subject_name]["max_score"] += max_s
     
-    # Convert to list and calculate grades
     subjects_list = []
     total_score = 0
     total_max = 0
@@ -404,14 +392,11 @@ async def generate_report_card(
         total_score += data["score"]
         total_max += data["max_score"]
     
-    # Calculate overall
     overall_percentage = round((total_score / total_max * 100), 1) if total_max > 0 else 0
     overall_grade = _calculate_grade(overall_percentage)
     
-    # Get school info
     school = await db.school_info.find_one({}) or {}
     
-    # Get attendance summary
     attendance_records = await db.attendance.find({
         "student_id": student_oid,
         "term": term,
@@ -424,8 +409,6 @@ async def generate_report_card(
     
     position = body.get("position", "N/A")
     out_of = body.get("out_of", "N/A")
-    
-    # ✅ Build verification URL with the HNS student ID
     verify_url = f"https://hnsdbapi.vercel.app/verify-report/{student_id_number}"
     
     return {
@@ -434,7 +417,7 @@ async def generate_report_card(
         "data": {
             "student": {
                 "name": student_name,
-                "student_id": student_id_number,  # ✅ HNS-2026-0037 format
+                "student_id": student_id_number,
                 "class_name": class_name,
                 "conduct": body.get("conduct", "Good")
             },
@@ -452,7 +435,7 @@ async def generate_report_card(
             },
             "term": term,
             "academic_year": academic_year,
-            "verify_url": verify_url,  # ✅ Verification link
+            "verify_url": verify_url,
             "attendance": {
                 "total_days": attendance_total,
                 "present_days": attendance_present,
@@ -489,7 +472,6 @@ async def generate_annual_report_card(
     if not student_id:
         raise HTTPException(status_code=400, detail="Student ID is required")
     
-    # Try to find student by HNS ID first, then by MongoDB _id
     sid = _safe_objectid(student_id)
     student = None
     
@@ -510,11 +492,8 @@ async def generate_annual_report_card(
         raise HTTPException(status_code=404, detail="Student not found")
     
     student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
-    
-    # ✅ Get the PROPER student ID (HNS format)
     student_id_number = _get_student_id_number(student)
     
-    # Get class info
     class_name = ""
     if student.get("current_class_id"):
         try:
@@ -526,21 +505,29 @@ async def generate_annual_report_card(
     
     student_oid = student.get("_id")
     
-    # Get all results for this student for the academic year
-    all_results = await db.exam_results.find({
-        "student_id": student_oid,
-        "academic_year": academic_year
-    }).to_list(length=None)
+    # Get all results
+    all_results = await db.exam_results.find({"student_id": student_oid}).to_list(length=None)
     
-    # Get exams for context
+    # Get exams
     exam_ids = list(set([r["exam_id"] for r in all_results if r.get("exam_id")]))
     exams = await db.exams.find({"_id": {"$in": exam_ids}}).to_list(length=None) if exam_ids else []
     exam_map = {str(e["_id"]): e for e in exams}
     
+    # ✅ FIXED: Helper to get position/out_of/remarks with safe defaults
+    def get_body_value(key, default="N/A"):
+        return body.get(key, default)
+    
     # Organize results by term
-    def build_term_results(term):
+    def build_term_results(term_name):
         """Build results for a specific term"""
-        term_results = [r for r in all_results if r.get("term") == term or exam_map.get(str(r.get("exam_id", "")), {}).get("term") == term]
+        term_results = [
+            r for r in all_results 
+            if r.get("term") == term_name or 
+               exam_map.get(str(r.get("exam_id", "")), {}).get("term") == term_name
+        ]
+        
+        if not term_results:
+            return None
         
         subject_results = {}
         for r in term_results:
@@ -572,27 +559,25 @@ async def generate_annual_report_card(
         
         overall_percentage = round((total_score / total_max * 100), 1) if total_max > 0 else 0
         
+        # ✅ Fixed: Use safe get_body_value helper
         return {
             "subjects": subjects_list,
             "total_score": total_score,
             "total_max": total_max,
             "percentage": overall_percentage,
             "grade": _calculate_grade(overall_percentage),
-            "position": body.get(f"position_term_{term}", "N/A"),
-            "out_of": body.get(f"out_of_term_{term}", "N/A"),
+            "position": get_body_value(f"position_{term_name.lower().replace(' ', '_')}", "N/A"),
+            "out_of": get_body_value(f"out_of_{term_name.lower().replace(' ', '_')}", "N/A"),
             "result": "Pass" if overall_percentage >= 50 else "Fail",
-            "remarks": body.get(f"remarks_term_{term}", ""),
-            "conduct": body.get(f"conduct_term_{term}", "Good")
-        } if term_results else None
+            "remarks": get_body_value(f"remarks_{term_name.lower().replace(' ', '_')}", ""),
+            "conduct": get_body_value(f"conduct_{term_name.lower().replace(' ', '_')}", "Good")
+        }
     
     term1_data = build_term_results("Term 1")
     term2_data = build_term_results("Term 2")
     term3_data = build_term_results("Term 3")
     
-    # Get school info
     school = await db.school_info.find_one({}) or {}
-    
-    # ✅ Build verification URL
     verify_url = f"https://hnsdbapi.vercel.app/verify-report/{student_id_number}"
     
     return {
@@ -601,7 +586,7 @@ async def generate_annual_report_card(
         "data": {
             "student": {
                 "name": student_name,
-                "student_id": student_id_number,  # ✅ HNS-2026-0037 format
+                "student_id": student_id_number,
                 "class_name": class_name,
                 "conduct": body.get("conduct", "Good")
             },
@@ -609,7 +594,7 @@ async def generate_annual_report_card(
             "term2": term2_data,
             "term3": term3_data,
             "academic_year": academic_year,
-            "verify_url": verify_url,  # ✅ Verification link
+            "verify_url": verify_url,
             "school": {
                 "name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
                 "address": school.get("address", ""),
@@ -756,7 +741,6 @@ async def get_student_results(
     """Get exam results for a student"""
     db = get_database()
     
-    # Try to find student by HNS ID or MongoDB _id
     sid = _safe_objectid(student_id)
     student = None
     student_oid = None
@@ -793,7 +777,7 @@ async def get_student_results(
     return {
         "success": True, "message": "Student results retrieved",
         "data": {
-            "student_id": student_id_number,  # ✅ HNS format
+            "student_id": student_id_number,
             "student_name": student_name,
             "results": results,
             "total": len(results)
