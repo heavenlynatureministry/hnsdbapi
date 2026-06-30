@@ -23,9 +23,9 @@ export const exportReportCard = (reportData) => {
     return
   }
 
-  const { student, results, term, academic_year, school } = reportData
+  const { student, results, term, academic_year, school, verify_url } = reportData
 
-  printWindow.document.write(generateSingleTermHTML(student, results, term, academic_year, school, letterheadUrl, watermarkUrl))
+  printWindow.document.write(generateSingleTermHTML(student, results, term, academic_year, school, letterheadUrl, watermarkUrl, verify_url))
   printWindow.document.close()
 
   printWindow.onload = () => {
@@ -39,7 +39,7 @@ export const exportReportCard = (reportData) => {
 }
 
 /**
- * Export annual report card - Portrait (default)
+ * Export annual report card - Portrait or Landscape
  */
 export const exportAnnualReportCard = (reportData, orientation = 'portrait') => {
   if (!reportData) {
@@ -60,12 +60,12 @@ export const exportAnnualReportCard = (reportData, orientation = 'portrait') => 
     return
   }
 
-  const { student, term1, term2, term3, academic_year, school } = reportData
+  const { student, term1, term2, term3, academic_year, school, verify_url } = reportData
 
   if (orientation === 'landscape') {
-    printWindow.document.write(generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl))
+    printWindow.document.write(generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url))
   } else {
-    printWindow.document.write(generateAnnualPortraitHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl))
+    printWindow.document.write(generateAnnualPortraitHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url))
   }
   
   printWindow.document.close()
@@ -83,11 +83,17 @@ export const exportAnnualReportCard = (reportData, orientation = 'portrait') => 
 /**
  * Generate single-term HTML (Portrait A4)
  */
-function generateSingleTermHTML(student, results, term, academic_year, school, letterheadUrl, watermarkUrl) {
+function generateSingleTermHTML(student, results, term, academic_year, school, letterheadUrl, watermarkUrl, verify_url) {
   const subjects = results?.subjects || []
   const totalScore = results?.total_score || subjects.reduce((sum, s) => sum + (parseFloat(s.score) || 0), 0)
   const totalMax = results?.total_max || subjects.reduce((sum, s) => sum + (parseFloat(s.max_score) || 0), 0)
   const percentage = results?.percentage || (totalMax > 0 ? ((totalScore / totalMax) * 100).toFixed(1) : 0)
+
+  const verifyLinkHTML = verify_url ? `
+    <div class="verify-section">
+      <p><strong>🔒 Verify this report card online:</strong></p>
+      <p class="verify-link">${verify_url}</p>
+    </div>` : ''
 
   return `
     <!DOCTYPE html>
@@ -125,6 +131,9 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
         .sig-box { text-align: center; width: 40%; }
         .sig-line { border-bottom: 1px solid #000; margin-bottom: 4px; height: 30px; }
         .next-term { text-align: center; font-size: 10px; margin-top: 15px; color: #555; }
+        .verify-section { margin-top: 12px; padding: 10px; border: 2px solid #1a56db; background: #f0f4ff; text-align: center; border-radius: 4px; }
+        .verify-section p { font-size: 10px; color: #1a56db; }
+        .verify-link { font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold; color: #1a56db; text-decoration: underline; word-break: break-all; }
         .footer { text-align: center; font-size: 9px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #ccc; color: #666; }
         .print-toolbar { text-align: center; padding: 12px; margin-top: 10px; background: #f0f0f0; border-radius: 8px; }
         .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; margin: 3px; }
@@ -143,7 +152,7 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
           <div class="title">Academic Report Card<br/>${term || ''} • ${academic_year || ''}</div>
           <div class="info-grid">
             <div class="info-item"><span class="info-label">Name:</span><span><strong>${student?.name || 'N/A'}</strong></span></div>
-            <div class="info-item"><span class="info-label">Pupil's ID:</span><span>${student?.student_id || 'N/A'}</span></div>
+            <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family: 'Courier New', monospace;">${student?.student_id || 'N/A'}</strong></span></div>
             <div class="info-item"><span class="info-label">Class:</span><span>${student?.class_name || 'N/A'}</span></div>
             <div class="info-item"><span class="info-label">Conduct:</span><span>${results?.conduct || 'Good'}</span></div>
           </div>
@@ -173,6 +182,7 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
             <strong>Director of Studies' Remarks:</strong>
             <p style="margin-top:4px;">${results?.remarks || '___________________________________________________________________________'}</p>
           </div>
+          ${verifyLinkHTML}
           <div class="signatures">
             <div class="sig-box"><div class="sig-line"></div><strong>Director of Studies</strong></div>
             <div class="sig-box"><div class="sig-line"></div><strong>Head Teacher</strong></div>
@@ -180,7 +190,10 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
           <div class="next-term">
             <strong>Next Academic Year Commences on:</strong> January ${String(parseInt(academic_year?.split('/')[1] || new Date().getFullYear() + 1))}
           </div>
-          <div class="footer"><p>${school?.name || 'School'} | ${academic_year || ''} | Computer-generated report card</p></div>
+          <div class="footer">
+            <p>${school?.name || 'School'} | ${academic_year || ''} | Computer-generated report card</p>
+            ${verify_url ? `<p style="margin-top:3px; font-size:8px; color:#1a56db;">Verify: ${verify_url}</p>` : ''}
+          </div>
         </div>
       </div>
       <div class="print-toolbar no-print">
@@ -193,10 +206,16 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
 }
 
 /**
- * Generate annual report card HTML - PORTRAIT (3 terms stacked vertically)
+ * Generate annual report card HTML - PORTRAIT
  */
-function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl) {
+function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url) {
   const allSubjects = getUniqueSubjects(term1, term2, term3)
+
+  const verifyLinkHTML = verify_url ? `
+    <div class="verify-section">
+      <p><strong>🔒 Verify this report card online:</strong></p>
+      <p class="verify-link">${verify_url}</p>
+    </div>` : ''
 
   return `
     <!DOCTYPE html>
@@ -231,6 +250,9 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
         .summary-table { width: 100%; border-collapse: collapse; font-size: 9px; }
         .summary-table td { padding: 3px 6px; border: 1px solid #ddd; text-align: left; }
         .remarks-section { margin-top: 8px; padding: 6px; border: 1px solid #ddd; font-size: 9px; min-height: 30px; background: #fafafa; }
+        .verify-section { margin-top: 8px; padding: 8px; border: 2px solid #1a56db; background: #f0f4ff; text-align: center; border-radius: 4px; }
+        .verify-section p { font-size: 9px; color: #1a56db; }
+        .verify-link { font-family: 'Courier New', monospace; font-size: 10px; font-weight: bold; color: #1a56db; text-decoration: underline; word-break: break-all; }
         .signatures { display: flex; justify-content: space-between; margin-top: 15px; font-size: 9px; }
         .sig-box { text-align: center; width: 30%; }
         .sig-line { border-bottom: 1px solid #000; margin-bottom: 3px; height: 20px; }
@@ -253,7 +275,7 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
           <div class="title">Annual Academic Report Card<br/>${academic_year || ''}</div>
           <div class="info-grid">
             <div class="info-item"><span class="info-label">Name:</span><span><strong>${student?.name || 'N/A'}</strong></span></div>
-            <div class="info-item"><span class="info-label">Pupil's ID:</span><span>${student?.student_id || 'N/A'}</span></div>
+            <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family: 'Courier New', monospace;">${student?.student_id || 'N/A'}</strong></span></div>
             <div class="info-item"><span class="info-label">Class:</span><span>${student?.class_name || 'N/A'}</span></div>
           </div>
           <table>
@@ -296,6 +318,7 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
           <div class="remarks-section">
             <strong>Director of Studies' Remarks:</strong> ${term3?.remarks || term2?.remarks || term1?.remarks || ''}
           </div>
+          ${verifyLinkHTML}
           <div class="next-term">
             <strong>Next Academic Year Commences on:</strong> January ${String(parseInt(academic_year?.split('/')[1] || new Date().getFullYear() + 1))}
           </div>
@@ -304,7 +327,10 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
             <div class="sig-box"><div class="sig-line"></div>Head Teacher</div>
             <div class="sig-box"><div class="sig-line"></div>Parent/Guardian</div>
           </div>
-          <div class="footer"><p>${school?.name || 'School'} | Annual Report Card ${academic_year || ''} | Computer-generated</p></div>
+          <div class="footer">
+            <p>${school?.name || 'School'} | Annual Report Card ${academic_year || ''} | Computer-generated</p>
+            ${verify_url ? `<p style="margin-top:2px; font-size:7px; color:#1a56db;">Verify: ${verify_url}</p>` : ''}
+          </div>
         </div>
       </div>
       <div class="print-toolbar no-print">
@@ -317,10 +343,16 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
 }
 
 /**
- * Generate annual report card HTML - LANDSCAPE (3 terms in wide columns)
+ * Generate annual report card HTML - LANDSCAPE
  */
-function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl) {
+function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url) {
   const allSubjects = getUniqueSubjects(term1, term2, term3)
+
+  const verifyLinkHTML = verify_url ? `
+    <div class="verify-section">
+      <p><strong>🔒 Verify this report card online:</strong></p>
+      <p class="verify-link">${verify_url}</p>
+    </div>` : ''
 
   return `
     <!DOCTYPE html>
@@ -355,6 +387,9 @@ function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year
         .summary-card { flex: 1; padding: 6px; border: 1px solid #ddd; background: #fafafa; font-size: 9px; }
         .summary-card h4 { margin-bottom: 4px; font-size: 10px; }
         .remarks-section { margin-top: 6px; padding: 6px; border: 1px solid #ddd; font-size: 9px; min-height: 25px; background: #fafafa; }
+        .verify-section { margin-top: 6px; padding: 6px; border: 2px solid #1a56db; background: #f0f4ff; text-align: center; border-radius: 4px; }
+        .verify-section p { font-size: 9px; color: #1a56db; }
+        .verify-link { font-family: 'Courier New', monospace; font-size: 10px; font-weight: bold; color: #1a56db; text-decoration: underline; word-break: break-all; }
         .signatures { display: flex; justify-content: space-between; margin-top: 12px; font-size: 9px; }
         .sig-box { text-align: center; width: 30%; }
         .sig-line { border-bottom: 1px solid #000; margin-bottom: 3px; height: 20px; }
@@ -377,7 +412,7 @@ function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year
           <div class="title">Annual Academic Report Card ${academic_year || ''}</div>
           <div class="info-grid">
             <div class="info-item"><span class="info-label">Name:</span><span><strong>${student?.name || 'N/A'}</strong></span></div>
-            <div class="info-item"><span class="info-label">Pupil's ID:</span><span>${student?.student_id || 'N/A'}</span></div>
+            <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family: 'Courier New', monospace;">${student?.student_id || 'N/A'}</strong></span></div>
             <div class="info-item"><span class="info-label">Class:</span><span>${student?.class_name || 'N/A'}</span></div>
           </div>
           <table>
@@ -433,6 +468,7 @@ function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year
           <div class="remarks-section">
             <strong>Director of Studies' Remarks:</strong> ${term3?.remarks || term2?.remarks || term1?.remarks || ''}
           </div>
+          ${verifyLinkHTML}
           <div class="next-term">
             <strong>Next Academic Year Commences on:</strong> January ${String(parseInt(academic_year?.split('/')[1] || new Date().getFullYear() + 1))}
           </div>
@@ -441,7 +477,10 @@ function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year
             <div class="sig-box"><div class="sig-line"></div>Head Teacher</div>
             <div class="sig-box"><div class="sig-line"></div>Parent/Guardian</div>
           </div>
-          <div class="footer"><p>${school?.name || 'School'} | Annual Report Card ${academic_year || ''} | Computer-generated</p></div>
+          <div class="footer">
+            <p>${school?.name || 'School'} | Annual Report Card ${academic_year || ''} | Computer-generated</p>
+            ${verify_url ? `<p style="margin-top:2px; font-size:7px; color:#1a56db;">Verify: ${verify_url}</p>` : ''}
+          </div>
         </div>
       </div>
       <div class="print-toolbar no-print">
@@ -462,4 +501,4 @@ function getUniqueSubjects(term1, term2, term3) {
     })
   })
   return Array.from(subjects)
-}
+    }
