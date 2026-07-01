@@ -95,7 +95,6 @@ function TransactionForm() {
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
 
-  // Receipt state
   const [showReceipt, setShowReceipt] = useState(false)
   const [receiptData, setReceiptData] = useState(null)
   const [savedTransactionId, setSavedTransactionId] = useState(null)
@@ -149,8 +148,6 @@ function TransactionForm() {
           term: t.term || currentTerm,
           notes: t.notes || '',
         })
-        
-        // Store the transaction ID for receipt
         setSavedTransactionId(id)
       } else {
         toast.error('Failed to load transaction')
@@ -169,7 +166,6 @@ function TransactionForm() {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }))
-    // Reset category when type changes
     if (name === 'transaction_type') {
       setFormData(prev => ({ ...prev, category: '' }))
     }
@@ -198,12 +194,14 @@ function TransactionForm() {
         amount: parseFloat(formData.amount),
         transaction_type: formData.transaction_type,
         category: formData.category,
-        description: formData.description,
+        description: formData.description.trim(),
         payment_method: formData.payment_method,
         academic_year: formData.academic_year,
         term: formData.term,
-        notes: formData.notes,
+        notes: formData.notes || '',
       }
+      
+      console.log('Sending transaction payload:', payload)
       
       let response
       if (isEdit) {
@@ -212,41 +210,33 @@ function TransactionForm() {
         response = await financialAPI.createTransaction(payload)
       }
 
-      // Handle different response formats
+      console.log('Transaction response:', response)
+
+      // ✅ Handle response - the API returns { success: true, message: "...", data: {...} }
       const result = response?.data || response
       
       if (result?.success) {
         const transactionId = result.data?._id || result.data?.id || id
         
-        toast.success(
-          <div className="flex items-center gap-2">
-            <span>Transaction {isEdit ? 'updated' : 'recorded'} successfully!</span>
-            {!isEdit && (
-              <button
-                onClick={() => handleViewReceipt(transactionId)}
-                className="text-primary-600 underline text-sm font-medium whitespace-nowrap"
-              >
-                View Receipt
-              </button>
-            )}
-          </div>,
-          { duration: 5000 }
-        )
+        toast.success(`Transaction ${isEdit ? 'updated' : 'recorded'} successfully!`)
         
-        // Auto-show receipt for new income transactions
         if (!isEdit && formData.transaction_type === 'income') {
           handleViewReceipt(transactionId)
         } else {
           navigate('/financial')
         }
       } else {
-        toast.error(result?.message || 'Failed to save transaction')
+        const errorMsg = result?.message || result?.detail || 'Failed to save transaction'
+        console.error('Save failed:', errorMsg)
+        toast.error(errorMsg)
       }
     } catch (error) {
       console.error('Transaction save error:', error)
       
-      if (error.status === 422 || error.response?.status === 422) {
-        const fieldErrors = error.errors || error.response?.data?.errors || []
+      if (error.status === 0 || error?.code === 'ERR_NETWORK') {
+        toast.error('Cannot connect to server. Please check your connection.')
+      } else if (error.response?.status === 422) {
+        const fieldErrors = error.response?.data?.errors || []
         const newErrors = {}
         fieldErrors.forEach(err => {
           const field = err.loc?.[err.loc.length - 1] || 'general'
@@ -254,8 +244,9 @@ function TransactionForm() {
         })
         setErrors(newErrors)
         toast.error('Please fix the validation errors')
-      } else if (error.status === 0) {
-        toast.error('Server is starting up. Please try again in 30 seconds.')
+      } else if (error.response?.status === 500) {
+        const detail = error.response?.data?.detail || 'Internal server error'
+        toast.error(`Server error: ${detail}`)
       } else {
         const errorMsg = error.response?.data?.detail || error.message || 'Failed to save transaction'
         toast.error(errorMsg)
@@ -265,23 +256,16 @@ function TransactionForm() {
     }
   }
 
-  /**
-   * Fetch receipt data and show receipt modal
-   */
   const handleViewReceipt = async (transactionId) => {
     if (!transactionId) {
       toast.error('Transaction ID not available')
       return
     }
-    
     try {
       toast.loading('Generating receipt...')
-      
       const response = await financialAPI.getTransactionReceipt(transactionId)
       const result = response?.data || response
-      
       toast.dismiss()
-      
       if (result?.success && result.data) {
         setReceiptData(result.data)
         setSavedTransactionId(transactionId)
@@ -296,13 +280,9 @@ function TransactionForm() {
     }
   }
 
-  /**
-   * Handle receipt close
-   */
   const handleReceiptClose = () => {
     setShowReceipt(false)
     setReceiptData(null)
-    // Navigate back to financial list after closing receipt
     navigate('/financial')
   }
 
@@ -319,13 +299,8 @@ function TransactionForm() {
         subtitle={isEdit ? 'Update transaction details' : 'Record a new financial transaction'}
         actions={
           <div className="flex gap-2">
-            {/* Show View Receipt button in edit mode if transaction exists */}
             {isEdit && savedTransactionId && (
-              <Button 
-                onClick={() => handleViewReceipt(savedTransactionId)}
-                variant="secondary"
-                icon={<Eye size={18} />}
-              >
+              <Button onClick={() => handleViewReceipt(savedTransactionId)} variant="secondary" icon={<Eye size={18} />}>
                 View Receipt
               </Button>
             )}
@@ -338,146 +313,48 @@ function TransactionForm() {
 
       <Card>
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Transaction Type & Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect 
-              label="Transaction Type *" 
-              name="transaction_type" 
-              value={formData.transaction_type} 
-              onChange={handleChange}
-              options={TYPE_OPTIONS} 
-              error={errors.transaction_type} 
-            />
-            <FormInput 
-              label="Date *" 
-              name="transaction_date" 
-              type="date" 
-              value={formData.transaction_date} 
-              onChange={handleChange} 
-              error={errors.transaction_date} 
-            />
+            <FormSelect label="Transaction Type *" name="transaction_type" value={formData.transaction_type} onChange={handleChange} options={TYPE_OPTIONS} error={errors.transaction_type} />
+            <FormInput label="Date *" name="transaction_date" type="date" value={formData.transaction_date} onChange={handleChange} error={errors.transaction_date} />
           </div>
 
-          {/* Amount & Payment Method */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormInput 
-              label="Amount (SSP) *" 
-              name="amount" 
-              type="number" 
-              value={formData.amount} 
-              onChange={handleChange} 
-              error={errors.amount} 
-              placeholder="0.00" 
-              min="0" 
-              step="0.01" 
-            />
-            <FormSelect 
-              label="Payment Method *" 
-              name="payment_method" 
-              value={formData.payment_method} 
-              onChange={handleChange} 
-              options={PAYMENT_METHODS} 
-              error={errors.payment_method}
-            />
+            <FormInput label="Amount (SSP) *" name="amount" type="number" value={formData.amount} onChange={handleChange} error={errors.amount} placeholder="0.00" min="0" step="0.01" />
+            <FormSelect label="Payment Method *" name="payment_method" value={formData.payment_method} onChange={handleChange} options={PAYMENT_METHODS} error={errors.payment_method} />
           </div>
 
-          {/* Category */}
-          <FormSelect 
-            label="Category *" 
-            name="category" 
-            value={formData.category} 
-            onChange={handleChange} 
-            options={categories} 
-            error={errors.category} 
-            disabled={!formData.transaction_type}
-          />
+          <FormSelect label="Category *" name="category" value={formData.category} onChange={handleChange} options={categories} error={errors.category} disabled={!formData.transaction_type} />
 
-          {/* Description */}
           <div>
             <label className="form-label">Description *</label>
-            <textarea 
-              name="description" 
-              value={formData.description} 
-              onChange={handleChange} 
-              rows={2} 
-              className={`form-input ${errors.description ? 'error' : ''}`} 
-              placeholder="Describe the transaction..." 
-            />
+            <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className={`form-input ${errors.description ? 'error' : ''}`} placeholder="Describe the transaction..." />
             {errors.description && <p className="form-error">{errors.description}</p>}
           </div>
 
-          {/* Academic Year & Term */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect 
-              label="Academic Year" 
-              name="academic_year" 
-              value={formData.academic_year} 
-              onChange={handleChange}
-              options={ACADEMIC_YEAR_OPTIONS} 
-            />
-            <FormSelect 
-              label="Term" 
-              name="term" 
-              value={formData.term} 
-              onChange={handleChange}
-              options={TERM_OPTIONS} 
-            />
+            <FormSelect label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange} options={ACADEMIC_YEAR_OPTIONS} />
+            <FormSelect label="Term" name="term" value={formData.term} onChange={handleChange} options={TERM_OPTIONS} />
           </div>
 
-          {/* Notes */}
           <div>
             <label className="form-label">Notes</label>
-            <textarea 
-              name="notes" 
-              value={formData.notes} 
-              onChange={handleChange} 
-              rows={2} 
-              className="form-input" 
-              placeholder="Additional notes..." 
-            />
+            <textarea name="notes" value={formData.notes} onChange={handleChange} rows={2} className="form-input" placeholder="Additional notes..." />
           </div>
 
-          {/* Action Buttons */}
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <Button 
-              type="submit" 
-              variant="primary" 
-              loading={loading} 
-              icon={<Save size={18} />}
-              disabled={loading}
-            >
+            <Button type="submit" variant="primary" loading={loading} icon={<Save size={18} />} disabled={loading}>
               {loading ? (isEdit ? 'Updating...' : 'Recording...') : (isEdit ? 'Update' : 'Record')} Transaction
             </Button>
-            <Button 
-              type="button" 
-              variant="secondary" 
-              onClick={() => navigate('/financial')}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            
-            {/* Print receipt button in edit mode */}
+            <Button type="button" variant="secondary" onClick={() => navigate('/financial')} disabled={loading}>Cancel</Button>
             {isEdit && savedTransactionId && (
-              <Button 
-                type="button"
-                variant="secondary" 
-                onClick={() => handleViewReceipt(savedTransactionId)}
-                icon={<Printer size={18} />}
-              >
-                Print Receipt
-              </Button>
+              <Button type="button" variant="secondary" onClick={() => handleViewReceipt(savedTransactionId)} icon={<Printer size={18} />}>Print Receipt</Button>
             )}
           </div>
         </form>
       </Card>
 
-      {/* Receipt Modal */}
       {showReceipt && receiptData && (
-        <ReceiptPrint 
-          receipt={receiptData}
-          onClose={handleReceiptClose}
-        />
+        <ReceiptPrint receipt={receiptData} onClose={handleReceiptClose} />
       )}
     </div>
   )
