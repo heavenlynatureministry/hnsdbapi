@@ -12,8 +12,6 @@ function ReceiptPrint({ receipt, onClose }) {
   }
 
   const handleManualPrint = () => {
-    // This opens receipt in a new tab with print button
-    // User can manually click Print button there
     printReceiptDirect(receipt)
   }
 
@@ -107,6 +105,7 @@ function ReceiptPrint({ receipt, onClose }) {
                 </div>
               </div>
 
+              {/* Amount Paid */}
               <div className="border-2 border-black p-2 text-center my-2 bg-gray-50">
                 <div className="text-xs mb-1">AMOUNT PAID</div>
                 <div className="text-lg font-bold font-sans">
@@ -115,6 +114,37 @@ function ReceiptPrint({ receipt, onClose }) {
                 <div className="text-xs italic mt-1">{receipt?.amount_words}</div>
               </div>
 
+              {/* ✅ Balance Info */}
+              {receipt?.balance_info && (
+                <div className="border-t border-dashed border-gray-400 mt-2 pt-2 space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-bold text-gray-600">Total Fee:</span>
+                    <span>SSP {Number(receipt.balance_info.total_fee || 0).toLocaleString('en')}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="font-bold text-gray-600">Total Paid:</span>
+                    <span>SSP {Number(receipt.balance_info.total_paid || 0).toLocaleString('en')}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold border-t border-gray-300 pt-1 mt-1">
+                    <span>BALANCE:</span>
+                    <span className={receipt.balance_info.is_cleared ? 'text-green-600' : 'text-red-600'}>
+                      {receipt.balance_info.balance_display || 'N/A'}
+                    </span>
+                  </div>
+                  {receipt.balance_info.is_cleared && (
+                    <div className="text-center text-xs text-green-600 font-bold">
+                      ✅ FULLY PAID
+                    </div>
+                  )}
+                  {!receipt.balance_info.is_cleared && receipt.balance_info.total_fee > 0 && (
+                    <div className="text-center text-xs text-red-500">
+                      ⚠️ Outstanding: {receipt.balance_info.balance_display}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Signatures */}
               <div className="flex justify-between mt-6 pt-2 border-t border-black">
                 <div className="text-center w-2/5">
                   <div className="border-b border-black mb-1 h-6">&nbsp;</div>
@@ -128,6 +158,7 @@ function ReceiptPrint({ receipt, onClose }) {
                 </div>
               </div>
 
+              {/* Footer */}
               <div className="text-center text-xs mt-3 pt-2 border-t border-dashed border-gray-400">
                 <p>Computer-generated receipt</p>
                 <p>Thank you for your payment!</p>
@@ -137,7 +168,6 @@ function ReceiptPrint({ receipt, onClose }) {
 
           {/* Action Buttons */}
           <div className="mt-4 space-y-2">
-            {/* AUTO PRINT - Opens popup and auto-triggers print */}
             <Button 
               onClick={handleAutoPrint} 
               variant="primary" 
@@ -148,7 +178,6 @@ function ReceiptPrint({ receipt, onClose }) {
               🖨️ Auto Print (Popup)
             </Button>
             
-            {/* MANUAL PRINT - Opens in new tab with print button */}
             <Button 
               onClick={handleManualPrint} 
               variant="primary" 
