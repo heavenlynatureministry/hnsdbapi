@@ -201,8 +201,6 @@ function TransactionForm() {
         notes: formData.notes || '',
       }
       
-      console.log('Sending transaction payload:', payload)
-      
       let response
       if (isEdit) {
         response = await financialAPI.updateTransaction(id, payload)
@@ -210,13 +208,12 @@ function TransactionForm() {
         response = await financialAPI.createTransaction(payload)
       }
 
-      console.log('Transaction response:', response)
-
-      // ✅ Handle response - the API returns { success: true, message: "...", data: {...} }
-      const result = response?.data || response
+      // ✅ FIXED: The API returns { success: true, message: "...", data: {...} }
+      // Axios wraps it in response.data, so response.data = { success: true, ... }
+      const apiResponse = response?.data || response
       
-      if (result?.success) {
-        const transactionId = result.data?._id || result.data?.id || id
+      if (apiResponse?.success === true) {
+        const transactionId = apiResponse.data?._id || apiResponse.data?.id || id
         
         toast.success(`Transaction ${isEdit ? 'updated' : 'recorded'} successfully!`)
         
@@ -226,9 +223,7 @@ function TransactionForm() {
           navigate('/financial')
         }
       } else {
-        const errorMsg = result?.message || result?.detail || 'Failed to save transaction'
-        console.error('Save failed:', errorMsg)
-        toast.error(errorMsg)
+        toast.error(apiResponse?.message || 'Failed to save transaction')
       }
     } catch (error) {
       console.error('Transaction save error:', error)
@@ -236,20 +231,12 @@ function TransactionForm() {
       if (error.status === 0 || error?.code === 'ERR_NETWORK') {
         toast.error('Cannot connect to server. Please check your connection.')
       } else if (error.response?.status === 422) {
-        const fieldErrors = error.response?.data?.errors || []
-        const newErrors = {}
-        fieldErrors.forEach(err => {
-          const field = err.loc?.[err.loc.length - 1] || 'general'
-          newErrors[field] = err.msg
-        })
-        setErrors(newErrors)
         toast.error('Please fix the validation errors')
       } else if (error.response?.status === 500) {
         const detail = error.response?.data?.detail || 'Internal server error'
         toast.error(`Server error: ${detail}`)
       } else {
-        const errorMsg = error.response?.data?.detail || error.message || 'Failed to save transaction'
-        toast.error(errorMsg)
+        toast.error(error.response?.data?.detail || error.message || 'Failed to save transaction')
       }
     } finally {
       setLoading(false)
@@ -266,7 +253,7 @@ function TransactionForm() {
       const response = await financialAPI.getTransactionReceipt(transactionId)
       const result = response?.data || response
       toast.dismiss()
-      if (result?.success && result.data) {
+      if (result?.success === true && result.data) {
         setReceiptData(result.data)
         setSavedTransactionId(transactionId)
         setShowReceipt(true)
