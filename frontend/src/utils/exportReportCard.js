@@ -76,12 +76,19 @@ export const exportAnnualReportCard = (reportData, orientation = 'portrait') => 
 
 /**
  * Generate single-term HTML - COMPACT ONE PAGE layout
+ * Layout: Subjects | Marks Scored | Remarks
  */
 function generateSingleTermHTML(student, results, term, academic_year, school, letterheadUrl, watermarkUrl, verify_url) {
   const subjects = results?.subjects || []
   const totalScore = results?.total_score || subjects.reduce((sum, s) => sum + (parseFloat(s.score) || 0), 0)
   const totalMax = results?.total_max || subjects.reduce((sum, s) => sum + (parseFloat(s.max_score) || 0), 0)
   const percentage = results?.percentage || (totalMax > 0 ? ((totalScore / totalMax) * 100).toFixed(1) : 0)
+  
+  // Get remark based on grade
+  const getRemark = (grade) => {
+    const remarks = { A: 'Excellent', B: 'Very Good', C: 'Good', D: 'Satisfactory', F: 'Needs Improvement' }
+    return remarks[grade] || ''
+  }
 
   return `
     <!DOCTYPE html>
@@ -90,7 +97,7 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
       <title>Report Card - ${student?.name || 'Student'}</title>
       <meta charset="utf-8">
       <style>
-        @page { size: A4 portrait; margin: 6mm; }
+        @page { size: A4 portrait; margin: 8mm; }
         @media print { 
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
           .no-print { display: none !important; }
@@ -115,110 +122,125 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
           position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
           z-index: 0; pointer-events: none; 
         }
-        .watermark img { width: 100%; height: 100%; object-fit: cover; opacity: 0.07; }
-        .content { position: relative; z-index: 1; padding: 6mm 8mm; }
+        .watermark img { width: 100%; height: 100%; object-fit: cover; opacity: 0.06; }
+        .content { position: relative; z-index: 1; padding: 10mm 12mm; }
         
-        /* Letterhead - FULL WIDTH */
-        .letterhead { 
-          text-align: center; 
-          margin-bottom: 4px; 
-          padding-bottom: 3px;
-          border-bottom: 2px double #1a56db; 
-        }
-        .letterhead img { width: 100%; max-width: 100%; height: auto; display: block; }
-        .letterhead-fallback { display: none; text-align: center; padding: 4px; }
+        .title { text-align: center; font-size: 16px; font-weight: bold; margin: 8px 0; text-transform: uppercase; letter-spacing: 2px; }
+        .subtitle { text-align: center; font-size: 12px; margin-bottom: 10px; color: #555; }
         
-        .title { text-align: center; font-size: 14px; font-weight: bold; margin: 5px 0; text-transform: uppercase; letter-spacing: 1.5px; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 5px; font-size: 10px; padding: 4px 6px; border: 1px solid #ddd; background: #fafafa; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom: 10px; font-size: 11px; padding: 6px 10px; border: 1px solid #ddd; background: #fafafa; }
         .info-item { display: flex; }
-        .info-label { font-weight: bold; width: 65px; font-size: 9px; }
+        .info-label { font-weight: bold; width: 75px; font-size: 10px; }
         
-        table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 9px; }
-        th { background: #1a56db; color: white; padding: 4px 5px; text-align: left; font-size: 8px; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 11px; }
+        th { background: #1a56db; color: white; padding: 6px 8px; text-align: left; font-size: 10px; text-transform: uppercase; }
         th.center { text-align: center; }
-        td { padding: 3px 5px; border-bottom: 1px solid #ddd; font-size: 9px; }
+        td { padding: 5px 8px; border-bottom: 1px solid #ddd; font-size: 11px; }
         td.center { text-align: center; }
         tr:nth-child(even) { background: #f8f9fa; }
-        .total-row { font-weight: bold; background: #e8f0fe !important; }
+        .total-row { font-weight: bold; background: #e8f0fe !important; font-size: 12px; }
+        .total-row td { padding: 7px 8px; }
         
-        .bottom-section { display: flex; gap: 6px; margin-top: 5px; }
-        .summary-box { flex: 1; padding: 5px; border: 1px solid #ddd; background: #fafafa; font-size: 9px; }
-        .summary-item { display: flex; padding: 1.5px 0; border-bottom: 1px dotted #ccc; }
-        .summary-label { font-weight: bold; width: 85px; font-size: 8px; }
-        .remarks-box { flex: 1; padding: 5px; border: 1px solid #ddd; font-size: 9px; background: #fafafa; min-height: 35px; }
+        .summary-section { margin-top: 10px; display: flex; gap: 8px; }
+        .summary-box { flex: 1; padding: 8px 10px; border: 1px solid #ddd; background: #fafafa; font-size: 10px; }
+        .summary-item { display: flex; padding: 3px 0; border-bottom: 1px dotted #ccc; }
+        .summary-label { font-weight: bold; width: 95px; font-size: 9px; }
+        .remarks-box { flex: 1; padding: 8px 10px; border: 1px solid #ddd; font-size: 10px; background: #fafafa; min-height: 45px; }
         
-        .verify-section { margin-top: 4px; padding: 4px 6px; border: 1.5px solid #1a56db; background: #f0f4ff; text-align: center; font-size: 8px; border-radius: 3px; }
+        .verify-section { margin-top: 6px; padding: 6px 10px; border: 1.5px solid #1a56db; background: #f0f4ff; text-align: center; font-size: 9px; border-radius: 3px; }
         .verify-link { font-family: 'Courier New', monospace; font-weight: bold; color: #1a56db; word-break: break-all; }
         
-        .signatures { display: flex; justify-content: space-between; margin-top: 10px; font-size: 9px; }
+        .signatures { display: flex; justify-content: space-between; margin-top: 18px; font-size: 10px; }
         .sig-box { text-align: center; width: 40%; }
-        .sig-line { border-bottom: 1px solid #000; margin-bottom: 2px; height: 20px; }
+        .sig-line { border-bottom: 1px solid #000; margin-bottom: 3px; height: 25px; }
         
-        .next-term { text-align: center; font-size: 8px; margin-top: 6px; color: #555; }
-        .footer { text-align: center; font-size: 7px; margin-top: 5px; padding-top: 3px; border-top: 1px solid #ccc; color: #666; }
+        .next-term { text-align: center; font-size: 9px; margin-top: 10px; color: #555; }
+        .footer { text-align: center; font-size: 8px; margin-top: 8px; padding-top: 4px; border-top: 1px solid #ccc; color: #666; }
         
-        .print-toolbar { text-align: center; padding: 8px; margin-top: 6px; background: #f0f0f0; border-radius: 6px; }
+        .print-toolbar { text-align: center; padding: 8px; margin-top: 8px; background: #f0f0f0; border-radius: 6px; }
         .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; margin: 2px; }
         .btn-print { background: #2563eb; color: white; }
         .btn-close { background: #6b7280; color: white; }
+        
+        /* Pass/Fail colors */
+        .pass { color: #059669; font-weight: bold; }
+        .fail { color: #dc2626; font-weight: bold; }
       </style>
     </head>
     <body>
       <div class="page">
         <div class="watermark"><img src="${watermarkUrl}" alt="" onerror="this.style.display='none'" /></div>
         <div class="content">
-          <div class="letterhead">
-            <img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'" />
-            <div class="letterhead-fallback"><h2 style="font-size:13px;">${school?.name || 'School Name'}</h2><p style="font-size:8px;"><em>"${school?.motto || ''}"</em></p></div>
-          </div>
-          <div class="title">Academic Report Card<br/><span style="font-size:11px;">${term || ''} • ${academic_year || ''}</span></div>
+          <!-- NOTE: Letterhead is NOT included here - it's already on the main ReportCard.jsx screen display -->
+          
+          <div class="title">ACADEMIC REPORT CARD</div>
+          <div class="subtitle">${term || ''} • ${academic_year || ''}</div>
+          
           <div class="info-grid">
             <div class="info-item"><span class="info-label">Name:</span><span><strong>${student?.name || 'N/A'}</strong></span></div>
             <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace;">${student?.student_id || 'N/A'}</strong></span></div>
             <div class="info-item"><span class="info-label">Class:</span><span>${student?.class_name || 'N/A'}</span></div>
             <div class="info-item"><span class="info-label">Conduct:</span><span>${results?.conduct || 'Good'}</span></div>
           </div>
+          
           <table>
-            <thead><tr><th>Subject</th><th class="center">Score</th><th class="center">%</th><th class="center">Grade</th></tr></thead>
+            <thead>
+              <tr>
+                <th>SUBJECTS</th>
+                <th class="center">MARKS SCORED</th>
+                <th>REMARKS</th>
+              </tr>
+            </thead>
             <tbody>
-              ${subjects.map(s => `
+              ${subjects.map(s => {
+                const remark = getRemark(s.grade)
+                return `
                 <tr>
                   <td><strong>${s.name || s.subject || 'N/A'}</strong></td>
-                  <td class="center">${s.score || 0}/${s.max_score || 100}</td>
-                  <td class="center">${s.percentage || 0}%</td>
-                  <td class="center"><strong>${s.grade || 'N/A'}</strong></td>
-                </tr>`).join('')}
-              <tr class="total-row"><td><strong>TOTAL</strong></td><td class="center"><strong>${totalScore}/${totalMax}</strong></td><td class="center"><strong>${percentage}%</strong></td><td class="center"><strong>${results?.grade || 'N/A'}</strong></td></tr>
+                  <td class="center">${s.score || 0}</td>
+                  <td>${remark}</td>
+                </tr>`
+              }).join('')}
+              <tr class="total-row">
+                <td><strong>TOTAL</strong></td>
+                <td class="center"><strong>${totalScore}</strong></td>
+                <td class="${percentage >= 50 ? 'pass' : 'fail'}"><strong>${percentage >= 50 ? 'PASS' : 'FAIL'}</strong></td>
+              </tr>
             </tbody>
           </table>
-          <div class="bottom-section">
+          
+          <div class="summary-section">
             <div class="summary-box">
               <div class="summary-item"><span class="summary-label">Percentage:</span><span><strong>${percentage}%</strong></span></div>
-              <div class="summary-item"><span class="summary-label">Position:</span><span><strong>${results?.position || 'N/A'}</strong></span></div>
+              <div class="summary-item"><span class="summary-label">Position in Class:</span><span><strong>${results?.position || 'N/A'}</strong></span></div>
               <div class="summary-item"><span class="summary-label">Out of:</span><span><strong>${results?.out_of || 'N/A'}</strong></span></div>
-              <div class="summary-item"><span class="summary-label">Result:</span><span><strong>${results?.result || (percentage >= 50 ? 'Pass' : 'Fail')}</strong></span></div>
+              <div class="summary-item"><span class="summary-label">Result:</span><span class="${percentage >= 50 ? 'pass' : 'fail'}"><strong>${results?.result || (percentage >= 50 ? 'Pass' : 'Fail')}</strong></span></div>
             </div>
             <div class="remarks-box">
-              <strong>Remarks:</strong>
-              <p style="margin-top:2px;">${results?.remarks || '___________________________________'}</p>
+              <strong>Director of Studies' Remarks:</strong>
+              <p style="margin-top:4px;">${results?.remarks || '___________________________________________'}</p>
             </div>
           </div>
-          ${verify_url ? `<div class="verify-section"><p><strong>🔒 Verify:</strong> <span class="verify-link">${verify_url}</span></p></div>` : ''}
+          
+          ${verify_url ? `<div class="verify-section"><p><strong>🔒 Verify this report card online:</strong> <span class="verify-link">${verify_url}</span></p></div>` : ''}
+          
           <div class="signatures">
             <div class="sig-box"><div class="sig-line"></div><strong>Director of Studies</strong></div>
             <div class="sig-box"><div class="sig-line"></div><strong>Head Teacher</strong></div>
           </div>
+          
           <div class="next-term">
-            <strong>Next Academic Year:</strong> January ${String(parseInt(academic_year?.split('/')[1] || new Date().getFullYear() + 1))}
+            <strong>Next Academic Year Commences on:</strong> January ${String(parseInt(academic_year?.split('/')[1] || new Date().getFullYear() + 1))}
           </div>
+          
           <div class="footer">
-            <p>${school?.name || 'School'} | ${academic_year || ''} | Computer-generated</p>
+            <p>${school?.name || 'School'} | ${academic_year || ''} | Computer-generated report card</p>
             ${verify_url ? `<p style="color:#1a56db;">Verify: ${verify_url}</p>` : ''}
           </div>
         </div>
       </div>
       <div class="print-toolbar no-print">
-        <button class="btn btn-print" onclick="window.print()">🖨️ Print</button>
+        <button class="btn btn-print" onclick="window.print()">🖨️ Print Report Card</button>
         <button class="btn btn-close" onclick="window.close()">✕ Close</button>
       </div>
     </body>
