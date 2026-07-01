@@ -6,7 +6,7 @@ import {
   LayoutDashboard, GraduationCap, Users, School, ClipboardCheck,
   FileText, DollarSign, Calendar, Settings, BarChart3,
   Shield, UserCircle, ChevronLeft, ChevronRight, BookOpen,
-  X
+  X, Receipt, CreditCard, Printer, FileSpreadsheet
 } from 'lucide-react'
 
 const menuItems = [
@@ -24,13 +24,22 @@ const menuItems = [
       { path: '/classes', label: 'Classes', icon: School, roles: ['admin', 'teacher'] },
       { path: '/attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['admin', 'teacher'] },
       { path: '/exams', label: 'Examinations', icon: FileText, roles: ['admin', 'teacher'] },
+      { path: '/exams/report-cards', label: 'Report Cards', icon: Printer, roles: ['admin', 'teacher'] },
+    ],
+  },
+  {
+    title: 'FINANCIAL',
+    items: [
+      { path: '/financial', label: 'Overview', icon: BarChart3, roles: ['admin', 'accountant'] },
+      { path: '/financial/payments', label: 'Payments', icon: CreditCard, roles: ['admin', 'accountant'] },
+      { path: '/financial/fees', label: 'Fee Structures', icon: DollarSign, roles: ['admin', 'accountant'] },
+      { path: '/financial/new', label: 'New Transaction', icon: Receipt, roles: ['admin', 'accountant'] },
     ],
   },
   {
     title: 'ADMINISTRATION',
     items: [
-      { path: '/financial', label: 'Financial', icon: DollarSign, roles: ['admin', 'accountant'] },
-      { path: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin', 'teacher', 'accountant'] },
+      { path: '/reports', label: 'Reports', icon: FileSpreadsheet, roles: ['admin', 'teacher', 'accountant'] },
       { path: '/school/events', label: 'Events', icon: Calendar, roles: ['admin'] },
       { path: '/school/info', label: 'School Info', icon: BookOpen, roles: ['admin'] },
     ],
@@ -105,7 +114,9 @@ function Sidebar() {
                 )}
                 <div className="space-y-0.5">
                   {visibleItems.map((item, iIdx) => {
-                    const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/')
+                    const isActive = location.pathname === item.path || 
+                      (item.path !== '/financial' && location.pathname.startsWith(item.path + '/')) ||
+                      (item.path === '/financial' && location.pathname === '/financial')
                     return (
                       <NavLink
                         key={iIdx}
@@ -129,7 +140,7 @@ function Sidebar() {
           })}
         </nav>
 
-        {/* User Info & Collapse Button */}
+        {/* User Info & Profile Link */}
         <div className="border-t border-gray-800 p-3">
           <div className={`flex items-center gap-3 ${sidebarCollapsed && !sidebarOpen ? 'justify-center' : ''}`}>
             <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
@@ -144,6 +155,7 @@ function Sidebar() {
           </div>
           <NavLink
             to="/profile"
+            onClick={closeMobileSidebar}
             className={`mt-2 flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors ${sidebarCollapsed && !sidebarOpen ? 'justify-center' : ''}`}
           >
             <UserCircle size={18} />
