@@ -11,7 +11,8 @@ import FormSelect from '../../components/common/FormSelect'
 import Badge from '../../components/common/Badge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
-import { DollarSign, Plus, Edit, Trash2, Save } from 'lucide-react'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
+import { DollarSign, Plus, Edit, Trash2, Save, Calculator, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function getCurrentAcademicYear() {
@@ -27,13 +28,19 @@ const currentYear = getCurrentAcademicYear()
 const ACADEMIC_YEAR_OPTIONS = [
   { value: currentYear, label: currentYear },
   { value: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}`, label: `${new Date().getFullYear() - 1}/${new Date().getFullYear()}` },
+  { value: `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`, label: `${new Date().getFullYear()}/${new Date().getFullYear() + 1}` },
 ]
 
-const STUDENT_TYPE_OPTIONS = [
-  { value: 'all', label: 'All Students' },
-  { value: 'street', label: 'Street Child' },
-  { value: 'abundant', label: 'Abundant Family' },
-  { value: 'orphan', label: 'Orphan' },
+const FEE_TYPE_OPTIONS = [
+  { value: 'tuition', label: 'Tuition (Annual)' },
+  { value: 'registration', label: 'Registration' },
+  { value: 'exam', label: 'Examination' },
+  { value: 'library', label: 'Library' },
+  { value: 'sports', label: 'Sports' },
+  { value: 'uniform', label: 'Uniform' },
+  { value: 'transport', label: 'Transport' },
+  { value: 'development', label: 'Development Fee' },
+  { value: 'activities', label: 'Activities' },
   { value: 'other', label: 'Other' },
 ]
 
@@ -46,6 +53,8 @@ function FeeStructures() {
   const [saving, setSaving] = useState(false)
   const [classOptions, setClassOptions] = useState([])
   const [loadingClasses, setLoadingClasses] = useState(false)
+  const [selectedYear, setSelectedYear] = useState(currentYear)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
 
   const [formData, setFormData] = useState({
     fee_name: '',
@@ -56,7 +65,7 @@ function FeeStructures() {
     term: '',
     description: '',
     is_mandatory: true,
-    student_type: 'all',
+    status: 'active',
   })
 
   useEffect(() => {
@@ -68,14 +77,17 @@ function FeeStructures() {
     ])
     fetchStructures()
     fetchClasses()
-  }, [])
+  }, [selectedYear])
 
   const fetchStructures = async () => {
     setLoading(true)
     try {
-      const response = await financialAPI.getFeeStructure()
+      const response = await financialAPI.getFeeStructure({ academic_year: selectedYear })
       if (response?.success) {
         setStructures(response.data?.fees || response.data || [])
+      } else if (response?.data) {
+        const fees = response.data?.fees || response.data || []
+        setStructures(Array.isArray(fees) ? fees : [])
       } else {
         setStructures([])
       }
@@ -119,11 +131,11 @@ function FeeStructures() {
       fee_type: 'tuition',
       amount: '',
       class_level: '',
-      academic_year: currentYear,
+      academic_year: selectedYear,
       term: '',
       description: '',
       is_mandatory: true,
-      student_type: 'all',
+      status: 'active',
     })
     setShowModal(true)
   }
@@ -135,11 +147,11 @@ function FeeStructures() {
       fee_type: structure.fee_type || 'tuition',
       amount: structure.amount || '',
       class_level: structure.class_level || '',
-      academic_year: structure.academic_year || currentYear,
+      academic_year: structure.academic_year || selectedYear,
       term: structure.term || '',
       description: structure.description || '',
       is_mandatory: structure.is_mandatory !== false,
-      student_type: structure.student_type || 'all',
+      status: structure.status || 'active',
     })
     setShowModal(true)
   }
@@ -164,7 +176,7 @@ function FeeStructures() {
     setSaving(true)
     try {
       const payload = {
-        fee_name: formData.fee_name,
+        fee_name: formData.fee_name.trim(),
         fee_type: formData.fee_type,
         amount: parseFloat(formData.amount),
         class_level: formData.class_level || undefined,
@@ -172,7 +184,7 @@ function FeeStructures() {
         term: formData.term || undefined,
         description: formData.description || undefined,
         is_mandatory: formData.is_mandatory,
-        student_type: formData.student_type,
+        status: formData.status,
       }
 
       let response
@@ -187,21 +199,23 @@ function FeeStructures() {
         setShowModal(false)
         fetchStructures()
       } else {
-        toast.error(response?.message || 'Failed to save')
+        toast.error(response?.message || 'Failed to save fee structure')
       }
     } catch (error) {
-      toast.error(error.message || 'Failed to save')
+      console.error('Save error:', error)
+      toast.error(error.message || 'Failed to save fee structure')
     } finally {
       setSaving(false)
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this fee structure?')) return
+  const handleDelete = async () => {
+    if (!deleteConfirm) return
     try {
-      const response = await financialAPI.deleteFeeStructure(id)
+      const response = await financialAPI.deleteFeeStructure(deleteConfirm._id)
       if (response?.success) {
         toast.success('Fee structure deleted')
+        setDeleteConfirm(null)
         fetchStructures()
       } else {
         toast.error(response?.message || 'Failed to delete')
@@ -211,52 +225,146 @@ function FeeStructures() {
     }
   }
 
+  // ✅ Calculate termly amount from annual
+  const getTermlyAmount = (amount) => {
+    return Math.round(amount / 3)
+  }
+
+  // ✅ Format currency
+  const formatCurrency = (amount) => {
+    return Number(amount || 0).toLocaleString('en')
+  }
+
+  const totalAnnualFees = structures
+    .filter(s => s.status === 'active')
+    .reduce((sum, s) => sum + (s.amount || 0), 0)
+
   if (loading) return <LoadingSpinner />
 
   return (
     <div className="space-y-6 animate-fade-in-up">
       <PageHeader
         title="Fee Structures"
-        subtitle={`${structures.length} structures • ${currentYear}`}
-        actions={<Button onClick={openCreateModal} variant="primary" icon={<Plus size={18} />}>Create Fee</Button>}
+        subtitle={`${structures.length} structures • Total Annual: SSP ${formatCurrency(totalAnnualFees)}`}
+        actions={
+          <div className="flex gap-2">
+            <FormSelect
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              options={ACADEMIC_YEAR_OPTIONS}
+              className="w-40"
+            />
+            <Button onClick={openCreateModal} variant="primary" icon={<Plus size={18} />}>Add Fee</Button>
+          </div>
+        }
       />
 
+      {/* Summary Cards */}
+      {structures.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card className="text-center">
+            <p className="text-xs text-gray-500">Total Annual</p>
+            <p className="text-xl font-bold text-primary-600">SSP {formatCurrency(totalAnnualFees)}</p>
+          </Card>
+          <Card className="text-center">
+            <p className="text-xs text-gray-500">Per Term</p>
+            <p className="text-xl font-bold text-green-600">SSP {formatCurrency(getTermlyAmount(totalAnnualFees))}</p>
+          </Card>
+          <Card className="text-center">
+            <p className="text-xs text-gray-500">Active Fees</p>
+            <p className="text-xl font-bold text-blue-600">{structures.filter(s => s.status === 'active').length}</p>
+          </Card>
+          <Card className="text-center">
+            <p className="text-xs text-gray-500">Categories</p>
+            <p className="text-xl font-bold text-purple-600">{new Set(structures.map(s => s.fee_type)).size}</p>
+          </Card>
+        </div>
+      )}
+
       {structures.length === 0 ? (
-        <EmptyState icon={<DollarSign size={48} />} title="No fee structures" description="Create your first fee structure for the current academic year." action={<Button onClick={openCreateModal} variant="primary">Create Fee</Button>} />
+        <EmptyState 
+          icon={<DollarSign size={48} />} 
+          title="No fee structures" 
+          description={`Create fee structures for ${selectedYear} to start tracking payments.`}
+          action={<Button onClick={openCreateModal} variant="primary" icon={<Plus size={18} />}>Create Fee</Button>} 
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {structures.map((structure) => (
-            <Card key={structure._id}>
+            <Card key={structure._id} className={structure.status !== 'active' ? 'opacity-60' : ''}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-gray-900 dark:text-white">{structure.fee_name}</h3>
-                <Badge variant={structure.status === 'active' ? 'success' : 'gray'}>{structure.status || 'active'}</Badge>
+                <Badge variant={structure.status === 'active' ? 'success' : 'gray'}>
+                  {structure.status || 'active'}
+                </Badge>
               </div>
-              <div className="space-y-2 text-sm mb-3">
-                <p><span className="text-gray-500">Type:</span> {structure.fee_type?.replace(/_/g, ' ') || 'N/A'}</p>
-                <p><span className="text-gray-500">Class Level:</span> {structure.class_level || 'All'}</p>
-                <p><span className="text-gray-500">Year:</span> {structure.academic_year || currentYear}</p>
-                <p><span className="text-gray-500">Term:</span> {structure.term || 'All'}</p>
-                <p className="text-2xl font-bold text-primary-600">SSP {(structure.amount || 0).toLocaleString()}</p>
-                {structure.description && <p className="text-xs text-gray-400">{structure.description}</p>}
+              
+              <div className="space-y-1.5 text-sm mb-3">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Type:</span>
+                  <Badge variant="info" className="text-xs">{structure.fee_type?.replace(/_/g, ' ') || 'N/A'}</Badge>
+                </div>
+                {structure.class_level && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Class:</span>
+                    <span>{structure.class_level}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Year:</span>
+                  <span>{structure.academic_year || selectedYear}</span>
+                </div>
+                {structure.term && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Term:</span>
+                    <span>{structure.term}</span>
+                  </div>
+                )}
               </div>
+              
+              {/* Amount Display */}
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mb-3">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-primary-600">
+                    SSP {formatCurrency(structure.amount)}
+                  </p>
+                  <p className="text-xs text-gray-500">per year</p>
+                </div>
+                <div className="flex justify-between mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 text-xs">
+                  <span className="text-gray-500">Per Term:</span>
+                  <span className="font-medium text-green-600">SSP {formatCurrency(getTermlyAmount(structure.amount))}</span>
+                </div>
+              </div>
+              
+              {structure.description && (
+                <p className="text-xs text-gray-400 mb-3 italic">{structure.description}</p>
+              )}
+              
               <div className="flex gap-1 pt-3 border-t border-gray-200 dark:border-gray-700">
-                <button onClick={() => openEditModal(structure)} className="btn btn-ghost btn-sm text-blue-600"><Edit size={14} /> Edit</button>
-                <button onClick={() => handleDelete(structure._id)} className="btn btn-ghost btn-sm text-red-600"><Trash2 size={14} /> Delete</button>
+                <button onClick={() => openEditModal(structure)} 
+                  className="btn btn-ghost btn-sm text-blue-600 flex-1 justify-center">
+                  <Edit size={14} /> Edit
+                </button>
+                <button onClick={() => setDeleteConfirm(structure)} 
+                  className="btn btn-ghost btn-sm text-red-600 flex-1 justify-center">
+                  <Trash2 size={14} /> Delete
+                </button>
               </div>
             </Card>
           ))}
         </div>
       )}
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editingStructure ? 'Edit Fee' : 'Create Fee'} size="md">
+      {/* Create/Edit Modal */}
+      <Modal open={showModal} onClose={() => setShowModal(false)} 
+        title={editingStructure ? 'Edit Fee Structure' : 'Create Fee Structure'} size="md">
         <form onSubmit={handleSubmit} className="space-y-4">
           <FormInput 
             label="Fee Name *" 
             name="fee_name" 
             value={formData.fee_name} 
             onChange={handleChange} 
-            required 
-            placeholder="e.g., Nursery Tuition Fee" 
+            placeholder="e.g., Annual Tuition Fee 2026/2027" 
           />
 
           <div className="grid grid-cols-2 gap-4">
@@ -265,29 +373,37 @@ function FeeStructures() {
               name="fee_type" 
               value={formData.fee_type} 
               onChange={handleChange}
-              options={[
-                { value: 'tuition', label: 'Tuition' },
-                { value: 'registration', label: 'Registration' },
-                { value: 'exam', label: 'Examination' },
-                { value: 'library', label: 'Library' },
-                { value: 'sports', label: 'Sports' },
-                { value: 'uniform', label: 'Uniform' },
-                { value: 'transport', label: 'Transport' },
-                { value: 'other', label: 'Other' },
-              ]} 
+              options={FEE_TYPE_OPTIONS} 
             />
             <FormInput 
-              label="Amount (SSP) *" 
+              label="Annual Amount (SSP) *" 
               name="amount" 
               type="number" 
               value={formData.amount} 
               onChange={handleChange} 
-              required 
               min="0" 
               step="0.01" 
-              placeholder="0.00" 
+              placeholder="e.g., 6000000" 
             />
           </div>
+
+          {/* Termly amount preview */}
+          {formData.amount && parseFloat(formData.amount) > 0 && (
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Annual Amount:</span>
+                <span className="font-bold">SSP {formatCurrency(parseFloat(formData.amount))}</span>
+              </div>
+              <div className="flex justify-between mt-1 text-green-700">
+                <span>Per Term (÷3):</span>
+                <span className="font-bold">SSP {formatCurrency(getTermlyAmount(parseFloat(formData.amount)))}</span>
+              </div>
+              <div className="flex justify-between mt-1 text-gray-500">
+                <span>Monthly (÷12):</span>
+                <span>SSP {formatCurrency(Math.round(parseFloat(formData.amount) / 12))}</span>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <FormSelect 
@@ -298,35 +414,40 @@ function FeeStructures() {
               options={ACADEMIC_YEAR_OPTIONS} 
             />
             <FormSelect 
-              label="Term" 
+              label="Term (Optional)" 
               name="term" 
               value={formData.term} 
               onChange={handleChange}
               options={[
-                { value: '', label: 'All Terms' },
-                { value: 'Term 1', label: 'Term 1' },
-                { value: 'Term 2', label: 'Term 2' },
-                { value: 'Term 3', label: 'Term 3' },
+                { value: '', label: 'All Terms (Annual)' },
+                { value: 'Term 1', label: 'Term 1 Only' },
+                { value: 'Term 2', label: 'Term 2 Only' },
+                { value: 'Term 3', label: 'Term 3 Only' },
               ]} 
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <FormSelect 
-              label="Class Level" 
+              label="Class Level (Optional)" 
               name="class_level" 
               value={formData.class_level} 
               onChange={handleChange}
               options={classOptions}
               disabled={loadingClasses}
             />
-            <FormSelect 
-              label="Student Type" 
-              name="student_type" 
-              value={formData.student_type} 
-              onChange={handleChange}
-              options={STUDENT_TYPE_OPTIONS} 
-            />
+            {editingStructure && (
+              <FormSelect 
+                label="Status" 
+                name="status" 
+                value={formData.status} 
+                onChange={handleChange}
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' },
+                ]} 
+              />
+            )}
           </div>
 
           <div>
@@ -337,7 +458,7 @@ function FeeStructures() {
               onChange={handleChange} 
               rows={2} 
               className="form-input" 
-              placeholder="Fee description..." 
+              placeholder="Optional description..." 
             />
           </div>
 
@@ -354,12 +475,23 @@ function FeeStructures() {
 
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
             <Button type="submit" variant="primary" loading={saving} icon={<Save size={18} />}>
-              {editingStructure ? 'Update' : 'Create'} Fee
+              {editingStructure ? 'Update Fee' : 'Create Fee'}
             </Button>
             <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
           </div>
         </form>
       </Modal>
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Delete Fee Structure"
+        message={`Are you sure you want to delete "${deleteConfirm?.fee_name}"? This cannot be undone.`}
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   )
 }
