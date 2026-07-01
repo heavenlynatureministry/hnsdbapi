@@ -22,11 +22,21 @@ const financialAPI = {
   getStudentPayments: async (studentId, params = {}) => 
     api.get('/financial/payments', { ...params, student_id: studentId }),
   
+  // ✅ Student Balance
+  /**
+   * Get student fee balance
+   * @param {string} studentId - Student ID
+   * @param {Object} params - { academic_year, fee_type }
+   * @returns {Promise} Balance info with total_fee, total_paid, balance, is_cleared
+   */
+  getStudentBalance: async (studentId, params = {}) => 
+    api.get(`/financial/student-balance/${studentId}`, { params }),
+  
   // Receipt
   /**
-   * Get receipt data for a payment
+   * Get receipt data for a payment (includes balance info)
    * @param {string} paymentId - Payment ID
-   * @returns {Promise} Receipt data with student, school, and payment details
+   * @returns {Promise} Receipt data with student, school, payment details, and balance_info
    */
   getReceipt: async (paymentId) => api.get(`/financial/receipt/${paymentId}`),
   
@@ -47,7 +57,18 @@ const financialAPI = {
   getFeeStructure: async (params = {}) => api.get('/financial/fees', { params }),
   getFeeStructures: async (params = {}) => api.get('/financial/fees', { params }), // Alias
   createFeeStructure: async (data) => api.post('/financial/fees', data),
+  
+  /**
+   * Update fee structure entry (e.g., change annual fee amount)
+   * @param {string} id - Fee structure ID
+   * @param {Object} data - { fee_name, amount, fee_type, class_level, description, is_mandatory, status, term }
+   */
   updateFeeStructure: async (id, data) => api.put(`/financial/fees/${id}`, data),
+  
+  /**
+   * Delete fee structure entry
+   * @param {string} id - Fee structure ID
+   */
   deleteFeeStructure: async (id) => api.delete(`/financial/fees/${id}`),
 
   // Budget
