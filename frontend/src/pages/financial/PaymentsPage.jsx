@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import financialAPI from '../../api/financial'
 import studentsAPI from '../../api/students'
+import ReceiptPrint from '../../components/receipts/ReceiptPrint'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -13,7 +14,7 @@ import Badge from '../../components/common/Badge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
-import { DollarSign, Plus, Download, CheckCircle, Clock, XCircle, Edit, Trash2, MoreVertical } from 'lucide-react'
+import { DollarSign, Plus, Download, CheckCircle, Clock, XCircle, Edit, Trash2, MoreVertical, Eye, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function getCurrentAcademicYear() {
@@ -75,6 +76,10 @@ function PaymentsPage() {
   const [openDropdown, setOpenDropdown] = useState(null)
   const [showDelete, setShowDelete] = useState(null)
 
+  // ✅ Receipt state
+  const [showReceipt, setShowReceipt] = useState(false)
+  const [receiptData, setReceiptData] = useState(null)
+
   const [formData, setFormData] = useState({
     student_id: '',
     amount_paid: '',
@@ -121,39 +126,22 @@ function PaymentsPage() {
   const fetchStudents = async () => {
     setLoadingStudents(true)
     try {
-      // Try without params first (bypasses the 422 status=active issue)
       const response = await studentsAPI.getAll({ limit: 200 })
-      console.log('Students response:', response)
-
       let studentList = []
-
-      if (response?.data?.students && Array.isArray(response.data.students)) {
-        studentList = response.data.students
-      } else if (response?.data?.data?.students && Array.isArray(response.data.data.students)) {
-        studentList = response.data.data.students
-      } else if (Array.isArray(response?.data?.data)) {
-        studentList = response.data.data
-      } else if (Array.isArray(response?.data)) {
-        studentList = response.data
-      } else if (response?.students && Array.isArray(response.students)) {
-        studentList = response.students
-      } else if (Array.isArray(response)) {
-        studentList = response
-      }
-
-      // Filter active only on frontend
+      if (response?.data?.students && Array.isArray(response.data.students)) studentList = response.data.students
+      else if (response?.data?.data?.students && Array.isArray(response.data.data.students)) studentList = response.data.data.students
+      else if (Array.isArray(response?.data?.data)) studentList = response.data.data
+      else if (Array.isArray(response?.data)) studentList = response.data
+      else if (response?.students && Array.isArray(response.students)) studentList = response.students
+      else if (Array.isArray(response)) studentList = response
       studentList = studentList.filter(s => s.status === 'active')
-
-      console.log('Students loaded:', studentList.length)
       if (studentList.length > 0) {
         setStudents(studentList)
       } else {
-        toast.error('No active students found. Please enroll students first.')
         setStudents([])
       }
     } catch (error) {
       console.error('Failed to fetch students:', error)
-      // Don't show error toast if it's just empty
       setStudents([])
     } finally {
       setLoadingStudents(false)
@@ -174,18 +162,10 @@ function PaymentsPage() {
       setFormData(prev => ({ ...prev, student_id: '', paid_by: '' }))
       return
     }
-
-    const student = students.find(s =>
-      (s._id === studentId) || (s.id === studentId) || (s.student_id === studentId)
-    )
-
+    const student = students.find(s => (s._id === studentId) || (s.id === studentId) || (s.student_id === studentId))
     if (student) {
       const studentName = `${student.first_name || ''} ${student.last_name || ''}`.trim()
-      setFormData(prev => ({
-        ...prev,
-        student_id: studentId,
-        paid_by: prev.paid_by || studentName,
-      }))
+      setFormData(prev => ({ ...prev, student_id: studentId, paid_by: prev.paid_by || studentName }))
     } else {
       setFormData(prev => ({ ...prev, student_id: studentId }))
     }
@@ -232,15 +212,8 @@ function PaymentsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-
-    if (!editingPayment && !formData.student_id) {
-      toast.error('Please select a student')
-      return
-    }
-    if (!formData.amount_paid || parseFloat(formData.amount_paid) <= 0) {
-      toast.error('Please enter a valid amount')
-      return
-    }
+    if (!editingPayment && !formData.student_id) { toast.error('Please select a student'); return }
+    if (!formData.amount_paid || parseFloat(formData.amount_paid) <= 0) { toast.error('Please enter a valid amount'); return }
 
     setSaving(true)
     try {
@@ -268,12 +241,20 @@ function PaymentsPage() {
         })
       }
 
-      if (response?.success) {
-        toast.success(editingPayment ? 'Payment updated!' : 'Payment recorded successfully!')
+      const result = response?.data || response
+      if (result?.success === true || response?.success === true) {
+        const paymentId = result?.data?._id || result?.data?.id
+        
+        toast.success(editingPayment ? 'Payment updated!' : 'Payment recorded!')
         setShowModal(false)
         fetchPayments()
+        
+        // ✅ Auto-show receipt for new payments
+        if (!editingPayment && paymentId) {
+          handleViewReceipt(paymentId)
+        }
       } else {
-        toast.error(response?.message || 'Failed to save payment')
+        toast.error(result?.message || 'Failed to save payment')
       }
     } catch (error) {
       console.error('Payment save error:', error)
@@ -292,6 +273,27 @@ function PaymentsPage() {
       fetchPayments()
     } catch (error) {
       toast.error(error.message || 'Failed to delete payment')
+    }
+  }
+
+  // ✅ View receipt for a payment
+  const handleViewReceipt = async (paymentId) => {
+    if (!paymentId) return
+    try {
+      toast.loading('Loading receipt...')
+      const response = await financialAPI.getReceipt(paymentId)
+      const data = response?.data || response
+      toast.dismiss()
+      if ((data?.success === true) && data.data) {
+        setReceiptData(data.data)
+        setShowReceipt(true)
+      } else {
+        toast.error('Could not load receipt')
+      }
+    } catch (error) {
+      toast.dismiss()
+      console.error('Receipt load error:', error)
+      toast.error('Failed to load receipt')
     }
   }
 
@@ -362,17 +364,27 @@ function PaymentsPage() {
                     <td className="text-sm">{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : 'N/A'}</td>
                     <td>{getStatusBadge(payment.status)}</td>
                     <td className="text-right">
-                      <div className="relative">
-                        <button onClick={() => setOpenDropdown(openDropdown === payment._id ? null : payment._id)} className="btn btn-ghost btn-sm btn-icon"><MoreVertical size={16} /></button>
-                        {openDropdown === payment._id && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
-                            <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border z-20 py-1">
-                              <button onClick={() => openEditModal(payment)} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"><Edit size={14} /> Edit</button>
-                              <button onClick={() => { setShowDelete(payment); setOpenDropdown(null) }} className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 w-full text-left"><Trash2 size={14} /> Delete</button>
-                            </div>
-                          </>
-                        )}
+                      <div className="flex items-center gap-1 justify-end">
+                        {/* ✅ Receipt buttons */}
+                        <button onClick={() => handleViewReceipt(payment._id)} className="btn btn-ghost btn-sm btn-icon text-blue-600" title="View Receipt">
+                          <Eye size={14} />
+                        </button>
+                        <button onClick={() => handleViewReceipt(payment._id)} className="btn btn-ghost btn-sm btn-icon text-green-600" title="Print Receipt">
+                          <Printer size={14} />
+                        </button>
+                        {/* Dropdown */}
+                        <div className="relative">
+                          <button onClick={() => setOpenDropdown(openDropdown === payment._id ? null : payment._id)} className="btn btn-ghost btn-sm btn-icon"><MoreVertical size={16} /></button>
+                          {openDropdown === payment._id && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
+                              <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border z-20 py-1">
+                                <button onClick={() => openEditModal(payment)} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"><Edit size={14} /> Edit</button>
+                                <button onClick={() => { setShowDelete(payment); setOpenDropdown(null) }} className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 w-full text-left"><Trash2 size={14} /> Delete</button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -383,6 +395,7 @@ function PaymentsPage() {
         </div>
       )}
 
+      {/* Create/Edit Modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editingPayment ? 'Edit Payment' : 'Record Payment'} size="md">
         <form onSubmit={handleSubmit} className="space-y-4">
           {!editingPayment && (
@@ -392,9 +405,6 @@ function PaymentsPage() {
                 <input type="text" value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} placeholder="Search student by name..." className="form-input flex-1" />
               </div>
               <FormSelect name="student_id" value={formData.student_id} onChange={(e) => handleStudentSelect(e.target.value)} options={studentOptions} disabled={loadingStudents} />
-              {students.length === 0 && !loadingStudents && (
-                <p className="text-xs text-yellow-600 mt-1">No students found. Please enroll students first.</p>
-              )}
             </div>
           )}
           {editingPayment && (
@@ -427,6 +437,17 @@ function PaymentsPage() {
           </div>
         </form>
       </Modal>
+
+      {/* ✅ Receipt Modal */}
+      {showReceipt && receiptData && (
+        <ReceiptPrint 
+          receipt={receiptData}
+          onClose={() => {
+            setShowReceipt(false)
+            setReceiptData(null)
+          }}
+        />
+      )}
 
       <ConfirmDialog open={!!showDelete} onClose={() => setShowDelete(null)} onConfirm={handleDelete}
         title="Delete Payment" message="Are you sure you want to delete this payment? This action cannot be undone."
