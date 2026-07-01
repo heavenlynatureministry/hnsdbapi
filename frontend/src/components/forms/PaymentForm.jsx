@@ -4,7 +4,9 @@ import FormSelect from '../common/FormSelect'
 import Button from '../common/Button'
 import Card from '../common/Card'
 import LoadingSpinner from '../common/LoadingSpinner'
-import { Save, DollarSign, Search, User, X, Printer, Receipt } from 'lucide-react'
+import financialAPI from '../../api/financial'
+import { Save, DollarSign, Search, User, X, Printer, Receipt, Wallet, CheckCircle, AlertCircle } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 function getCurrentAcademicYear() {
   const now = new Date()
@@ -62,8 +64,8 @@ function PaymentForm({
   onSubmit, 
   onCancel, 
   loading = false,
-  receiptNumber = '', // Pre-generated receipt number
-  onPrintReceipt = null, // Callback to print receipt after payment
+  receiptNumber = '',
+  onPrintReceipt = null,
 }) {
   const [formData, setFormData] = useState({
     student_id: initialData?.student_id || '',
@@ -84,6 +86,10 @@ function PaymentForm({
   const [showResults, setShowResults] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
 
+  // ✅ Balance state
+  const [balanceInfo, setBalanceInfo] = useState(null)
+  const [loadingBalance, setLoadingBalance] = useState(false)
+
   // Update receipt number when prop changes
   useEffect(() => {
     if (receiptNumber && !formData.receipt_number) {
@@ -103,11 +109,48 @@ function PaymentForm({
         setSelectedStudent(student)
         const studentName = student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim()
         setStudentSearch(studentName)
-        // Auto-fill paid_by with student name if not already set
         setFormData(prev => ({ ...prev, paid_by: prev.paid_by || studentName }))
+        // Fetch balance for this student
+        fetchBalance(student._id || student.id || student.student_id)
       }
     }
   }, [initialData, students])
+
+  // ✅ Fetch balance when student or fee_type changes
+  useEffect(() => {
+    if (selectedStudent && formData.fee_type) {
+      const studentId = selectedStudent._id || selectedStudent.id || selectedStudent.student_id
+      if (studentId) {
+        fetchBalance(studentId)
+      }
+    }
+  }, [selectedStudent, formData.fee_type, formData.academic_year])
+
+  const fetchBalance = async (studentId) => {
+    if (!studentId) return
+    setLoadingBalance(true)
+    try {
+      const response = await financialAPI.getStudentBalance(studentId, {
+        academic_year: formData.academic_year,
+        fee_type: formData.fee_type,
+      })
+      
+      const data = response?.data || response
+      if (data?.success && data.data) {
+        // Find the matching balance for the selected fee type
+        const balances = data.data.balances || []
+        const matching = balances.find(b => b.fee_type === formData.fee_type) || balances[0]
+        setBalanceInfo(matching || null)
+      } else {
+        setBalanceInfo(null)
+      }
+    } catch (error) {
+      console.error('Failed to fetch balance:', error)
+      setBalanceInfo(null)
+    } finally {
+      setLoadingBalance(false)
+    }
+  }
 
   // Filter students based on search
   const filteredStudents = studentSearch.trim()
@@ -123,7 +166,6 @@ function PaymentForm({
     setSelectedStudent(student)
     const studentName = student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim()
     setStudentSearch(studentName)
-    // Use _id for MongoDB, fallback to id or student_id
     const studentId = student._id || student.id || student.student_id || ''
     setFormData(prev => ({ 
       ...prev, 
@@ -132,12 +174,16 @@ function PaymentForm({
     }))
     setShowResults(false)
     if (errors.student_id) setErrors(prev => ({ ...prev, student_id: '' }))
+    
+    // Fetch balance for selected student
+    fetchBalance(studentId)
   }
 
   const clearStudent = () => {
     setSelectedStudent(null)
     setStudentSearch('')
     setFormData(prev => ({ ...prev, student_id: '', paid_by: '' }))
+    setBalanceInfo(null)
   }
 
   const handleChange = (e) => {
@@ -152,6 +198,7 @@ function PaymentForm({
     if (selectedStudent) {
       setSelectedStudent(null)
       setFormData(prev => ({ ...prev, student_id: '' }))
+      setBalanceInfo(null)
     }
   }
 
@@ -171,8 +218,8 @@ function PaymentForm({
     const payload = {
       ...formData,
       amount_paid: parseFloat(formData.amount_paid),
-      amount: parseFloat(formData.amount_paid), // Backend also checks 'amount'
-      receipt_number: formData.receipt_number || undefined, // Send receipt number if available
+      amount: parseFloat(formData.amount_paid),
+      receipt_number: formData.receipt_number || undefined,
     }
     
     onSubmit?.(payload)
@@ -182,28 +229,54 @@ function PaymentForm({
     <form onSubmit={handleSubmit} className="space-y-6 max-w-lg">
       <Card>
         <div className="space-y-4">
-          {/* Receipt Number Display (if available) */}
+          {/* Receipt Number Display */}
           {formData.receipt_number && (
             <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
               <Receipt size={18} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Receipt Number</p>
-                <p className="text-sm font-mono font-bold text-blue-800 dark:text-blue-300 truncate">
-                  {formData.receipt_number}
-                </p>
+                <p className="text-sm font-mono font-bold text-blue-800 dark:text-blue-300 truncate">{formData.receipt_number}</p>
               </div>
               {onPrintReceipt && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={onPrintReceipt}
-                  icon={<Printer size={14} />}
-                  className="text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800/30"
-                >
-                  Print
-                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={onPrintReceipt} icon={<Printer size={14} />}
+                  className="text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800/30">Print</Button>
               )}
+            </div>
+          )}
+
+          {/* ✅ Balance Info Card */}
+          {balanceInfo && (
+            <div className={`p-3 rounded-lg border ${
+              balanceInfo.is_cleared 
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+                : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                {balanceInfo.is_cleared ? (
+                  <CheckCircle size={16} className="text-green-600" />
+                ) : (
+                  <AlertCircle size={16} className="text-yellow-600" />
+                )}
+                <span className={`text-sm font-medium ${balanceInfo.is_cleared ? 'text-green-700' : 'text-yellow-700'}`}>
+                  {balanceInfo.is_cleared ? 'Fully Paid' : 'Outstanding Balance'}
+                </span>
+              </div>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Total Fee:</span>
+                  <span className="font-medium">SSP {Number(balanceInfo.total_fee || 0).toLocaleString('en')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Total Paid:</span>
+                  <span className="font-medium text-green-600">SSP {Number(balanceInfo.total_paid || 0).toLocaleString('en')}</span>
+                </div>
+                <div className="flex justify-between border-t pt-1 mt-1 font-bold">
+                  <span>Balance:</span>
+                  <span className={balanceInfo.is_cleared ? 'text-green-600' : 'text-red-600'}>
+                    {balanceInfo.balance_display || 'N/A'}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -213,73 +286,44 @@ function PaymentForm({
             <div className="relative">
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={studentSearch}
-                  onChange={handleStudentSearchChange}
+                <input type="text" value={studentSearch} onChange={handleStudentSearchChange}
                   onFocus={() => studentSearch.trim() && setShowResults(true)}
                   onBlur={() => setTimeout(() => setShowResults(false), 200)}
-                  className={`form-input pl-9 pr-8 ${errors.student_id ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
-                  placeholder="Search by name or ID..."
-                />
+                  className={`form-input pl-9 pr-8 ${errors.student_id ? 'border-red-500' : ''}`}
+                  placeholder="Search by name or ID..." />
                 {selectedStudent && (
-                  <button
-                    type="button"
-                    onClick={clearStudent}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-red-500 rounded"
-                  >
-                    <X size={14} />
-                  </button>
+                  <button type="button" onClick={clearStudent}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-red-500 rounded"><X size={14} /></button>
                 )}
               </div>
-
-              {/* Dropdown Results */}
               {showResults && studentSearch.trim() && !selectedStudent && (
-                <div className="absolute z-20 mt-1 w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto">
+                <div className="absolute z-20 mt-1 w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg border max-h-48 overflow-y-auto">
                   {filteredStudents.length > 0 ? (
                     filteredStudents.map((student) => (
-                      <button
-                        key={student.student_id || student._id || student.id}
-                        type="button"
-                        onClick={() => selectStudent(student)}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 font-medium text-sm flex-shrink-0">
-                          <User size={14} />
-                        </div>
+                      <button key={student.student_id || student._id || student.id} type="button" onClick={() => selectStudent(student)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 font-medium text-sm"><User size={14} /></div>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || 'Unknown Student'}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            ID: {student.student_id || student._id || 'N/A'} • {student.class_name || 'Unassigned'}
-                          </p>
+                          <p className="text-sm font-medium truncate">{student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || 'Unknown'}</p>
+                          <p className="text-xs text-gray-500">ID: {student.student_id || student._id || 'N/A'} • {student.class_name || 'Unassigned'}</p>
                         </div>
                       </button>
                     ))
                   ) : (
-                    <div className="px-3 py-4 text-center text-sm text-gray-500">
-                      {students.length === 0 ? 'No students loaded' : 'No students found'}
-                    </div>
+                    <div className="px-3 py-4 text-center text-sm text-gray-500">{students.length === 0 ? 'No students loaded' : 'No students found'}</div>
                   )}
                 </div>
               )}
             </div>
             {errors.student_id && <p className="text-xs text-red-500 mt-1">{errors.student_id}</p>}
-
-            {/* Selected Student Card */}
             {selectedStudent && (
               <div className="mt-2 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-lg flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center text-white font-bold text-sm">
                   {(selectedStudent.student_name || selectedStudent.first_name || 'S').charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <p className="font-medium text-sm">
-                    {selectedStudent.student_name || `${selectedStudent.first_name || ''} ${selectedStudent.last_name || ''}`.trim()}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    ID: {selectedStudent.student_id || selectedStudent._id} • {selectedStudent.class_name || 'Unassigned'}
-                  </p>
+                  <p className="font-medium text-sm">{selectedStudent.student_name || `${selectedStudent.first_name || ''} ${selectedStudent.last_name || ''}`.trim()}</p>
+                  <p className="text-xs text-gray-500">ID: {selectedStudent.student_id || selectedStudent._id} • {selectedStudent.class_name || 'Unassigned'}</p>
                 </div>
               </div>
             )}
@@ -287,115 +331,42 @@ function PaymentForm({
 
           {/* Payment Type & Fee Type */}
           <div className="grid grid-cols-2 gap-4">
-            <FormSelect
-              label="Payment Type"
-              name="payment_type"
-              value={formData.payment_type}
-              onChange={handleChange}
-              options={PAYMENT_TYPES}
-            />
-            <FormSelect
-              label="Fee Type"
-              name="fee_type"
-              value={formData.fee_type}
-              onChange={handleChange}
-              options={FEE_TYPES}
-            />
+            <FormSelect label="Payment Type" name="payment_type" value={formData.payment_type} onChange={handleChange} options={PAYMENT_TYPES} />
+            <FormSelect label="Fee Type" name="fee_type" value={formData.fee_type} onChange={handleChange} options={FEE_TYPES} />
           </div>
 
           {/* Amount */}
-          <FormInput
-            label="Amount Paid (SSP) *"
-            name="amount_paid"
-            type="number"
-            value={formData.amount_paid}
-            onChange={handleChange}
-            error={errors.amount_paid}
-            min="0"
-            step="0.01"
-            placeholder="0.00"
-          />
+          <FormInput label="Amount Paid (SSP) *" name="amount_paid" type="number" value={formData.amount_paid}
+            onChange={handleChange} error={errors.amount_paid} min="0" step="0.01" placeholder="0.00" />
           
           {/* Payment Method & Paid By */}
           <div className="grid grid-cols-2 gap-4">
-            <FormSelect
-              label="Payment Method"
-              name="payment_method"
-              value={formData.payment_method}
-              onChange={handleChange}
-              options={PAYMENT_METHODS}
-            />
-            <FormInput
-              label="Paid By *"
-              name="paid_by"
-              value={formData.paid_by}
-              onChange={handleChange}
-              error={errors.paid_by}
-              placeholder="Name of payer"
-            />
+            <FormSelect label="Payment Method" name="payment_method" value={formData.payment_method} onChange={handleChange} options={PAYMENT_METHODS} />
+            <FormInput label="Paid By *" name="paid_by" value={formData.paid_by} onChange={handleChange} error={errors.paid_by} placeholder="Name of payer" />
           </div>
 
-          {/* Transaction Reference */}
-          <FormInput
-            label="Transaction Reference"
-            name="transaction_reference"
-            value={formData.transaction_reference}
-            onChange={handleChange}
-            placeholder="Bank ref, mobile ref, etc."
-          />
+          <FormInput label="Transaction Reference" name="transaction_reference" value={formData.transaction_reference}
+            onChange={handleChange} placeholder="Bank ref, mobile ref, etc." />
           
-          {/* Academic Year & Term */}
           <div className="grid grid-cols-2 gap-4">
-            <FormInput
-              label="Academic Year"
-              name="academic_year"
-              value={formData.academic_year}
-              onChange={handleChange}
-              placeholder={currentYear}
-            />
-            <FormSelect
-              label="Term"
-              name="term"
-              value={formData.term}
-              onChange={handleChange}
-              options={TERMS}
-            />
+            <FormInput label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange} placeholder={currentYear} />
+            <FormSelect label="Term" name="term" value={formData.term} onChange={handleChange} options={TERMS} />
           </div>
           
-          {/* Notes */}
           <div>
             <label className="form-label">Notes</label>
-            <textarea
-              name="notes"
-              value={formData.notes}
-              onChange={handleChange}
-              rows={2}
-              className="form-input"
-              placeholder="Additional notes..."
-            />
+            <textarea name="notes" value={formData.notes} onChange={handleChange} rows={2} className="form-input" placeholder="Additional notes..." />
           </div>
         </div>
       </Card>
 
-      {/* Action Buttons */}
       <div className="flex gap-3">
         <Button type="submit" variant="primary" loading={loading} icon={<DollarSign size={18} />}>
           {loading ? 'Recording...' : 'Record Payment'}
         </Button>
-        {onCancel && (
-          <Button type="button" variant="secondary" onClick={onCancel} disabled={loading}>
-            Cancel
-          </Button>
-        )}
+        {onCancel && <Button type="button" variant="secondary" onClick={onCancel} disabled={loading}>Cancel</Button>}
         {onPrintReceipt && formData.receipt_number && (
-          <Button 
-            type="button" 
-            variant="secondary" 
-            onClick={onPrintReceipt}
-            icon={<Printer size={18} />}
-          >
-            Print Receipt
-          </Button>
+          <Button type="button" variant="secondary" onClick={onPrintReceipt} icon={<Printer size={18} />}>Print Receipt</Button>
         )}
       </div>
     </form>
