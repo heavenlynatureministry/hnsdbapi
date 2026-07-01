@@ -79,6 +79,9 @@ const UsersList = lazy(() => import('../pages/users/UsersList'))
 const UserForm = lazy(() => import('../pages/users/UserForm'))
 const UserProfile = lazy(() => import('../pages/users/UserProfile'))
 
+// ✅ Verification Page (Public)
+const VerifyReport = lazy(() => import('../pages/VerifyReport'))
+
 // =========================================================================
 // LOADING COMPONENT
 // =========================================================================
@@ -98,6 +101,10 @@ function AppRoutes() {
         {/* ============================================================= */}
         {/* PUBLIC ROUTES */}
         {/* ============================================================= */}
+        
+        {/* ✅ Report Card Verification - Public */}
+        <Route path="/verify-report/:studentId" element={<VerifyReport />} />
+        
         <Route element={<AuthLayout />}>
           <Route
             path="/login"
@@ -298,6 +305,7 @@ export const routeMetadata = {
   '/reports/annual': { title: 'Annual Report', parent: 'Reports' },
   '/users': { title: 'Users', icon: 'Shield' },
   '/profile': { title: 'My Profile', icon: 'UserCircle' },
+  '/verify-report/:studentId': { title: 'Verify Report Card', icon: 'Shield' },
 }
 
 export default AppRoutes
