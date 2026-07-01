@@ -25,7 +25,11 @@ api.interceptors.request.use(
 
 // Response interceptor - Handle errors
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    // ✅ Return the full response so we can access response.data.success
+    // The API returns { success: true, message: "...", data: {...} }
+    return response
+  },
   (error) => {
     const { response, config } = error
 
@@ -35,7 +39,6 @@ api.interceptors.response.use(
       // Only redirect to login on 401 if NOT already on login page
       if (status === 401 && !config.url?.includes('/auth/login')) {
         clearAll()
-        // Use window.location.origin to handle any base path
         if (window.location.pathname !== '/login') {
           window.location.href = window.location.origin + '/login'
         }
