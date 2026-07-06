@@ -84,29 +84,47 @@ def _number_to_words(amount: float) -> str:
 
 
 async def _generate_receipt_number(db) -> str:
-    """Generate a sequential receipt number."""
-    year = datetime.utcnow().strftime("%y")
+    """
+    Generate a sequential receipt number in format HNSRCT-000000001
+    HNSRCT = Heavenly Nature Schools Receipt
+    9-digit zero-padded sequential number for long-term use
+    """
     if db is not None:
         try:
+            # Find last receipt number with HNSRCT prefix
             last_payment = await db.payments.find_one(
-                {"receipt_number": {"$regex": f"^RCP-{year}"}},
+                {"receipt_number": {"$regex": "^HNSRCT-"}},
                 sort=[("created_at", -1)]
             )
+            
             if last_payment and last_payment.get("receipt_number"):
                 try:
                     last_num = int(last_payment["receipt_number"].split("-")[-1])
-                    return f"RCP-{year}{last_num + 1:04d}"
+                    return f"HNSRCT-{last_num + 1:09d}"  # 9-digit zero-padded
                 except (ValueError, IndexError, AttributeError):
                     pass
+            
+            # Check old RCP format for migration
+            last_old = await db.payments.find_one(
+                {"receipt_number": {"$regex": "^RCP-"}},
+                sort=[("created_at", -1)]
+            )
+            if last_old and last_old.get("receipt_number"):
+                try:
+                    last_num = int(last_old["receipt_number"].split("-")[-1])
+                    return f"HNSRCT-{last_num + 1:09d}"
+                except (ValueError, IndexError, AttributeError):
+                    pass
+                    
         except Exception as e:
             print(f"⚠️ Receipt number generation error: {e}")
-    timestamp = datetime.utcnow().strftime('%m%d%H%M%S')
-    return f"RCP-{year}{timestamp}"
+    
+    # Fallback: start from 1
+    return "HNSRCT-000000001"
 
 
 async def _calculate_balance(db, student_oid, fee_type: str, academic_year: str) -> dict:
     """Calculate student fee balance for a specific fee type."""
-    # Get fee structure
     fee_structure = await db.fee_structure.find_one({
         "fee_type": fee_type,
         "academic_year": academic_year,
@@ -114,7 +132,6 @@ async def _calculate_balance(db, student_oid, fee_type: str, academic_year: str)
     })
     total_fee = fee_structure.get("amount", 0) if fee_structure else 0
     
-    # Get all completed payments for this student, fee type, and year
     all_payments = await db.payments.find({
         "student_id": student_oid,
         "fee_type": fee_type,
@@ -222,21 +239,18 @@ async def get_student_balance(
     
     year = academic_year or _get_current_academic_year()
     
-    # Get fee structures
     fee_filter = {"academic_year": year, "status": "active"}
     if fee_type:
         fee_filter["fee_type"] = fee_type
     
     fee_structures = await db.fee_structure.find(fee_filter).to_list(length=None)
     
-    # Get all payments for this student
     payments = await db.payments.find({
         "student_id": sid,
         "academic_year": year,
         "status": "completed"
     }).to_list(length=None)
     
-    # Calculate balance per fee type
     balances = []
     for fee in fee_structures:
         ft = fee.get("fee_type", "other")
@@ -374,7 +388,6 @@ async def record_payment(
         doc["_id"] = str(result.inserted_id)
         doc = parse_mongo_document(doc)
         
-        # ✅ Calculate updated balance
         balance_info = await _calculate_balance(db, sid, fee_type, academic_year)
         doc["balance_info"] = balance_info
         
@@ -404,8 +417,7 @@ async def update_payment(payment_id: str = Path(...), request: Request = None,
     db = get_database()
     obj_id = _safe_objectid(payment_id)
     if not obj_id: raise HTTPException(status_code=400, detail="Invalid payment ID")
-    try:
-        body = await request.json()
+    try: body = await request.json()
     except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
     if not body: raise HTTPException(status_code=400, detail="No fields to update")
     allowed_fields = ["status", "notes", "payment_method", "transaction_reference", "academic_year", "term"]
@@ -472,7 +484,6 @@ async def get_payment_receipt(payment_id: str = Path(...), current_user: Dict[st
     fee_type = payment.get("fee_type", "tuition")
     year = payment.get("academic_year", "")
     
-    # ✅ Calculate balance for receipt
     balance_info = None
     if payment.get("student_id"):
         try:
@@ -526,14 +537,11 @@ async def get_fee_structure(academic_year: Optional[str] = Query(None),
 async def create_fee(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin", "accountant"))):
     """Create fee structure entry"""
     db = get_database()
-    try:
-        body = await request.json()
+    try: body = await request.json()
     except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
-    
     fee_name = body.get('fee_name', '').strip()
     amount = body.get('amount', 0)
     if not fee_name or not amount: raise HTTPException(status_code=400, detail="Fee name and amount are required")
-    
     doc = {
         "fee_name": fee_name, "fee_type": body.get('fee_type', 'tuition'),
         "amount": float(amount), "class_level": body.get('class_level'),
@@ -556,16 +564,13 @@ async def update_fee(fee_id: str = Path(...), request: Request = None,
     db = get_database()
     obj_id = _safe_objectid(fee_id)
     if not obj_id: raise HTTPException(status_code=400, detail="Invalid fee ID")
-    try:
-        body = await request.json()
+    try: body = await request.json()
     except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
     if not body: raise HTTPException(status_code=400, detail="No fields to update")
-    
     allowed_fields = ["fee_name", "amount", "fee_type", "class_level", "description", "is_mandatory", "status", "term"]
     update_data = {k: v for k, v in body.items() if k in allowed_fields}
     if not update_data: raise HTTPException(status_code=400, detail="No valid fields to update")
     update_data["updated_at"] = datetime.utcnow()
-    
     result = await db.fee_structure.find_one_and_update({"_id": obj_id}, {"$set": update_data}, return_document=True)
     if not result: raise HTTPException(status_code=404, detail="Fee not found")
     return {"success": True, "message": "Fee updated", "data": parse_mongo_document(result)}
@@ -628,11 +633,15 @@ async def create_transaction(request: Request, current_user: Dict[str, Any] = De
     academic_year = body.get('academic_year') or _get_current_academic_year()
     term = body.get('term') or _get_current_term()
     approval_status = body.get('status', body.get('approval_status', 'completed'))
+    
+    # ✅ Generate sequential reference number (same format as receipts)
+    reference_number = body.get('reference_number') or await _generate_receipt_number(db)
+    
     doc = {
         "transaction_date": date_obj, "amount": float(amount), "transaction_type": transaction_type,
         "category": category, "description": description,
         "payment_method": body.get('payment_method', 'cash'),
-        "reference_number": body.get('reference_number') or f"TXN-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+        "reference_number": reference_number,
         "recorded_by": current_user.get("_id"),
         "recorded_by_name": current_user.get("first_name", "") + " " + current_user.get("last_name", ""),
         "approval_status": approval_status, "academic_year": academic_year, "term": term,
