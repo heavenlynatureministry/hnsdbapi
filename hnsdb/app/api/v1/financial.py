@@ -91,7 +91,7 @@ async def _generate_receipt_number(db) -> str:
     """
     if db is not None:
         try:
-            # Find last receipt number with HNSRCT prefix
+            # Find last receipt number with HNSRCT prefix in payments
             last_payment = await db.payments.find_one(
                 {"receipt_number": {"$regex": "^HNSRCT-"}},
                 sort=[("created_at", -1)]
@@ -100,11 +100,23 @@ async def _generate_receipt_number(db) -> str:
             if last_payment and last_payment.get("receipt_number"):
                 try:
                     last_num = int(last_payment["receipt_number"].split("-")[-1])
-                    return f"HNSRCT-{last_num + 1:09d}"  # 9-digit zero-padded
+                    return f"HNSRCT-{last_num + 1:09d}"
                 except (ValueError, IndexError, AttributeError):
                     pass
             
-            # Check old RCP format for migration
+            # Also check financial_records for HNSRCT prefix
+            last_record = await db.financial_records.find_one(
+                {"reference_number": {"$regex": "^HNSRCT-"}},
+                sort=[("created_at", -1)]
+            )
+            if last_record and last_record.get("reference_number"):
+                try:
+                    last_num = int(last_record["reference_number"].split("-")[-1])
+                    return f"HNSRCT-{last_num + 1:09d}"
+                except (ValueError, IndexError, AttributeError):
+                    pass
+            
+            # Check old RCP format in payments for migration
             last_old = await db.payments.find_one(
                 {"receipt_number": {"$regex": "^RCP-"}},
                 sort=[("created_at", -1)]
@@ -634,7 +646,7 @@ async def create_transaction(request: Request, current_user: Dict[str, Any] = De
     term = body.get('term') or _get_current_term()
     approval_status = body.get('status', body.get('approval_status', 'completed'))
     
-    # ✅ Generate sequential reference number (same format as receipts)
+    # Generate sequential reference number (same format as receipts)
     reference_number = body.get('reference_number') or await _generate_receipt_number(db)
     
     doc = {
@@ -649,6 +661,7 @@ async def create_transaction(request: Request, current_user: Dict[str, Any] = De
     }
     result = await db.financial_records.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
+    print(f"✅ Transaction recorded: {reference_number}")
     return {"success": True, "message": "Transaction recorded", "data": parse_mongo_document(doc)}
 
 
