@@ -86,18 +86,15 @@ function PaymentForm({
   const [showResults, setShowResults] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
 
-  // ✅ Balance state
   const [balanceInfo, setBalanceInfo] = useState(null)
   const [loadingBalance, setLoadingBalance] = useState(false)
 
-  // Update receipt number when prop changes
   useEffect(() => {
     if (receiptNumber && !formData.receipt_number) {
       setFormData(prev => ({ ...prev, receipt_number: receiptNumber }))
     }
   }, [receiptNumber])
 
-  // Set initial student if editing
   useEffect(() => {
     if (initialData?.student_id && students.length > 0) {
       const student = students.find(s => 
@@ -110,13 +107,11 @@ function PaymentForm({
         const studentName = student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim()
         setStudentSearch(studentName)
         setFormData(prev => ({ ...prev, paid_by: prev.paid_by || studentName }))
-        // Fetch balance for this student
         fetchBalance(student._id || student.id || student.student_id)
       }
     }
   }, [initialData, students])
 
-  // ✅ Fetch balance when student or fee_type changes
   useEffect(() => {
     if (selectedStudent && formData.fee_type) {
       const studentId = selectedStudent._id || selectedStudent.id || selectedStudent.student_id
@@ -130,15 +125,15 @@ function PaymentForm({
     if (!studentId) return
     setLoadingBalance(true)
     try {
+      // ✅ Interceptor returns response.data directly
       const response = await financialAPI.getStudentBalance(studentId, {
         academic_year: formData.academic_year,
         fee_type: formData.fee_type,
       })
       
-      const data = response?.data || response
-      if (data?.success && data.data) {
-        // Find the matching balance for the selected fee type
-        const balances = data.data.balances || []
+      // ✅ Use response directly (already unwrapped by interceptor)
+      if (response?.success && response.data) {
+        const balances = response.data.balances || []
         const matching = balances.find(b => b.fee_type === formData.fee_type) || balances[0]
         setBalanceInfo(matching || null)
       } else {
@@ -152,7 +147,6 @@ function PaymentForm({
     }
   }
 
-  // Filter students based on search
   const filteredStudents = studentSearch.trim()
     ? students.filter(s => {
         const name = (s.student_name || `${s.first_name || ''} ${s.last_name || ''}`).toLowerCase()
@@ -174,8 +168,6 @@ function PaymentForm({
     }))
     setShowResults(false)
     if (errors.student_id) setErrors(prev => ({ ...prev, student_id: '' }))
-    
-    // Fetch balance for selected student
     fetchBalance(studentId)
   }
 
@@ -229,7 +221,6 @@ function PaymentForm({
     <form onSubmit={handleSubmit} className="space-y-6 max-w-lg">
       <Card>
         <div className="space-y-4">
-          {/* Receipt Number Display */}
           {formData.receipt_number && (
             <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
               <Receipt size={18} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
@@ -244,7 +235,6 @@ function PaymentForm({
             </div>
           )}
 
-          {/* ✅ Balance Info Card */}
           {balanceInfo && (
             <div className={`p-3 rounded-lg border ${
               balanceInfo.is_cleared 
@@ -280,7 +270,6 @@ function PaymentForm({
             </div>
           )}
 
-          {/* Student Search */}
           <div>
             <label className="form-label">Student *</label>
             <div className="relative">
@@ -329,17 +318,14 @@ function PaymentForm({
             )}
           </div>
 
-          {/* Payment Type & Fee Type */}
           <div className="grid grid-cols-2 gap-4">
             <FormSelect label="Payment Type" name="payment_type" value={formData.payment_type} onChange={handleChange} options={PAYMENT_TYPES} />
             <FormSelect label="Fee Type" name="fee_type" value={formData.fee_type} onChange={handleChange} options={FEE_TYPES} />
           </div>
 
-          {/* Amount */}
           <FormInput label="Amount Paid (SSP) *" name="amount_paid" type="number" value={formData.amount_paid}
             onChange={handleChange} error={errors.amount_paid} min="0" step="0.01" placeholder="0.00" />
           
-          {/* Payment Method & Paid By */}
           <div className="grid grid-cols-2 gap-4">
             <FormSelect label="Payment Method" name="payment_method" value={formData.payment_method} onChange={handleChange} options={PAYMENT_METHODS} />
             <FormInput label="Paid By *" name="paid_by" value={formData.paid_by} onChange={handleChange} error={errors.paid_by} placeholder="Name of payer" />
