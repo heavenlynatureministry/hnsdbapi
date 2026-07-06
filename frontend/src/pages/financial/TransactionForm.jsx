@@ -132,11 +132,11 @@ function TransactionForm() {
   const fetchTransaction = async () => {
     setFetching(true)
     try {
+      // ✅ Interceptor returns response.data directly
       const response = await financialAPI.getTransaction(id)
-      const data = response?.data || response
       
-      if (data?.success && data.data) {
-        const t = data.data
+      if (response?.success && response.data) {
+        const t = response.data
         setFormData({
           transaction_date: t.transaction_date?.split('T')[0] || new Date().toISOString().split('T')[0],
           amount: t.amount || '',
@@ -208,12 +208,12 @@ function TransactionForm() {
         response = await financialAPI.createTransaction(payload)
       }
 
-      // ✅ FIXED: The API returns { success: true, message: "...", data: {...} }
-      // Axios wraps it in response.data, so response.data = { success: true, ... }
-      const apiResponse = response?.data || response
+      // ✅ Interceptor already returns response.data
+      // So response = { success: true, message: "...", data: {...} }
+      // Use response directly, NOT response?.data
       
-      if (apiResponse?.success === true) {
-        const transactionId = apiResponse.data?._id || apiResponse.data?.id || id
+      if (response?.success === true) {
+        const transactionId = response.data?._id || response.data?.id || id
         
         toast.success(`Transaction ${isEdit ? 'updated' : 'recorded'} successfully!`)
         
@@ -223,7 +223,7 @@ function TransactionForm() {
           navigate('/financial')
         }
       } else {
-        toast.error(apiResponse?.message || 'Failed to save transaction')
+        toast.error(response?.message || 'Failed to save transaction')
       }
     } catch (error) {
       console.error('Transaction save error:', error)
@@ -250,11 +250,11 @@ function TransactionForm() {
     }
     try {
       toast.loading('Generating receipt...')
+      // ✅ Interceptor returns response.data directly
       const response = await financialAPI.getTransactionReceipt(transactionId)
-      const result = response?.data || response
       toast.dismiss()
-      if (result?.success === true && result.data) {
-        setReceiptData(result.data)
+      if (response?.success === true && response.data) {
+        setReceiptData(response.data)
         setSavedTransactionId(transactionId)
         setShowReceipt(true)
       } else {
