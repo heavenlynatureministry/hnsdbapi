@@ -5,7 +5,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://hns-api.onrender.com/ap
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 120000, // 2 minutes for Render cold starts
+  timeout: 120000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -26,9 +26,10 @@ api.interceptors.request.use(
 // Response interceptor - Handle errors
 api.interceptors.response.use(
   (response) => {
-    // ✅ Return the full response so we can access response.data.success
+    // ✅ Return the unwrapped data (original behavior)
     // The API returns { success: true, message: "...", data: {...} }
-    return response
+    // So after this, callers get { success: true, message: "...", data: {...} } directly
+    return response.data
   },
   (error) => {
     const { response, config } = error
@@ -36,7 +37,6 @@ api.interceptors.response.use(
     if (response) {
       const { status, data } = response
 
-      // Only redirect to login on 401 if NOT already on login page
       if (status === 401 && !config.url?.includes('/auth/login')) {
         clearAll()
         if (window.location.pathname !== '/login') {
@@ -45,7 +45,6 @@ api.interceptors.response.use(
         return Promise.reject({ status: 401, message: 'Session expired' })
       }
 
-      // For login failures, pass through
       if (status === 401 && config.url?.includes('/auth/login')) {
         return Promise.reject({ status: 401, message: data?.message || 'Invalid credentials' })
       }
@@ -62,7 +61,6 @@ api.interceptors.response.use(
       })
     }
 
-    // Network error - likely cold start
     console.error('Network error:', error.message)
     return Promise.reject({
       status: 0,
