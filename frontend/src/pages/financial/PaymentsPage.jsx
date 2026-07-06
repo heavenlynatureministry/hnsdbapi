@@ -76,7 +76,6 @@ function PaymentsPage() {
   const [openDropdown, setOpenDropdown] = useState(null)
   const [showDelete, setShowDelete] = useState(null)
 
-  // ✅ Receipt state
   const [showReceipt, setShowReceipt] = useState(false)
   const [receiptData, setReceiptData] = useState(null)
 
@@ -108,6 +107,7 @@ function PaymentsPage() {
   const fetchPayments = async () => {
     setLoading(true)
     try {
+      // ✅ Interceptor returns response.data directly
       const response = await financialAPI.getPayments({ search: search || undefined })
       if (response?.success) {
         setPayments(response.data?.payments || response.data || [])
@@ -126,6 +126,7 @@ function PaymentsPage() {
   const fetchStudents = async () => {
     setLoadingStudents(true)
     try {
+      // ✅ Interceptor returns response.data directly
       const response = await studentsAPI.getAll({ limit: 200 })
       let studentList = []
       if (response?.data?.students && Array.isArray(response.data.students)) studentList = response.data.students
@@ -241,20 +242,21 @@ function PaymentsPage() {
         })
       }
 
-      const result = response?.data || response
-      if (result?.success === true || response?.success === true) {
-        const paymentId = result?.data?._id || result?.data?.id
+      // ✅ Interceptor already returns response.data
+      // So response = { success: true, message: "...", data: {...} }
+      if (response?.success === true) {
+        const paymentId = response.data?._id || response.data?.id
         
         toast.success(editingPayment ? 'Payment updated!' : 'Payment recorded!')
         setShowModal(false)
         fetchPayments()
         
-        // ✅ Auto-show receipt for new payments
+        // Auto-show receipt for new payments
         if (!editingPayment && paymentId) {
           handleViewReceipt(paymentId)
         }
       } else {
-        toast.error(result?.message || 'Failed to save payment')
+        toast.error(response?.message || 'Failed to save payment')
       }
     } catch (error) {
       console.error('Payment save error:', error)
@@ -276,16 +278,15 @@ function PaymentsPage() {
     }
   }
 
-  // ✅ View receipt for a payment
   const handleViewReceipt = async (paymentId) => {
     if (!paymentId) return
     try {
       toast.loading('Loading receipt...')
+      // ✅ Interceptor returns response.data directly
       const response = await financialAPI.getReceipt(paymentId)
-      const data = response?.data || response
       toast.dismiss()
-      if ((data?.success === true) && data.data) {
-        setReceiptData(data.data)
+      if (response?.success === true && response.data) {
+        setReceiptData(response.data)
         setShowReceipt(true)
       } else {
         toast.error('Could not load receipt')
@@ -365,14 +366,12 @@ function PaymentsPage() {
                     <td>{getStatusBadge(payment.status)}</td>
                     <td className="text-right">
                       <div className="flex items-center gap-1 justify-end">
-                        {/* ✅ Receipt buttons */}
                         <button onClick={() => handleViewReceipt(payment._id)} className="btn btn-ghost btn-sm btn-icon text-blue-600" title="View Receipt">
                           <Eye size={14} />
                         </button>
                         <button onClick={() => handleViewReceipt(payment._id)} className="btn btn-ghost btn-sm btn-icon text-green-600" title="Print Receipt">
                           <Printer size={14} />
                         </button>
-                        {/* Dropdown */}
                         <div className="relative">
                           <button onClick={() => setOpenDropdown(openDropdown === payment._id ? null : payment._id)} className="btn btn-ghost btn-sm btn-icon"><MoreVertical size={16} /></button>
                           {openDropdown === payment._id && (
@@ -395,7 +394,6 @@ function PaymentsPage() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editingPayment ? 'Edit Payment' : 'Record Payment'} size="md">
         <form onSubmit={handleSubmit} className="space-y-4">
           {!editingPayment && (
@@ -438,7 +436,6 @@ function PaymentsPage() {
         </form>
       </Modal>
 
-      {/* ✅ Receipt Modal */}
       {showReceipt && receiptData && (
         <ReceiptPrint 
           receipt={receiptData}
