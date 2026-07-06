@@ -2,6 +2,17 @@ import { Printer, Download, Share2, X, FileText, ExternalLink } from 'lucide-rea
 import Button from '../common/Button'
 import { exportReceipt, printReceiptDirect, openReceiptInNewTab, downloadReceiptPDF } from '../../utils/exportReceipt'
 
+// Helper to safely render address (handles both string and object formats)
+function formatAddress(address) {
+  if (!address) return ''
+  if (typeof address === 'string') return address
+  if (typeof address === 'object') {
+    const parts = [address.city, address.state, address.country, address.street, address.zip].filter(Boolean)
+    return parts.join(', ')
+  }
+  return String(address)
+}
+
 function ReceiptPrint({ receipt, onClose }) {
   if (!receipt) return null
 
@@ -22,6 +33,8 @@ function ReceiptPrint({ receipt, onClose }) {
   const handleDownloadPDF = () => {
     downloadReceiptPDF(receipt)
   }
+
+  const schoolAddress = formatAddress(receipt?.school?.address)
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -63,7 +76,10 @@ function ReceiptPrint({ receipt, onClose }) {
               <div className="text-center p-3 border-b-2 border-black" style={{ display: 'none' }}>
                 <h2 className="text-sm font-bold uppercase">{receipt?.school?.name || 'School Name'}</h2>
                 {receipt?.school?.motto && <p className="text-xs italic my-1">"{receipt.school.motto}"</p>}
-                <p className="text-xs">{receipt?.school?.address} | Tel: {receipt?.school?.phone}</p>
+                <p className="text-xs">
+                  {schoolAddress}
+                  {receipt?.school?.phone ? ` | Tel: ${receipt.school.phone}` : ''}
+                </p>
               </div>
             </div>
 
@@ -83,15 +99,15 @@ function ReceiptPrint({ receipt, onClose }) {
                 </div>
                 <div className="flex justify-between">
                   <span className="font-bold">Student:</span>
-                  <span>{receipt?.student_name}</span>
+                  <span>{receipt?.student_name || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="font-bold">Class:</span>
-                  <span>{receipt?.class_name}</span>
+                  <span>{receipt?.class_name || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="font-bold">Payment For:</span>
-                  <span>{receipt?.payment_for}</span>
+                  <span>{receipt?.payment_for || 'N/A'}</span>
                 </div>
                 {receipt?.term && (
                   <div className="flex justify-between">
@@ -101,7 +117,7 @@ function ReceiptPrint({ receipt, onClose }) {
                 )}
                 <div className="flex justify-between">
                   <span className="font-bold">Method:</span>
-                  <span>{receipt?.payment_method}</span>
+                  <span>{receipt?.payment_method || 'N/A'}</span>
                 </div>
               </div>
 
@@ -111,10 +127,10 @@ function ReceiptPrint({ receipt, onClose }) {
                 <div className="text-lg font-bold font-sans">
                   SSP {Number(receipt?.amount || 0).toLocaleString('en', { minimumFractionDigits: 2 })}
                 </div>
-                <div className="text-xs italic mt-1">{receipt?.amount_words}</div>
+                <div className="text-xs italic mt-1">{receipt?.amount_words || ''}</div>
               </div>
 
-              {/* ✅ Balance Info */}
+              {/* Balance Info */}
               {receipt?.balance_info && (
                 <div className="border-t border-dashed border-gray-400 mt-2 pt-2 space-y-1">
                   <div className="flex justify-between text-xs">
@@ -149,12 +165,12 @@ function ReceiptPrint({ receipt, onClose }) {
                 <div className="text-center w-2/5">
                   <div className="border-b border-black mb-1 h-6">&nbsp;</div>
                   <div className="text-xs">Received By</div>
-                  <div className="text-xs">{receipt?.received_by}</div>
+                  <div className="text-xs">{receipt?.received_by || ''}</div>
                 </div>
                 <div className="text-center w-2/5">
                   <div className="border-b border-black mb-1 h-6">&nbsp;</div>
                   <div className="text-xs">Paid By</div>
-                  <div className="text-xs">{receipt?.paid_by}</div>
+                  <div className="text-xs">{receipt?.paid_by || ''}</div>
                 </div>
               </div>
 
