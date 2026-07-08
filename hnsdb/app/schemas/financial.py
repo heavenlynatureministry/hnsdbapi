@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from pydantic import BaseModel, Field, validator
 
+
 class TransactionCreate(BaseModel):
     transaction_date: date
     amount: float
@@ -23,15 +24,18 @@ class TransactionCreate(BaseModel):
             raise ValueError('Must be income or expense')
         return v
 
+
 class TransactionUpdate(BaseModel):
     amount: Optional[float] = None
     description: Optional[str] = None
     notes: Optional[str] = None
 
+
 class TransactionApproval(BaseModel):
     transaction_id: str
     is_approved: bool
     rejection_reason: Optional[str] = None
+
 
 class TransactionResponse(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
@@ -49,6 +53,7 @@ class TransactionResponse(BaseModel):
     class Config:
         populate_by_name = True
 
+
 class TransactionListResponse(BaseModel):
     transactions: List[Dict[str, Any]] = []
     total: int = 0
@@ -57,11 +62,13 @@ class TransactionListResponse(BaseModel):
     page: int = 1
     total_pages: int = 0
 
+
 class FeeItem(BaseModel):
     name: str
     amount: float
     description: Optional[str] = None
     is_optional: bool = False
+
 
 class FeeStructureCreate(BaseModel):
     name: str
@@ -72,6 +79,7 @@ class FeeStructureCreate(BaseModel):
     currency: str = "SSP"
     due_date: Optional[date] = None
     late_fee: float = 0.0
+
 
 class FeeStructureResponse(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
@@ -85,21 +93,28 @@ class FeeStructureResponse(BaseModel):
     class Config:
         populate_by_name = True
 
+
 class PaymentCreate(BaseModel):
+    """Schema for creating a payment - matches the API record_payment endpoint"""
     student_id: str
-    fee_structure_id: str
     amount_paid: float
     payment_method: str = "cash"
-    paid_by: str
+    payment_type: Optional[str] = "school_fees"
+    fee_type: Optional[str] = "tuition"
+    paid_by: Optional[str] = None
     transaction_reference: Optional[str] = None
+    receipt_number: Optional[str] = None  # ✅ Optional - backend generates if not provided
     academic_year: Optional[str] = None
     term: Optional[str] = None
+    status: Optional[str] = "completed"
     notes: Optional[str] = None
+
 
 class PaymentVerification(BaseModel):
     payment_id: str
     is_verified: bool = True
     verification_notes: Optional[str] = None
+
 
 class PaymentResponse(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
@@ -116,11 +131,13 @@ class PaymentResponse(BaseModel):
     class Config:
         populate_by_name = True
 
+
 class PaymentHistory(BaseModel):
     payments: List[Dict[str, Any]] = []
     total_payments: int = 0
     total_amount_paid: float = 0.0
     outstanding_balance: float = 0.0
+
 
 class PaymentSummary(BaseModel):
     total_collected: float = 0.0
@@ -129,12 +146,14 @@ class PaymentSummary(BaseModel):
     partial: int = 0
     by_payment_method: Dict[str, Any] = {}
 
+
 class BudgetCreate(BaseModel):
     academic_year: str
     category: str
     allocated_amount: float
     description: Optional[str] = None
     term_breakdown: Optional[Dict[str, float]] = None
+
 
 class BudgetResponse(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
@@ -148,6 +167,7 @@ class BudgetResponse(BaseModel):
     class Config:
         populate_by_name = True
 
+
 class BudgetSummaryResponse(BaseModel):
     academic_year: Optional[str] = None
     total_budget: float = 0.0
@@ -155,11 +175,13 @@ class BudgetSummaryResponse(BaseModel):
     total_remaining: float = 0.0
     categories: List[Dict[str, Any]] = []
 
+
 class FinancialSummary(BaseModel):
     income: Dict[str, Any] = {}
     expense: Dict[str, Any] = {}
     balance: float = 0.0
     profit_margin: float = 0.0
+
 
 class FinancialDashboardSummary(BaseModel):
     current_balance: float = 0.0
@@ -167,6 +189,7 @@ class FinancialDashboardSummary(BaseModel):
     total_expenses_current_term: float = 0.0
     recent_transactions: List[Dict[str, Any]] = []
     pending_approvals: int = 0
+
 
 class FinancialAlertResponse(BaseModel):
     overdue_payments: List[Dict[str, Any]] = []
