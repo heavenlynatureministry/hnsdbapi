@@ -323,8 +323,6 @@ async def reset_academic_data(
 ):
     """
     ⚠️ DANGER: Reset all academic data for a new academic year.
-    This permanently deletes all students, teachers, classes, exams, attendance, etc.
-    Always download reports before resetting!
     """
     db = get_database()
     
@@ -377,28 +375,42 @@ async def reset_academic_data(
             await db.school_events.delete_many({})
             results["events_deleted"] = event_count
         
-        # Log the reset
-        await db.audit_log.insert_one({
-            "table_name": "academic_reset",
-            "record_id": f"ACADEMIC-RESET-{academic_year}",
-            "operation": "RESET_ALL_ACADEMIC",
-            "changed_by": _safe_objectid(current_user.get("_id")) if current_user.get("_id") else None,
-            "details": results,
-            "changed_at": datetime.utcnow()
-        })
+        # ✅ Fixed: Safe audit log - don't fail if user_id can't be converted
+        try:
+            changed_by = None
+            uid = current_user.get("_id")
+            if uid:
+                converted = _safe_objectid(uid)
+                if converted:
+                    changed_by = converted
+            
+            await db.audit_log.insert_one({
+                "table_name": "academic_reset",
+                "record_id": f"ACADEMIC-RESET-{academic_year}",
+                "operation": "RESET_ALL_ACADEMIC",
+                "changed_by": changed_by,
+                "details": results,
+                "changed_at": datetime.utcnow()
+            })
+        except Exception as e:
+            print(f"⚠️ Audit log error (non-critical): {e}")
         
         print(f"🔄 Academic data reset for {academic_year}: {results}")
         
         return {
             "success": True,
             "message": f"Academic data reset for {academic_year}",
-            "data": {"academic_year": academic_year, "results": results, "total_deleted": sum(results.values())}
+            "data": {
+                "academic_year": academic_year,
+                "results": results,
+                "total_deleted": sum(results.values())
+            }
         }
         
     except Exception as e:
         print(f"❌ Academic reset error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to reset academic data: {str(e)}")
-
+         
 
 # =========================================================================
 # SUBJECTS
