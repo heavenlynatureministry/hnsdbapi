@@ -600,6 +600,92 @@ async def delete_fee(fee_id: str = Path(...), current_user: Dict[str, Any] = Dep
 
 
 # =========================================================================
+# RESET FINANCIAL DATA (ADMIN ONLY)
+# =========================================================================
+
+@router.post("/reset")
+async def reset_financial_data(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """
+    ⚠️ DANGER: Reset all financial data for a new academic year.
+    This permanently deletes all transactions, payments, budgets, and fee structures.
+    Always download reports before resetting!
+    """
+    db = get_database()
+    
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    confirmation = body.get("confirmation", "").strip().upper()
+    
+    # Require explicit confirmation
+    if confirmation != "DELETE ALL FINANCIAL DATA":
+        raise HTTPException(
+            status_code=400, 
+            detail="You must type 'DELETE ALL FINANCIAL DATA' to confirm reset"
+        )
+    
+    academic_year = body.get("academic_year", _get_current_academic_year())
+    
+    results = {}
+    
+    try:
+        # Delete financial records
+        if body.get("reset_transactions", True):
+            tx_count = await db.financial_records.count_documents({"academic_year": academic_year})
+            await db.financial_records.delete_many({"academic_year": academic_year})
+            results["transactions_deleted"] = tx_count
+        
+        # Delete payments
+        if body.get("reset_payments", True):
+            pay_count = await db.payments.count_documents({"academic_year": academic_year})
+            await db.payments.delete_many({"academic_year": academic_year})
+            results["payments_deleted"] = pay_count
+        
+        # Delete fee structures
+        if body.get("reset_fees", True):
+            fee_count = await db.fee_structure.count_documents({"academic_year": academic_year})
+            await db.fee_structure.delete_many({"academic_year": academic_year})
+            results["fees_deleted"] = fee_count
+        
+        # Delete budgets
+        if body.get("reset_budgets", True):
+            budget_count = await db.budgets.count_documents({"academic_year": academic_year})
+            await db.budgets.delete_many({"academic_year": academic_year})
+            results["budgets_deleted"] = budget_count
+        
+        # Log the reset
+        await db.audit_log.insert_one({
+            "table_name": "financial_reset",
+            "record_id": f"RESET-{academic_year}",
+            "operation": "RESET_ALL",
+            "changed_by": _safe_objectid(current_user.get("_id")) if current_user.get("_id") else None,
+            "details": results,
+            "changed_at": datetime.utcnow()
+        })
+        
+        print(f"🔄 Financial data reset for {academic_year}: {results}")
+        
+        return {
+            "success": True,
+            "message": f"Financial data reset for {academic_year}",
+            "data": {
+                "academic_year": academic_year,
+                "results": results,
+                "total_deleted": sum(results.values())
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ Reset error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset data: {str(e)}")
+        
+
+# =========================================================================
 # TRANSACTIONS
 # =========================================================================
 
