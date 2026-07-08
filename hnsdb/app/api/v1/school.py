@@ -327,6 +327,111 @@ async def remove_board_member(
 
 
 # =========================================================================
+# ACADEMIC RESET (ADMIN ONLY)
+# =========================================================================
+
+@router.post("/reset-academic")
+async def reset_academic_data(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """
+    ⚠️ DANGER: Reset all academic data for a new academic year.
+    This permanently deletes all students, teachers, classes, exams, attendance, etc.
+    Always download reports before resetting!
+    """
+    db = get_database()
+    
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    confirmation = body.get("confirmation", "").strip().upper()
+    
+    if confirmation != "DELETE ALL ACADEMIC DATA":
+        raise HTTPException(
+            status_code=400, 
+            detail="You must type 'DELETE ALL ACADEMIC DATA' to confirm reset"
+        )
+    
+    academic_year = body.get("academic_year", _get_current_academic_year())
+    
+    results = {}
+    
+    try:
+        # Delete students
+        if body.get("reset_students", True):
+            student_count = await db.students.count_documents({})
+            await db.students.delete_many({})
+            results["students_deleted"] = student_count
+        
+        # Delete teachers
+        if body.get("reset_teachers", True):
+            teacher_count = await db.teachers.count_documents({})
+            await db.teachers.delete_many({})
+            results["teachers_deleted"] = teacher_count
+        
+        # Delete classes
+        if body.get("reset_classes", True):
+            class_count = await db.classes.count_documents({})
+            await db.classes.delete_many({})
+            results["classes_deleted"] = class_count
+        
+        # Delete exams
+        if body.get("reset_exams", True):
+            exam_count = await db.exams.count_documents({})
+            await db.exams.delete_many({})
+            results["exams_deleted"] = exam_count
+        
+        # Delete exam results
+        if body.get("reset_exam_results", True):
+            result_count = await db.exam_results.count_documents({})
+            await db.exam_results.delete_many({})
+            results["exam_results_deleted"] = result_count
+        
+        # Delete attendance records
+        if body.get("reset_attendance", True):
+            att_count = await db.attendance.count_documents({})
+            await db.attendance.delete_many({})
+            results["attendance_deleted"] = att_count
+        
+        # Delete events
+        if body.get("reset_events", True):
+            event_count = await db.school_events.count_documents({})
+            await db.school_events.delete_many({})
+            results["events_deleted"] = event_count
+        
+        # Keep users (admin accounts) - don't delete users collection
+        
+        # Log the reset
+        await db.audit_log.insert_one({
+            "table_name": "academic_reset",
+            "record_id": f"ACADEMIC-RESET-{academic_year}",
+            "operation": "RESET_ALL_ACADEMIC",
+            "changed_by": _safe_objectid(current_user.get("_id")) if current_user.get("_id") else None,
+            "details": results,
+            "changed_at": datetime.utcnow()
+        })
+        
+        print(f"🔄 Academic data reset for {academic_year}: {results}")
+        
+        return {
+            "success": True,
+            "message": f"Academic data reset for {academic_year}",
+            "data": {
+                "academic_year": academic_year,
+                "results": results,
+                "total_deleted": sum(results.values())
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ Academic reset error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset academic data: {str(e)}")
+        
+
+# =========================================================================
 # SUBJECTS
 # =========================================================================
 @router.get("/subjects")
