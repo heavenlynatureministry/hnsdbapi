@@ -7,6 +7,7 @@ const financialAPI = {
   getTransaction: async (id) => api.get(`/financial/${id}`),
   updateTransaction: async (id, data) => api.put(`/financial/${id}`, data),
   deleteTransaction: async (id) => api.delete(`/financial/${id}`),
+  resetFinancialData: async (data) => api.post('/financial/reset', data),
 
   // Summary & Dashboard
   getSummary: async (params = {}) => api.get('/financial/summary', { params }),
