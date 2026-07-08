@@ -10,7 +10,7 @@ import FormSelect from '../../components/common/FormSelect'
 import Badge from '../../components/common/Badge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
-import { BarChart3, Plus, Edit, DollarSign, TrendingUp, AlertTriangle, Save } from 'lucide-react'
+import { BarChart3, Plus, Edit, DollarSign, TrendingUp, AlertTriangle, Save, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function getCurrentAcademicYear() {
@@ -21,16 +21,7 @@ function getCurrentAcademicYear() {
   return `${startYear}/${startYear + 1}`
 }
 
-function getCurrentTerm() {
-  const month = new Date().getMonth() + 1
-  if (month >= 2 && month <= 4) return 'Term 1'
-  if (month >= 5 && month <= 7) return 'Term 2'
-  if (month >= 9 && month <= 11) return 'Term 3'
-  return 'Term 2'
-}
-
 const currentYear = getCurrentAcademicYear()
-const currentTerm = getCurrentTerm()
 
 const ACADEMIC_YEAR_OPTIONS = [
   { value: currentYear, label: currentYear },
@@ -63,6 +54,7 @@ function BudgetPage() {
   const [editingBudget, setEditingBudget] = useState(null)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+  const [selectedYear, setSelectedYear] = useState(currentYear)
 
   const [formData, setFormData] = useState({
     academic_year: currentYear,
@@ -81,50 +73,82 @@ function BudgetPage() {
       { label: 'Financial', path: '/financial' },
       { label: 'Budget' },
     ])
-    fetchBudgets()
   }, [])
+
+  useEffect(() => {
+    fetchBudgets()
+  }, [selectedYear])
 
   const fetchBudgets = async () => {
     setLoading(true)
     try {
-      // Get transactions grouped by category for the current year
+      // ✅ Get saved budgets from backend
+      let savedBudgets = []
+      try {
+        const budgetResponse = await financialAPI.getBudgets({ academic_year: selectedYear })
+        const data = budgetResponse?.data || budgetResponse
+        savedBudgets = data?.categories || data?.data || []
+        if (!Array.isArray(savedBudgets)) savedBudgets = []
+      } catch (e) {
+        console.log('No saved budgets found, building from transactions')
+      }
+
+      // Get actual spending from transactions
       const response = await financialAPI.listTransactions({
         type: 'expense',
-        academic_year: currentYear,
+        academic_year: selectedYear,
         limit: 500,
       })
       
-      const transactions = response?.data?.transactions || response?.data || []
+      const transactions = response?.data?.transactions || response?.data || response || []
+      const txns = Array.isArray(transactions) ? transactions : []
       
-      // Group by category
-      const categoryMap = {}
-      transactions.forEach(t => {
+      // Group spending by category
+      const spendingMap = {}
+      txns.forEach(t => {
         const cat = t.category || 'other'
-        if (!categoryMap[cat]) {
-          categoryMap[cat] = {
+        if (!spendingMap[cat]) spendingMap[cat] = 0
+        spendingMap[cat] += (t.amount || 0)
+      })
+      
+      // Merge saved budgets with actual spending
+      const budgetMap = {}
+      
+      // First add saved budgets
+      savedBudgets.forEach(b => {
+        const cat = b.category
+        budgetMap[cat] = {
+          _id: b._id || b.id,
+          category: cat,
+          category_display: b.display || cat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          allocated_amount: b.allocated || b.allocated_amount || 0,
+          spent_amount: spendingMap[cat] || 0,
+          academic_year: selectedYear,
+          description: b.description || '',
+        }
+      })
+      
+      // Add categories that have spending but no budget
+      Object.entries(spendingMap).forEach(([cat, spent]) => {
+        if (!budgetMap[cat]) {
+          budgetMap[cat] = {
             category: cat,
             category_display: cat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
             allocated_amount: 0,
-            spent_amount: 0,
-            remaining_amount: 0,
-            utilization_percentage: 0,
-            academic_year: currentYear,
-            transactions: [],
+            spent_amount: spent,
+            academic_year: selectedYear,
+            description: '',
           }
         }
-        categoryMap[cat].spent_amount += (t.amount || 0)
-        categoryMap[cat].transactions.push(t)
       })
       
-      const budgetList = Object.values(categoryMap)
-      
-      // Try to get saved budgets for allocation amounts
-      try {
-        const budgetResponse = await financialAPI.getFeeStructure()
-        // This is a workaround - in production you'd have a dedicated budgets API
-      } catch (e) {
-        // Ignore if budget API doesn't exist
-      }
+      const budgetList = Object.values(budgetMap).map(b => ({
+        ...b,
+        remaining_amount: b.allocated_amount - b.spent_amount,
+        utilization_percentage: b.allocated_amount > 0 
+          ? parseFloat(((b.spent_amount / b.allocated_amount) * 100).toFixed(1))
+          : 0,
+      }))
       
       setBudgets(budgetList)
     } catch (error) {
@@ -140,7 +164,7 @@ function BudgetPage() {
     setEditingBudget(null)
     setErrors({})
     setFormData({
-      academic_year: currentYear,
+      academic_year: selectedYear,
       category: '',
       allocated_amount: '',
       description: '',
@@ -155,7 +179,7 @@ function BudgetPage() {
     setEditingBudget(budget)
     setErrors({})
     setFormData({
-      academic_year: budget.academic_year || currentYear,
+      academic_year: budget.academic_year || selectedYear,
       category: budget.category || '',
       allocated_amount: budget.allocated_amount?.toString() || '',
       description: budget.description || '',
@@ -189,52 +213,50 @@ function BudgetPage() {
     setSaving(true)
     try {
       const payload = {
+        academic_year: formData.academic_year,
         category: formData.category,
         allocated_amount: parseFloat(formData.allocated_amount),
-        academic_year: formData.academic_year,
         description: formData.description,
-        term_1: formData.term_1 ? parseFloat(formData.term_1) : undefined,
-        term_2: formData.term_2 ? parseFloat(formData.term_2) : undefined,
-        term_3: formData.term_3 ? parseFloat(formData.term_3) : undefined,
+        term_breakdown: {
+          "Term 1": formData.term_1 ? parseFloat(formData.term_1) : parseFloat(formData.allocated_amount) / 3,
+          "Term 2": formData.term_2 ? parseFloat(formData.term_2) : parseFloat(formData.allocated_amount) / 3,
+          "Term 3": formData.term_3 ? parseFloat(formData.term_3) : parseFloat(formData.allocated_amount) / 3,
+        },
       }
 
-      // Update the local state since there's no dedicated budget API
-      setBudgets(prev => prev.map(b => {
-        if (b.category === formData.category && b.academic_year === formData.academic_year) {
-          return {
-            ...b,
-            allocated_amount: payload.allocated_amount,
-            description: payload.description,
-            term_1: payload.term_1,
-            term_2: payload.term_2,
-            term_3: payload.term_3,
-            remaining_amount: payload.allocated_amount - (b.spent_amount || 0),
-            utilization_percentage: b.spent_amount > 0 ? ((b.spent_amount / payload.allocated_amount) * 100).toFixed(1) : 0,
-          }
-        }
-        return b
-      }))
-      
-      // If it's a new category, add it
-      if (!budgets.find(b => b.category === formData.category)) {
-        setBudgets(prev => [...prev, {
-          category: formData.category,
-          category_display: formData.category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-          allocated_amount: payload.allocated_amount,
-          spent_amount: 0,
-          remaining_amount: payload.allocated_amount,
-          utilization_percentage: 0,
-          academic_year: formData.academic_year,
-          description: payload.description,
-        }])
+      // ✅ Save to backend
+      let response
+      if (editingBudget?._id) {
+        response = await financialAPI.updateBudget(editingBudget._id, payload)
+      } else {
+        response = await financialAPI.createBudget(payload)
       }
-      
-      toast.success(editingBudget ? 'Budget updated!' : 'Budget created!')
-      setShowModal(false)
+
+      if (response?.success) {
+        toast.success(editingBudget ? 'Budget updated!' : 'Budget created!')
+        setShowModal(false)
+        fetchBudgets()
+      } else {
+        toast.error(response?.message || 'Failed to save budget')
+      }
     } catch (error) {
+      console.error('Budget save error:', error)
       toast.error(error.message || 'Failed to save budget')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDelete = async (budget) => {
+    if (!confirm(`Delete budget for ${budget.category_display}?`)) return
+    try {
+      if (budget._id) {
+        await financialAPI.deleteBudget(budget._id)
+      }
+      toast.success('Budget deleted')
+      fetchBudgets()
+    } catch (error) {
+      toast.error('Failed to delete budget')
     }
   }
 
@@ -248,8 +270,13 @@ function BudgetPage() {
     <div className="space-y-6 animate-fade-in-up">
       <PageHeader
         title="Budget Management"
-        subtitle={`${budgets.length} categories • ${currentYear}`}
-        actions={<Button onClick={openCreateModal} variant="primary" icon={<Plus size={18} />}>Add Budget</Button>}
+        subtitle={`${budgets.length} categories • ${selectedYear}`}
+        actions={
+          <div className="flex gap-2">
+            <FormSelect value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} options={ACADEMIC_YEAR_OPTIONS} className="w-40" />
+            <Button onClick={openCreateModal} variant="primary" icon={<Plus size={18} />}>Add Budget</Button>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -268,7 +295,7 @@ function BudgetPage() {
       </div>
 
       {budgets.length === 0 ? (
-        <EmptyState icon={<BarChart3 size={48} />} title="No budgets" description={`Create budget allocations for ${currentYear}.`} action={<Button onClick={openCreateModal} variant="primary">Add Budget</Button>} />
+        <EmptyState icon={<BarChart3 size={48} />} title="No budgets" description={`Create budget allocations for ${selectedYear}.`} action={<Button onClick={openCreateModal} variant="primary">Add Budget</Button>} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {budgets.map((budget, index) => (
@@ -307,7 +334,10 @@ function BudgetPage() {
                   {(budget.utilization_percentage || 0) > 100 ? 'Over budget!' : 'Approaching limit'}
                 </div>
               )}
-              <button onClick={() => openEditModal(budget)} className="btn btn-ghost btn-sm text-blue-600 mt-3"><Edit size={14} /> Edit Budget</button>
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => openEditModal(budget)} className="btn btn-ghost btn-sm text-blue-600"><Edit size={14} /> Edit</button>
+                <button onClick={() => handleDelete(budget)} className="btn btn-ghost btn-sm text-red-600"><Trash2 size={14} /> Delete</button>
+              </div>
             </Card>
           ))}
         </div>
@@ -315,38 +345,15 @@ function BudgetPage() {
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editingBudget ? 'Edit Budget' : 'Add Budget'} size="md">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <FormSelect 
-            label="Category *" 
-            name="category" 
-            value={formData.category} 
-            onChange={handleChange} 
-            error={errors.category}
-            options={EXPENSE_CATEGORIES} 
-          />
-          <FormInput 
-            label="Allocated Amount (SSP) *" 
-            name="allocated_amount" 
-            type="number" 
-            value={formData.allocated_amount} 
-            onChange={handleChange} 
-            error={errors.allocated_amount} 
-            min="0" 
-            step="0.01"
-            placeholder="0.00"
-          />
-          <FormSelect 
-            label="Academic Year" 
-            name="academic_year" 
-            value={formData.academic_year} 
-            onChange={handleChange}
-            options={ACADEMIC_YEAR_OPTIONS} 
-          />
+          <FormSelect label="Category *" name="category" value={formData.category} onChange={handleChange} error={errors.category} options={EXPENSE_CATEGORIES} disabled={!!editingBudget} />
+          <FormInput label="Allocated Amount (SSP) *" name="allocated_amount" type="number" value={formData.allocated_amount} onChange={handleChange} error={errors.allocated_amount} min="0" step="0.01" placeholder="0.00" />
+          <FormSelect label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange} options={ACADEMIC_YEAR_OPTIONS} />
           <div>
             <label className="form-label">Term Breakdown (Optional)</label>
             <div className="grid grid-cols-3 gap-3">
-              <FormInput label="Term 1" name="term_1" type="number" value={formData.term_1} onChange={handleChange} min="0" placeholder="0" />
-              <FormInput label="Term 2" name="term_2" type="number" value={formData.term_2} onChange={handleChange} min="0" placeholder="0" />
-              <FormInput label="Term 3" name="term_3" type="number" value={formData.term_3} onChange={handleChange} min="0" placeholder="0" />
+              <FormInput label="Term 1" name="term_1" type="number" value={formData.term_1} onChange={handleChange} min="0" placeholder="Auto" />
+              <FormInput label="Term 2" name="term_2" type="number" value={formData.term_2} onChange={handleChange} min="0" placeholder="Auto" />
+              <FormInput label="Term 3" name="term_3" type="number" value={formData.term_3} onChange={handleChange} min="0" placeholder="Auto" />
             </div>
           </div>
           <div>
