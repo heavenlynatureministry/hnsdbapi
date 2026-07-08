@@ -91,7 +91,7 @@ class FinancialModel:
         if transaction_date > date.today(): return False, "Transaction date cannot be in the future", None
         if not academic_year: academic_year = FinancialModel._get_current_academic_year()
         if not term: term = FinancialModel._get_current_term()
-        reference_number = await FinancialModel._generate_reference_number(db, transaction_type)
+        reference_number = await FinancialModel._generate_reference_number(db)
         transaction = {"transaction_date": datetime.combine(transaction_date, datetime.min.time()), "amount": float(amount), "transaction_type": transaction_type, "category": category, "sub_category": sub_category, "description": description.strip(), "reference_number": reference_number, "payment_method": payment_method, "recorded_by": ObjectId(recorded_by), "approved_by": None, "approval_status": "pending", "approval_date": None, "rejection_reason": None, "receipt_url": receipt_url, "related_student_id": ObjectId(related_student_id) if related_student_id else None, "academic_year": academic_year, "term": term, "currency": currency.upper(), "exchange_rate": exchange_rate, "notes": notes, "tags": tags or [], "attachments": [], "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
         transaction = {k: v for k, v in transaction.items() if v is not None}
         try:
@@ -245,19 +245,71 @@ class FinancialModel:
             total_budget += budget["allocated_amount"]; total_spent += spent
         return {"academic_year": academic_year, "total_budget": round(total_budget, 2), "total_spent": round(total_spent, 2), "total_remaining": round(total_budget - total_spent, 2), "overall_utilization": round((total_spent / total_budget * 100) if total_budget else 0, 2), "categories": budget_summary}
 
+    # =========================================================================
+    # ✅ FIXED: HNSRCT-000000001 format for both references and receipts
+    # =========================================================================
+
     @staticmethod
-    async def _generate_reference_number(db: AsyncIOMotorDatabase, transaction_type: str) -> str:
-        prefix = "INC" if transaction_type == "income" else "EXP"; date_part = datetime.now().strftime("%Y%m%d")
-        today_start = datetime.combine(date.today(), datetime.min.time())
-        count = await db.financial_records.count_documents({"created_at": {"$gte": today_start}, "transaction_type": transaction_type})
-        return f"{prefix}-{date_part}-{(count + 1):04d}"
+    async def _generate_reference_number(db: AsyncIOMotorDatabase) -> str:
+        """
+        Generate sequential reference number in HNSRCT format.
+        Uses the same sequence as receipts for consistency.
+        """
+        return await FinancialModel._generate_receipt_number(db)
 
     @staticmethod
     async def _generate_receipt_number(db: AsyncIOMotorDatabase) -> str:
-        date_part = datetime.now().strftime("%Y%m%d")
-        today_start = datetime.combine(date.today(), datetime.min.time())
-        count = await db.payments.count_documents({"created_at": {"$gte": today_start}})
-        return f"RCP-{date_part}-{(count + 1):04d}"
+        """
+        Generate a sequential receipt number in format HNSRCT-000000001
+        HNSRCT = Heavenly Nature Schools Receipt
+        9-digit zero-padded sequential number for long-term use
+        """
+        try:
+            # Find last receipt with valid HNSRCT format (exactly 9 digits)
+            last_payment = await db.payments.find_one(
+                {"receipt_number": {"$regex": "^HNSRCT-[0-9]{9}$"}},
+                sort=[("created_at", -1)]
+            )
+            
+            if last_payment and last_payment.get("receipt_number"):
+                try:
+                    num_str = last_payment["receipt_number"].replace("HNSRCT-", "")
+                    if num_str.isdigit() and len(num_str) == 9:
+                        last_num = int(num_str)
+                        next_num = last_num + 1
+                        logger.info(f"Generated receipt: HNSRCT-{next_num:09d}")
+                        return f"HNSRCT-{next_num:09d}"
+                except (ValueError, AttributeError):
+                    pass
+            
+            # Check financial_records for existing HNSRCT references
+            last_record = await db.financial_records.find_one(
+                {"reference_number": {"$regex": "^HNSRCT-[0-9]{9}$"}},
+                sort=[("created_at", -1)]
+            )
+            if last_record and last_record.get("reference_number"):
+                try:
+                    num_str = last_record["reference_number"].replace("HNSRCT-", "")
+                    if num_str.isdigit() and len(num_str) == 9:
+                        last_num = int(num_str)
+                        next_num = last_num + 1
+                        logger.info(f"Generated receipt from records: HNSRCT-{next_num:09d}")
+                        return f"HNSRCT-{next_num:09d}"
+                except (ValueError, AttributeError):
+                    pass
+            
+            # Count existing payments as fallback starting point
+            total = await db.payments.count_documents({})
+            if total > 0:
+                logger.info(f"Starting receipt from count: HNSRCT-{total:09d}")
+                return f"HNSRCT-{total:09d}"
+                
+        except Exception as e:
+            logger.error(f"Receipt number generation error: {e}")
+        
+        # Default start
+        logger.info("Starting fresh receipt sequence: HNSRCT-000000001")
+        return "HNSRCT-000000001"
 
     # =========================================================================
     # HELPER METHODS
