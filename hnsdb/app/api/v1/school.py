@@ -40,6 +40,19 @@ def _get_current_term() -> str:
     else: return "Annual Break"
 
 
+def _safe_objectid(value) -> Optional[ObjectId]:
+    """Safely convert a value to ObjectId, returning None if invalid/empty."""
+    if not value:
+        return None
+    val = str(value).strip()
+    if not val or val.lower() == "null" or val.lower() == "undefined":
+        return None
+    try:
+        return ObjectId(val)
+    except Exception:
+        return None
+
+
 def _clean_immutable_fields(data: dict) -> dict:
     """Remove immutable fields that cannot be updated in MongoDB."""
     immutable_fields = ['_id', 'id', 'created_at', 'created_by']
@@ -70,11 +83,8 @@ async def update_school_info(
     """Update school information"""
     db = get_database()
     update_dict = {k: v for k, v in update_data.dict(exclude_unset=True).items() if v is not None}
-    
-    # Clean immutable fields
     update_dict = _clean_immutable_fields(update_dict)
     update_dict["updated_at"] = datetime.utcnow()
-    
     await db.school_info.update_one({}, {"$set": update_dict}, upsert=True)
     return {"success": True, "message": "School info updated"}
 
@@ -86,16 +96,13 @@ async def update_school_info(
 async def get_dashboard(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get dashboard statistics"""
     db = get_database()
-    
     total_students = await db.students.count_documents({"status": "active"})
     total_teachers = await db.teachers.count_documents({"status": "active"})
     total_classes = await db.classes.count_documents({"status": "active"})
     total_staff = await db.users.count_documents({"status": "active"})
     upcoming_events = await db.school_events.count_documents({"status": "upcoming"})
-    
     today = datetime.utcnow().strftime("%Y-%m-%d")
     today_attendance = await db.attendance.count_documents({"date": today})
-    
     return {
         "success": True, "message": "Dashboard data retrieved",
         "data": {
@@ -121,7 +128,6 @@ async def get_current_term(current_user: Dict[str, Any] = Depends(get_current_us
     now = datetime.utcnow()
     academic_year = _get_current_academic_year()
     term_name = _get_current_term()
-    
     if calendar:
         for term in calendar.get("terms", []):
             start = term.get("start_date")
@@ -133,7 +139,6 @@ async def get_current_term(current_user: Dict[str, Any] = Depends(get_current_us
                 break
         if calendar.get("academic_year"):
             academic_year = calendar.get("academic_year")
-    
     return {
         "success": True, "message": "Current term retrieved",
         "data": {
@@ -155,7 +160,6 @@ async def check_school_day(
         try: target_date = datetime.fromisoformat(check_date)
         except ValueError: raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     else: target_date = datetime.utcnow()
-    
     day_of_week = target_date.weekday()
     is_weekend = day_of_week >= 5
     date_str = target_date.strftime("%Y-%m-%d")
@@ -164,7 +168,6 @@ async def check_school_day(
     })
     is_holiday = holiday is not None
     is_school_day = not is_weekend and not is_holiday
-    
     return {
         "success": True, "message": "Day check complete",
         "data": {
@@ -201,12 +204,7 @@ async def create_event(
 ):
     """Create school event"""
     db = get_database()
-    event_doc = {
-        **event.dict(), 
-        "created_by": current_user["_id"], 
-        "created_at": datetime.utcnow(), 
-        "updated_at": datetime.utcnow()
-    }
+    event_doc = {**event.dict(), "created_by": current_user["_id"], "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
     result = await db.school_events.insert_one(event_doc)
     event_doc["_id"] = str(result.inserted_id)
     event_doc = parse_mongo_document(event_doc)
@@ -231,11 +229,8 @@ async def update_event(
     """Update school event"""
     db = get_database()
     update_dict = {k: v for k, v in event.dict(exclude_unset=True).items() if v is not None}
-    
-    # Clean immutable fields
     update_dict = _clean_immutable_fields(update_dict)
     update_dict["updated_at"] = datetime.utcnow()
-    
     result = await db.school_events.find_one_and_update(
         {"_id": ObjectId(event_id)}, {"$set": update_dict}, return_document=True
     )
@@ -280,12 +275,7 @@ async def add_board_member(
 ):
     """Add board member"""
     db = get_database()
-    member_doc = {
-        **member.dict(), 
-        "status": "active", 
-        "created_at": datetime.utcnow(), 
-        "updated_at": datetime.utcnow()
-    }
+    member_doc = {**member.dict(), "status": "active", "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
     result = await db.board_members.insert_one(member_doc)
     member_doc["_id"] = str(result.inserted_id)
     member_doc = parse_mongo_document(member_doc)
@@ -300,10 +290,7 @@ async def update_board_member(
     """Update board member"""
     db = get_database()
     update_dict = {**member.dict(), "updated_at": datetime.utcnow()}
-    
-    # Clean immutable fields
     update_dict = _clean_immutable_fields(update_dict)
-    
     result = await db.board_members.find_one_and_update(
         {"_id": ObjectId(member_id)}, {"$set": update_dict}, return_document=True
     )
@@ -319,8 +306,7 @@ async def remove_board_member(
     """Remove board member"""
     db = get_database()
     result = await db.board_members.update_one(
-        {"_id": ObjectId(member_id)}, 
-        {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
+        {"_id": ObjectId(member_id)}, {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
     )
     if result.modified_count == 0: raise HTTPException(status_code=404, detail="Member not found")
     return {"success": True, "message": "Board member removed"}
@@ -350,59 +336,46 @@ async def reset_academic_data(
     confirmation = body.get("confirmation", "").strip().upper()
     
     if confirmation != "DELETE ALL ACADEMIC DATA":
-        raise HTTPException(
-            status_code=400, 
-            detail="You must type 'DELETE ALL ACADEMIC DATA' to confirm reset"
-        )
+        raise HTTPException(status_code=400, detail="You must type 'DELETE ALL ACADEMIC DATA' to confirm reset")
     
     academic_year = body.get("academic_year", _get_current_academic_year())
-    
     results = {}
     
     try:
-        # Delete students
         if body.get("reset_students", True):
             student_count = await db.students.count_documents({})
             await db.students.delete_many({})
             results["students_deleted"] = student_count
         
-        # Delete teachers
         if body.get("reset_teachers", True):
             teacher_count = await db.teachers.count_documents({})
             await db.teachers.delete_many({})
             results["teachers_deleted"] = teacher_count
         
-        # Delete classes
         if body.get("reset_classes", True):
             class_count = await db.classes.count_documents({})
             await db.classes.delete_many({})
             results["classes_deleted"] = class_count
         
-        # Delete exams
         if body.get("reset_exams", True):
             exam_count = await db.exams.count_documents({})
             await db.exams.delete_many({})
             results["exams_deleted"] = exam_count
         
-        # Delete exam results
         if body.get("reset_exam_results", True):
             result_count = await db.exam_results.count_documents({})
             await db.exam_results.delete_many({})
             results["exam_results_deleted"] = result_count
         
-        # Delete attendance records
         if body.get("reset_attendance", True):
             att_count = await db.attendance.count_documents({})
             await db.attendance.delete_many({})
             results["attendance_deleted"] = att_count
         
-        # Delete events
         if body.get("reset_events", True):
             event_count = await db.school_events.count_documents({})
             await db.school_events.delete_many({})
             results["events_deleted"] = event_count
-        
-        # Keep users (admin accounts) - don't delete users collection
         
         # Log the reset
         await db.audit_log.insert_one({
@@ -419,17 +392,13 @@ async def reset_academic_data(
         return {
             "success": True,
             "message": f"Academic data reset for {academic_year}",
-            "data": {
-                "academic_year": academic_year,
-                "results": results,
-                "total_deleted": sum(results.values())
-            }
+            "data": {"academic_year": academic_year, "results": results, "total_deleted": sum(results.values())}
         }
         
     except Exception as e:
         print(f"❌ Academic reset error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to reset academic data: {str(e)}")
-        
+
 
 # =========================================================================
 # SUBJECTS
@@ -453,12 +422,10 @@ async def get_subjects(current_user: Dict[str, Any] = Depends(get_current_user))
 async def get_settings(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get school settings"""
     db = get_database()
-    # Try both collection names
     settings_doc = await db.settings.find_one({}) or await db.system_settings.find_one({}) or {}
     if settings_doc:
         settings_doc = parse_mongo_document(settings_doc)
     settings_doc["current_academic_year"] = _get_current_academic_year()
-    
     if "subjects" not in settings_doc:
         settings_doc["subjects"] = [
             "English Language", "Mathematics", "Science", "Social Studies",
@@ -466,11 +433,8 @@ async def get_settings(current_user: Dict[str, Any] = Depends(get_current_user))
             "Local Language", "Computer Studies", "Agriculture",
             "Business Studies", "History", "Geography", "Civics"
         ]
-    
-    # Convert _id to string id for frontend reference
     if "_id" in settings_doc:
         settings_doc["id"] = str(settings_doc["_id"]) if isinstance(settings_doc["_id"], ObjectId) else str(settings_doc["_id"])
-    
     return {"success": True, "message": "Settings retrieved", "data": settings_doc}
 
 
@@ -485,74 +449,33 @@ async def update_settings(
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
-    
     if not body:
         raise HTTPException(status_code=400, detail="No data to update")
-    
-    # ============================================================
-    # CRITICAL: Remove immutable fields that MongoDB rejects
-    # ============================================================
     body = _clean_immutable_fields(body)
-    
-    # Add update metadata
     body["updated_at"] = datetime.utcnow()
     body["updated_by"] = str(current_user.get("_id", ""))
-    
-    print(f"📝 Saving settings with keys: {list(body.keys())}")
-    
     try:
-        # Try settings collection first
-        result = await db.settings.update_one(
-            {}, 
-            {"$set": body}, 
-            upsert=True
-        )
-        
+        result = await db.settings.update_one({}, {"$set": body}, upsert=True)
         if result.matched_count == 0 and result.upserted_id is None:
-            # Try system_settings collection as fallback
-            result = await db.system_settings.update_one(
-                {}, 
-                {"$set": body}, 
-                upsert=True
-            )
-        
-        # Fetch updated settings to return
+            await db.system_settings.update_one({}, {"$set": body}, upsert=True)
         updated_settings = await db.settings.find_one({}) or await db.system_settings.find_one({})
         if updated_settings:
             updated_settings = parse_mongo_document(updated_settings)
             updated_settings["id"] = str(updated_settings.get("_id", ""))
             updated_settings["current_academic_year"] = _get_current_academic_year()
-        
-        return {
-            "success": True,
-            "message": "Settings saved successfully",
-            "data": updated_settings
-        }
-        
+        return {"success": True, "message": "Settings saved successfully", "data": updated_settings}
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ Settings save error: {error_msg}")
-        
-        # Check for immutable field error specifically (MongoDB error code 66)
         if "immutable field" in error_msg.lower() or "code': 66" in error_msg or "code\": 66" in error_msg:
-            print(f"⚠️ Immutable field detected. Performing aggressive cleanup...")
-            
-            # More aggressive cleaning
             aggressive_immutable = ['_id', 'id', 'created_at', 'created_by', 'updated_at', 'updated_by']
             for field in aggressive_immutable:
                 body.pop(field, None)
-            
             body["updated_at"] = datetime.utcnow()
-            
             try:
                 await db.settings.update_one({}, {"$set": body}, upsert=True)
                 return {"success": True, "message": "Settings saved successfully (after cleanup)"}
             except Exception as retry_error:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to save settings even after cleanup: {str(retry_error)}"
-                )
-        
+                raise HTTPException(status_code=500, detail=f"Failed to save settings: {str(retry_error)}")
         raise HTTPException(status_code=500, detail=f"Failed to save settings: {error_msg}")
 
 
@@ -568,10 +491,7 @@ async def initialize_school(current_user: Dict[str, Any] = Depends(require_role(
         "motto": "Nurturing Right Leaders",
         "academic_year": _get_current_academic_year(),
         "current_term": _get_current_term(),
-        "terms_per_year": 3, 
-        "language": "en", 
-        "currency": "SSP", 
-        "timezone": "Africa/Juba",
+        "terms_per_year": 3, "language": "en", "currency": "SSP", "timezone": "Africa/Juba",
         "subjects": [
             "English Language", "Mathematics", "Science", "Social Studies",
             "Religious Education", "Creative Arts", "Physical Education",
@@ -580,17 +500,11 @@ async def initialize_school(current_user: Dict[str, Any] = Depends(require_role(
         ],
         "updated_at": datetime.utcnow()
     }
-    
     try:
         await db.settings.update_one({}, {"$set": settings_data}, upsert=True)
     except Exception:
         await db.system_settings.update_one({}, {"$set": settings_data}, upsert=True)
-    
     return {
-        "success": True, 
-        "message": "School initialized successfully",
-        "data": {
-            "academic_year": _get_current_academic_year(),
-            "current_term": _get_current_term()
-        }
+        "success": True, "message": "School initialized successfully",
+        "data": {"academic_year": _get_current_academic_year(), "current_term": _get_current_term()}
     }
