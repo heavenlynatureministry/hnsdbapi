@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import financialAPI from '../../api/financial'
+import ReceiptPrint from '../../components/receipts/ReceiptPrint'
 import PageHeader from '../../components/common/PageHeader'
 import SearchBar from '../../components/common/SearchBar'
 import Pagination from '../../components/common/Pagination'
@@ -11,7 +12,7 @@ import Badge from '../../components/common/Badge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { 
   DollarSign, Plus, Download, TrendingUp, TrendingDown,
-  MoreVertical, Edit, Trash2, CheckCircle, XCircle, Clock
+  MoreVertical, Edit, Trash2, CheckCircle, XCircle, Clock, Eye, Printer
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -27,6 +28,11 @@ function TransactionsList() {
   const [totalPages, setTotalPages] = useState(0)
   const [openDropdown, setOpenDropdown] = useState(null)
   const [showDelete, setShowDelete] = useState(null)
+  
+  // ✅ Receipt state
+  const [showReceipt, setShowReceipt] = useState(false)
+  const [receiptData, setReceiptData] = useState(null)
+  
   const limit = 20
 
   useEffect(() => {
@@ -45,13 +51,14 @@ function TransactionsList() {
         limit,
       })
       
+      // ✅ Interceptor returns response.data directly
       const data = response?.data || response
       const txnList = data?.transactions || data || []
       const safeTxns = Array.isArray(txnList) ? txnList : []
       
       setTransactions(safeTxns)
-      setTotal(data?.total || 0)
-      setTotalPages(data?.total_pages || Math.ceil((data?.total || 0) / limit))
+      setTotal(data?.total || safeTxns.length)
+      setTotalPages(data?.total_pages || Math.ceil((data?.total || safeTxns.length) / limit))
     } catch (error) {
       console.error('Failed to fetch transactions:', error)
       toast.error('Failed to load transactions')
@@ -70,7 +77,6 @@ function TransactionsList() {
   const handleDelete = async () => {
     if (!showDelete) return
     try {
-      // ✅ Fixed: Use financialAPI instead of direct api call with wrong path
       await financialAPI.deleteTransaction(showDelete._id)
       toast.success('Transaction deleted')
       setShowDelete(null)
@@ -80,13 +86,37 @@ function TransactionsList() {
     }
   }
 
+  // ✅ View receipt for a transaction
+  const handleViewReceipt = async (transactionId) => {
+    if (!transactionId) return
+    try {
+      toast.loading('Loading receipt...')
+      const response = await financialAPI.getTransactionReceipt(transactionId)
+      toast.dismiss()
+      // ✅ Interceptor returns response.data directly
+      if (response?.success === true && response.data) {
+        setReceiptData(response.data)
+        setShowReceipt(true)
+      } else {
+        toast.error('Could not load receipt')
+      }
+    } catch (error) {
+      toast.dismiss()
+      console.error('Receipt load error:', error)
+      toast.error('Failed to load receipt')
+    }
+  }
+
   const getCategoryDisplay = (category) => {
     if (!category) return 'N/A'
     return category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
 
   const getStatusBadge = (status) => {
-    const variants = { approved: 'success', completed: 'success', pending: 'warning', rejected: 'danger', cancelled: 'gray' }
+    const variants = { 
+      approved: 'success', completed: 'success', 
+      pending: 'warning', rejected: 'danger', cancelled: 'gray' 
+    }
     const icons = { approved: CheckCircle, completed: CheckCircle, pending: Clock, rejected: XCircle }
     const Icon = icons[status]
     return (
@@ -100,12 +130,20 @@ function TransactionsList() {
   }
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
+  
+  // ✅ Fixed: Count by approval_status (transactions use approval_status, not status)
   const totalIncome = safeTransactions
     .filter(t => t?.transaction_type === 'income' && (t?.approval_status === 'approved' || t?.approval_status === 'completed'))
     .reduce((s, t) => s + (t?.amount || 0), 0)
   const totalExpenses = safeTransactions
     .filter(t => t?.transaction_type === 'expense' && (t?.approval_status === 'approved' || t?.approval_status === 'completed'))
     .reduce((s, t) => s + (t?.amount || 0), 0)
+  
+  // ✅ Count by approval_status
+  const completedCount = safeTransactions.filter(t => 
+    t?.approval_status === 'approved' || t?.approval_status === 'completed'
+  ).length
+  const pendingCount = safeTransactions.filter(t => t?.approval_status === 'pending').length
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -119,12 +157,13 @@ function TransactionsList() {
         }
       />
 
+      {/* ✅ Fixed Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Income', value: `SSP ${totalIncome.toLocaleString()}`, icon: TrendingUp, color: 'bg-green-100 text-green-600' },
           { label: 'Total Expenses', value: `SSP ${totalExpenses.toLocaleString()}`, icon: TrendingDown, color: 'bg-red-100 text-red-600' },
           { label: 'Net Balance', value: `SSP ${(totalIncome - totalExpenses).toLocaleString()}`, icon: DollarSign, color: 'bg-blue-100 text-blue-600' },
-          { label: 'Pending', value: safeTransactions.filter(t => t?.approval_status === 'pending').length, icon: Clock, color: 'bg-yellow-100 text-yellow-600' },
+          { label: 'Completed', value: completedCount, icon: CheckCircle, color: 'bg-emerald-100 text-emerald-600' },
         ].map((stat, i) => (
           <div key={i} className="stat-card">
             <div className={`stat-card-icon ${stat.color}`}><stat.icon size={20} /></div>
@@ -144,8 +183,8 @@ function TransactionsList() {
           </select>
           <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} className="form-input w-full sm:w-36">
             <option value="">All Status</option>
-            <option value="approved">Approved</option>
             <option value="completed">Completed</option>
+            <option value="approved">Approved</option>
             <option value="pending">Pending</option>
             <option value="rejected">Rejected</option>
           </select>
@@ -184,18 +223,23 @@ function TransactionsList() {
                     </td>
                     <td>{getStatusBadge(txn?.approval_status)}</td>
                     <td className="text-right">
-                      <div className="relative">
-                        <button onClick={() => setOpenDropdown(openDropdown === txn?._id ? null : txn?._id)} className="btn btn-ghost btn-sm btn-icon"><MoreVertical size={16} /></button>
-                        {openDropdown === txn?._id && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
-                            <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border z-20 py-1">
-                              {/* ✅ Fixed: Edit link goes to /financial/edit/:id */}
-                              <Link to={`/financial/edit/${txn?._id}`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Edit size={14} /> Edit</Link>
-                              <button onClick={() => { setShowDelete(txn); setOpenDropdown(null) }} className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 w-full text-left"><Trash2 size={14} /> Delete</button>
-                            </div>
-                          </>
-                        )}
+                      <div className="flex items-center gap-1 justify-end">
+                        {/* ✅ Receipt buttons */}
+                        <button onClick={() => handleViewReceipt(txn?._id)} className="btn btn-ghost btn-sm btn-icon text-blue-600" title="View Receipt">
+                          <Eye size={14} />
+                        </button>
+                        <div className="relative">
+                          <button onClick={() => setOpenDropdown(openDropdown === txn?._id ? null : txn?._id)} className="btn btn-ghost btn-sm btn-icon"><MoreVertical size={16} /></button>
+                          {openDropdown === txn?._id && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
+                              <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border z-20 py-1">
+                                <Link to={`/financial/edit/${txn?._id}`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Edit size={14} /> Edit</Link>
+                                <button onClick={() => { setShowDelete(txn); setOpenDropdown(null) }} className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 w-full text-left"><Trash2 size={14} /> Delete</button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -205,6 +249,17 @@ function TransactionsList() {
           </div>
           {totalPages > 1 && <div className="border-t px-4 py-3"><Pagination page={page} totalPages={totalPages} onPageChange={setPage} /></div>}
         </div>
+      )}
+
+      {/* ✅ Receipt Modal */}
+      {showReceipt && receiptData && (
+        <ReceiptPrint 
+          receipt={receiptData}
+          onClose={() => {
+            setShowReceipt(false)
+            setReceiptData(null)
+          }}
+        />
       )}
 
       <ConfirmDialog 
