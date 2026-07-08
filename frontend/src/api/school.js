@@ -40,7 +40,7 @@ const schoolAPI = {
   listStrategicPlans: async (params = {}) => api.get('/school/strategic-plans', { params }),
   
   // Settings
-  getSettings: async (params = {}) => api.get('/school/settings', { params }),
+  resetAcademicData: async (data) => api.post('/school/reset-academic', data),getSettings: async (params = {}) => api.get('/school/settings', { params }),
   updateSetting: async (data) => api.put('/school/settings', data),
   getSetting: async (key) => api.get(`/school/settings/${key}`),
   
