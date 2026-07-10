@@ -486,55 +486,6 @@ async def delete_fee(fee_id: str = Path(...), current_user: Dict[str, Any] = Dep
 
 
 # =========================================================================
-# RESET FINANCIAL DATA (ADMIN ONLY)
-# =========================================================================
-
-@router.post("/reset")
-async def reset_financial_data(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin"))):
-    """⚠️ Reset all financial data for a new academic year."""
-    db = get_database()
-    try: body = await request.json()
-    except Exception: body = {}
-    confirmation = body.get("confirmation", "").strip().upper()
-    if confirmation != "DELETE ALL FINANCIAL DATA":
-        raise HTTPException(status_code=400, detail="You must type 'DELETE ALL FINANCIAL DATA' to confirm reset")
-    academic_year = body.get("academic_year", _get_current_academic_year())
-    results = {}
-    try:
-        if body.get("reset_transactions", True):
-            c = await db.financial_records.count_documents({"academic_year": academic_year})
-            await db.financial_records.delete_many({"academic_year": academic_year})
-            results["transactions_deleted"] = c
-        if body.get("reset_payments", True):
-            c = await db.payments.count_documents({"academic_year": academic_year})
-            await db.payments.delete_many({"academic_year": academic_year})
-            results["payments_deleted"] = c
-        if body.get("reset_fees", True):
-            c = await db.fee_structure.count_documents({"academic_year": academic_year})
-            await db.fee_structure.delete_many({"academic_year": academic_year})
-            results["fees_deleted"] = c
-        if body.get("reset_budgets", True):
-            c = await db.budgets.count_documents({"academic_year": academic_year})
-            await db.budgets.delete_many({"academic_year": academic_year})
-            results["budgets_deleted"] = c
-        # Safe audit log
-        try:
-            changed_by = None; uid = current_user.get("_id")
-            if uid:
-                cv = _safe_objectid(uid)
-                if cv: changed_by = cv
-            await db.audit_log.insert_one({"table_name": "financial_reset", "record_id": f"RESET-{academic_year}",
-                "operation": "RESET_ALL", "changed_by": changed_by, "details": results, "changed_at": datetime.utcnow()})
-        except Exception as e: print(f"⚠️ Audit log: {e}")
-        print(f"🔄 Financial reset: {results}")
-        return {"success": True, "message": f"Financial data reset for {academic_year}",
-                "data": {"academic_year": academic_year, "results": results, "total_deleted": sum(results.values())}}
-    except Exception as e:
-        print(f"❌ Reset error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to reset: {str(e)}")
-
-
-# =========================================================================
 # TRANSACTIONS
 # =========================================================================
 
