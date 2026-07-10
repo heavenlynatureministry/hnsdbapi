@@ -36,13 +36,18 @@ function ReceiptPrint({ receipt, onClose }) {
 
   const schoolAddress = formatAddress(receipt?.school?.address)
 
+  // ✅ Detect receipt type
+  const isStudentPayment = !!receipt?.student_name && receipt?.student_name !== 'N/A'
+  const receiptTitle = isStudentPayment ? 'Payment Receipt' : 'Official Receipt'
+  const receiptHeader = isStudentPayment ? 'PAYMENT RECEIPT' : 'OFFICIAL RECEIPT'
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
           <div>
-            <h3 className="font-semibold text-lg">Payment Receipt</h3>
+            <h3 className="font-semibold text-lg">{receiptTitle}</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {receipt?.receipt_number}
             </p>
@@ -86,7 +91,7 @@ function ReceiptPrint({ receipt, onClose }) {
             {/* Content */}
             <div className="p-3">
               <div className="text-center font-bold text-xs border border-black py-1 mb-2 bg-gray-100">
-                PAYMENT RECEIPT
+                {receiptHeader}
               </div>
               <div className="text-right text-xs mb-2">
                 <strong>Receipt No:</strong> {receipt?.receipt_number}
@@ -97,17 +102,42 @@ function ReceiptPrint({ receipt, onClose }) {
                   <span className="font-bold">Date:</span>
                   <span>{receipt?.date ? new Date(receipt.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="font-bold">Student:</span>
-                  <span>{receipt?.student_name || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-bold">Class:</span>
-                  <span>{receipt?.class_name || 'N/A'}</span>
-                </div>
+
+                {/* ✅ Student Payment Details */}
+                {isStudentPayment && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="font-bold">Student:</span>
+                      <span>{receipt?.student_name || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-bold">Class:</span>
+                      <span>{receipt?.class_name || 'N/A'}</span>
+                    </div>
+                  </>
+                )}
+
+                {/* ✅ Organization/Transaction Details */}
+                {!isStudentPayment && (
+                  <>
+                    {receipt?.organization_name && (
+                      <div className="flex justify-between">
+                        <span className="font-bold">Organization:</span>
+                        <span>{receipt.organization_name}</span>
+                      </div>
+                    )}
+                    {receipt?.representative_name && (
+                      <div className="flex justify-between">
+                        <span className="font-bold">Representative:</span>
+                        <span>{receipt.representative_name}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
                 <div className="flex justify-between">
                   <span className="font-bold">Payment For:</span>
-                  <span>{receipt?.payment_for || 'N/A'}</span>
+                  <span>{receipt?.payment_for || receipt?.description || 'N/A'}</span>
                 </div>
                 {receipt?.term && (
                   <div className="flex justify-between">
@@ -130,7 +160,7 @@ function ReceiptPrint({ receipt, onClose }) {
                 <div className="text-xs italic mt-1">{receipt?.amount_words || ''}</div>
               </div>
 
-              {/* Balance Info */}
+              {/* Balance Info - only for student payments */}
               {receipt?.balance_info && (
                 <div className="border-t border-dashed border-gray-400 mt-2 pt-2 space-y-1">
                   <div className="flex justify-between text-xs">
