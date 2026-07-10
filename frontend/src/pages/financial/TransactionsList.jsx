@@ -10,24 +10,11 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmptyState from '../../components/common/EmptyState'
 import Badge from '../../components/common/Badge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
-import Modal from '../../components/common/Modal'
-import Button from '../../components/common/Button'
 import { 
   DollarSign, Plus, Download, TrendingUp, TrendingDown,
-  MoreVertical, Edit, Trash2, CheckCircle, XCircle, Clock, Eye, Printer,
-  RotateCcw, AlertTriangle
+  MoreVertical, Edit, Trash2, CheckCircle, XCircle, Clock, Eye, Printer
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-function getCurrentAcademicYear() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth() + 1
-  const startYear = month === 1 ? year - 1 : year
-  return `${startYear}/${startYear + 1}`
-}
-
-const currentYear = getCurrentAcademicYear()
 
 function TransactionsList() {
   const { updatePageTitle, updateBreadcrumbs } = useApp()
@@ -45,17 +32,6 @@ function TransactionsList() {
   // Receipt state
   const [showReceipt, setShowReceipt] = useState(false)
   const [receiptData, setReceiptData] = useState(null)
-  
-  // ✅ Reset state
-  const [showResetDialog, setShowResetDialog] = useState(false)
-  const [resetConfirm, setResetConfirm] = useState('')
-  const [resetting, setResetting] = useState(false)
-  const [resetOptions, setResetOptions] = useState({
-    reset_transactions: true,
-    reset_payments: true,
-    reset_fees: true,
-    reset_budgets: true,
-  })
   
   const limit = 20
 
@@ -75,6 +51,7 @@ function TransactionsList() {
         limit,
       })
       
+      // Interceptor returns response.data directly
       const data = response?.data || response
       const txnList = data?.transactions || data || []
       const safeTxns = Array.isArray(txnList) ? txnList : []
@@ -128,40 +105,6 @@ function TransactionsList() {
     }
   }
 
-  // ✅ Reset handler
-  const handleReset = async () => {
-    if (resetConfirm !== 'DELETE ALL FINANCIAL DATA') {
-      toast.error('Please type the confirmation phrase exactly')
-      return
-    }
-    
-    setResetting(true)
-    try {
-      const response = await financialAPI.resetFinancialData({
-        confirmation: resetConfirm,
-        academic_year: currentYear,
-        ...resetOptions,
-      })
-      
-      const result = response?.data || response
-      if (result?.success) {
-        const deleted = result.data?.total_deleted || 0
-        toast.success(`✅ Reset complete! ${deleted} records deleted.`)
-        setShowResetDialog(false)
-        setResetConfirm('')
-        fetchTransactions()
-      } else {
-        toast.error(result?.message || 'Reset failed')
-      }
-    } catch (error) {
-      console.error('Reset error:', error)
-      const errorMsg = error.response?.data?.detail || error.message || 'Reset failed'
-      toast.error(errorMsg)
-    } finally {
-      setResetting(false)
-    }
-  }
-
   const getCategoryDisplay = (category) => {
     if (!category) return 'N/A'
     return category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
@@ -203,19 +146,9 @@ function TransactionsList() {
         title="Financial Transactions"
         subtitle="Manage income and expense records"
         actions={
-          <div className="flex gap-2">
-            <Link to="/financial/new" className="btn btn-primary">
-              <Plus size={18} /> Add Transaction
-            </Link>
-            {/* ✅ Reset Button */}
-            <Button 
-              onClick={() => setShowResetDialog(true)} 
-              variant="danger" 
-              icon={<RotateCcw size={18} />}
-            >
-              Reset Data
-            </Button>
-          </div>
+          <Link to="/financial/new" className="btn btn-primary">
+            <Plus size={18} /> Add Transaction
+          </Link>
         }
       />
 
@@ -312,83 +245,6 @@ function TransactionsList() {
         title="Delete Transaction" message="Are you sure you want to permanently delete this transaction?" 
         confirmText="Delete Permanently" variant="danger" 
       />
-
-      {/* ✅ Reset Financial Data Modal */}
-      <Modal 
-        open={showResetDialog} 
-        onClose={() => { setShowResetDialog(false); setResetConfirm('') }} 
-        title="⚠️ Reset Financial Data" 
-        size="md"
-      >
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200">
-            <AlertTriangle size={24} className="text-red-600 flex-shrink-0" />
-            <div>
-              <p className="font-bold text-red-700 dark:text-red-400">DANGER: This action cannot be undone!</p>
-              <p className="text-sm text-red-600 dark:text-red-400">
-                All financial records for <strong>{currentYear}</strong> will be permanently deleted.
-                Make sure to download all reports before resetting!
-              </p>
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <p className="font-medium">Select what to delete:</p>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={resetOptions.reset_transactions} 
-                onChange={(e) => setResetOptions(prev => ({ ...prev, reset_transactions: e.target.checked }))}
-                className="w-4 h-4 text-red-600 rounded" />
-              Transactions (income & expense records)
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={resetOptions.reset_payments} 
-                onChange={(e) => setResetOptions(prev => ({ ...prev, reset_payments: e.target.checked }))}
-                className="w-4 h-4 text-red-600 rounded" />
-              Student Payments
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={resetOptions.reset_fees} 
-                onChange={(e) => setResetOptions(prev => ({ ...prev, reset_fees: e.target.checked }))}
-                className="w-4 h-4 text-red-600 rounded" />
-              Fee Structures
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={resetOptions.reset_budgets} 
-                onChange={(e) => setResetOptions(prev => ({ ...prev, reset_budgets: e.target.checked }))}
-                className="w-4 h-4 text-red-600 rounded" />
-              Budget Allocations
-            </label>
-          </div>
-          
-          <div>
-            <p className="text-sm font-medium mb-1">
-              Type <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-red-700 font-mono text-xs">DELETE ALL FINANCIAL DATA</code> to confirm:
-            </p>
-            <input 
-              type="text" 
-              value={resetConfirm} 
-              onChange={(e) => setResetConfirm(e.target.value)}
-              className="form-input w-full font-mono text-sm"
-              placeholder="Type the confirmation phrase..."
-            />
-          </div>
-          
-          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <Button 
-              onClick={handleReset} 
-              variant="danger" 
-              loading={resetting}
-              disabled={resetConfirm !== 'DELETE ALL FINANCIAL DATA'}
-              icon={<RotateCcw size={18} />}
-            >
-              {resetting ? 'Resetting...' : 'Reset All Financial Data'}
-            </Button>
-            <Button variant="secondary" onClick={() => { setShowResetDialog(false); setResetConfirm('') }}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }
