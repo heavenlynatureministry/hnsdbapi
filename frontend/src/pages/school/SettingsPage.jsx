@@ -107,7 +107,7 @@ function SettingsPage() {
     } finally { setSaving(false) }
   }
 
-  const handleReset = () => {
+  const handleReload = () => {
     if (!confirm('Reset all settings to defaults?')) return
     fetchSettings()
     toast.success('Settings reloaded from server')
@@ -119,6 +119,7 @@ function SettingsPage() {
     setShowResetDialog(true)
   }
 
+  // ✅ Fixed reset handler - uses response directly (interceptor unwraps)
   const handleResetData = async () => {
     const confirmPhrase = resetType === 'financial' 
       ? 'DELETE ALL FINANCIAL DATA' 
@@ -133,25 +134,23 @@ function SettingsPage() {
     try {
       let response
       if (resetType === 'financial') {
-        response = await financialAPI.resetFinancialData({
-          confirmation: resetConfirm,
-          academic_year: currentYear,
-        })
+        response = await financialAPI.resetFinancialData({ confirmation: resetConfirm })
       } else {
-        response = await schoolAPI.resetAcademicData({
-          confirmation: resetConfirm,
-          academic_year: currentYear,
-        })
+        response = await schoolAPI.resetAcademicData({ confirmation: resetConfirm })
       }
       
-      const result = response?.data || response
-      if (result?.success) {
-        toast.success(`✅ Reset complete! ${result.data?.total_deleted || 0} records deleted.`)
+      // ✅ Interceptor returns response.data directly
+      // So response = { success: true, message: "...", data: {...} }
+      if (response?.success === true) {
+        const deleted = response.data?.total_deleted || 0
+        toast.success(`✅ Reset complete! ${deleted} records deleted.`)
         setShowResetDialog(false)
+        setResetConfirm('')
       } else {
-        toast.error(result?.message || 'Reset failed')
+        toast.error(response?.message || 'Reset failed')
       }
     } catch (error) {
+      console.error('Reset error:', error)
       const errorMsg = error.response?.data?.detail || error.message || 'Reset failed'
       toast.error(errorMsg)
     } finally {
@@ -180,7 +179,7 @@ function SettingsPage() {
         subtitle="Configure your school management system"
         actions={
           <div className="flex gap-2">
-            <Button onClick={handleReset} variant="secondary" icon={<RotateCcw size={18} />}>Reload</Button>
+            <Button onClick={handleReload} variant="secondary" icon={<RotateCcw size={18} />}>Reload</Button>
             <Button onClick={handleSave} variant="primary" loading={saving} icon={<Save size={18} />}>Save Settings</Button>
           </div>
         }
@@ -320,14 +319,14 @@ function SettingsPage() {
             </Card>
           )}
 
-          {/* ✅ DATA RESET SECTION */}
+          {/* DATA RESET SECTION */}
           {activeSection === 'reset' && (
             <div className="space-y-6">
               <Card title="⚠️ Data Reset" icon={<AlertTriangle size={20} className="text-red-600" />}>
                 <div className="space-y-4">
                   <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200">
                     <p className="text-sm text-red-700 dark:text-red-400">
-                      <strong>WARNING:</strong> These actions permanently delete data. 
+                      <strong>WARNING:</strong> These actions permanently delete ALL records. 
                       Always <strong>download all reports</strong> before resetting. 
                       This cannot be undone! User accounts are preserved.
                     </p>
@@ -340,7 +339,7 @@ function SettingsPage() {
                         <h4 className="font-semibold">Financial Data Reset</h4>
                       </div>
                       <p className="text-xs text-gray-500 mb-3">
-                        Deletes all transactions, payments, fee structures, and budgets for {currentYear}.
+                        Deletes all transactions, payments, fee structures, and budgets.
                       </p>
                       <Button onClick={() => openResetDialog('financial')} variant="danger" size="sm" icon={<Trash2 size={14} />}>
                         Reset Financial Data
@@ -374,7 +373,7 @@ function SettingsPage() {
         </div>
       </div>
 
-      {/* ✅ Reset Confirmation Modal */}
+      {/* Reset Confirmation Modal */}
       <Modal 
         open={showResetDialog} 
         onClose={() => setShowResetDialog(false)} 
@@ -387,7 +386,7 @@ function SettingsPage() {
             <div>
               <p className="font-bold text-red-700 dark:text-red-400">DANGER: This cannot be undone!</p>
               <p className="text-sm text-red-600 dark:text-red-400">
-                All {resetType === 'financial' ? 'financial' : 'academic'} records for <strong>{currentYear}</strong> will be permanently deleted.
+                All {resetType === 'financial' ? 'financial' : 'academic'} records will be permanently deleted.
               </p>
             </div>
           </div>
