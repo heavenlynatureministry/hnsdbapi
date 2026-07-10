@@ -2,6 +2,7 @@
  * Export receipt to print/PDF
  * Uses the same proven approach as exportPDF.js
  * Optimized for small receipt printers (A5, B5, thermal)
+ * Supports both Student Payments and Organization Transactions
  */
 
 export const exportReceipt = (receipt) => {
@@ -28,7 +29,12 @@ export const exportReceipt = (receipt) => {
     return Number(amount || 0).toLocaleString('en', { minimumFractionDigits: 2 })
   }
 
-  // ✅ Balance info HTML
+  // Check if this is a student payment or organization transaction
+  const isStudentPayment = !!receipt?.student_name && receipt?.student_name !== 'N/A'
+  const isOrganization = !!receipt?.organization_name
+  const isTransaction = !isStudentPayment // If not a student payment, it's a transaction
+
+  // Balance info (only for student payments)
   const balanceHTML = receipt?.balance_info ? `
     <div style="border-top:1px dashed #000; margin-top:3mm; padding-top:2mm;">
       <div class="info-row">
@@ -47,6 +53,27 @@ export const exportReceipt = (receipt) => {
       </div>
     </div>
   ` : ''
+
+  // Build the details section based on record type
+  let detailsHTML = ''
+  
+  if (isStudentPayment) {
+    // Student payment details
+    detailsHTML = `
+      <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${receipt?.student_name || 'N/A'}</span></div>
+      <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${receipt?.class_name || 'N/A'}</span></div>
+      <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || 'School Fees'}</span></div>
+      ${receipt?.term ? `<div class="info-row"><span class="info-label">Term:</span><span class="info-value">${receipt.term}</span></div>` : ''}
+    `
+  } else {
+    // Organization/Transaction details
+    detailsHTML = `
+      ${receipt?.organization_name ? `<div class="info-row"><span class="info-label">Organization:</span><span class="info-value">${receipt.organization_name}</span></div>` : ''}
+      ${receipt?.representative_name ? `<div class="info-row"><span class="info-label">Representative:</span><span class="info-value">${receipt.representative_name}</span></div>` : ''}
+      <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || receipt?.description || 'Transaction'}</span></div>
+      ${receipt?.term ? `<div class="info-row"><span class="info-label">Term:</span><span class="info-value">${receipt.term}</span></div>` : ''}
+    `
+  }
 
   printWindow.document.write(`
     <!DOCTYPE html>
@@ -67,8 +94,8 @@ export const exportReceipt = (receipt) => {
         .receipt-title { text-align:center; font-size:13px; font-weight:bold; margin:3mm 0; text-transform:uppercase; letter-spacing:2px; border:1.5px solid #000; padding:2mm; background:#f5f5f5; }
         .receipt-number { text-align:right; font-size:9px; margin-bottom:3mm; padding:2mm 0; }
         .info-row { display:flex; justify-content:space-between; margin-bottom:1.5mm; font-size:10px; padding:1mm 0; }
-        .info-label { font-weight:bold; width:35%; white-space:nowrap; }
-        .info-value { width:65%; border-bottom:1px dotted #ccc; text-align:right; }
+        .info-label { font-weight:bold; width:40%; white-space:nowrap; }
+        .info-value { width:60%; border-bottom:1px dotted #ccc; text-align:right; }
         .amount-section { border:2px solid #000; padding:3mm; margin:4mm 0; text-align:center; background:#fafafa; }
         .amount-label { font-size:9px; margin-bottom:1mm; text-transform:uppercase; letter-spacing:1px; }
         .amount-value { font-size:22px; font-weight:bold; font-family:'Arial',sans-serif; margin:2mm 0; }
@@ -91,18 +118,15 @@ export const exportReceipt = (receipt) => {
           <div class="letterhead-fallback">
             <div style="font-size:15px;font-weight:bold;text-transform:uppercase;">${receipt?.school?.name || 'School Name'}</div>
             ${receipt?.school?.motto ? `<div style="font-size:9px;font-style:italic;margin:1mm 0;">"${receipt.school.motto}"</div>` : ''}
-            <div style="font-size:8px;">${receipt?.school?.address || ''} | Tel: ${receipt?.school?.phone || ''}</div>
+            <div style="font-size:8px;">${typeof receipt?.school?.address === 'string' ? receipt.school.address : ''} | Tel: ${receipt?.school?.phone || ''}</div>
           </div>
         </div>
         <div class="receipt-content">
-          <div class="receipt-title">Payment Receipt</div>
+          <div class="receipt-title">${isStudentPayment ? 'Payment Receipt' : 'Official Receipt'}</div>
           <div class="receipt-number"><strong>Receipt No:</strong> ${receipt?.receipt_number || 'N/A'}</div>
           <div class="info-row"><span class="info-label">Date:</span><span class="info-value">${formatDate(receipt?.date)}</span></div>
-          <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${receipt?.student_name || 'N/A'}</span></div>
-          <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${receipt?.class_name || 'N/A'}</span></div>
-          <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || 'School Fees'}</span></div>
-          ${receipt?.term ? `<div class="info-row"><span class="info-label">Term:</span><span class="info-value">${receipt.term}</span></div>` : ''}
-          ${receipt?.academic_year ? `<div class="info-row"><span class="info-label">Year:</span><span class="info-value">${receipt.academic_year}</span></div>` : ''}
+          ${detailsHTML}
+          ${receipt?.academic_year ? `<div class="info-row"><span class="info-label">Academic Year:</span><span class="info-value">${receipt.academic_year}</span></div>` : ''}
           <div class="info-row"><span class="info-label">Method:</span><span class="info-value">${receipt?.payment_method || 'Cash'}</span></div>
           ${receipt?.transaction_reference ? `<div class="info-row"><span class="info-label">Ref:</span><span class="info-value">${receipt.transaction_reference}</span></div>` : ''}
           <div class="amount-section">
@@ -140,13 +164,27 @@ export const printReceiptDirect = (receipt) => {
   const formatDate = (dateStr) => !dateStr ? 'N/A' : new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   const formatAmount = (amount) => Number(amount || 0).toLocaleString('en', { minimumFractionDigits: 2 })
 
-  // ✅ Balance info HTML
+  const isStudentPayment = !!receipt?.student_name && receipt?.student_name !== 'N/A'
+
   const balanceHTML = receipt?.balance_info ? `
     <div style="border-top:1px dashed #000; margin-top:3mm; padding-top:2mm;">
       <div class="info-row"><span class="info-label">Total Fee:</span><span class="info-value">SSP ${formatAmount(receipt.balance_info.total_fee)}</span></div>
       <div class="info-row"><span class="info-label">Total Paid:</span><span class="info-value">SSP ${formatAmount(receipt.balance_info.total_paid)}</span></div>
       <div class="info-row" style="font-weight:bold;"><span class="info-label">Balance:</span><span class="info-value" style="color:${receipt.balance_info.is_cleared ? '#059669' : '#dc2626'};">${receipt.balance_info.balance_display}</span></div>
     </div>` : ''
+
+  let detailsHTML = ''
+  if (isStudentPayment) {
+    detailsHTML = `
+      <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${receipt?.student_name || 'N/A'}</span></div>
+      <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${receipt?.class_name || 'N/A'}</span></div>
+    `
+  } else {
+    detailsHTML = `
+      ${receipt?.organization_name ? `<div class="info-row"><span class="info-label">Organization:</span><span class="info-value">${receipt.organization_name}</span></div>` : ''}
+      ${receipt?.representative_name ? `<div class="info-row"><span class="info-label">Representative:</span><span class="info-value">${receipt.representative_name}</span></div>` : ''}
+    `
+  }
 
   const printPage = window.open('', '_blank')
   if (!printPage) { alert('Please allow pop-ups.'); return }
@@ -165,8 +203,8 @@ export const printReceiptDirect = (receipt) => {
       .receipt-title { text-align:center; font-size:14px; font-weight:bold; margin:4mm 0; text-transform:uppercase; letter-spacing:2px; border:1.5px solid #000; padding:2mm; background:#f5f5f5; }
       .receipt-number { text-align:right; font-size:10px; margin-bottom:4mm; padding:2mm 0; border-bottom:1px dashed #ccc; }
       .info-row { display:flex; justify-content:space-between; margin-bottom:2mm; font-size:11px; padding:1mm 0; }
-      .info-label { font-weight:bold; width:38%; white-space:nowrap; }
-      .info-value { width:62%; border-bottom:1px dotted #ccc; text-align:right; }
+      .info-label { font-weight:bold; width:40%; white-space:nowrap; }
+      .info-value { width:60%; border-bottom:1px dotted #ccc; text-align:right; }
       .amount-section { border:2px solid #000; padding:4mm; margin:5mm 0; text-align:center; background:#fafafa; }
       .amount-label { font-size:10px; margin-bottom:2mm; text-transform:uppercase; }
       .amount-value { font-size:24px; font-weight:bold; font-family:'Arial',sans-serif; margin:2mm 0; }
@@ -181,14 +219,13 @@ export const printReceiptDirect = (receipt) => {
     </style></head>
     <body>
       <div class="receipt-container">
-        <div class="letterhead-wrapper"><img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" /><div class="letterhead-fallback"><div style="font-size:15px;font-weight:bold;text-transform:uppercase;">${receipt?.school?.name || 'School Name'}</div>${receipt?.school?.motto ? `<div style="font-size:9px;font-style:italic;margin:1mm 0;">"${receipt.school.motto}"</div>` : ''}<div style="font-size:8px;">${receipt?.school?.address || ''} | Tel: ${receipt?.school?.phone || ''}</div></div></div>
+        <div class="letterhead-wrapper"><img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" /><div class="letterhead-fallback"><div style="font-size:15px;font-weight:bold;text-transform:uppercase;">${receipt?.school?.name || 'School Name'}</div>${receipt?.school?.motto ? `<div style="font-size:9px;font-style:italic;margin:1mm 0;">"${receipt.school.motto}"</div>` : ''}<div style="font-size:8px;">${typeof receipt?.school?.address === 'string' ? receipt.school.address : ''} | Tel: ${receipt?.school?.phone || ''}</div></div></div>
         <div class="receipt-content">
-          <div class="receipt-title">Payment Receipt</div>
+          <div class="receipt-title">${isStudentPayment ? 'Payment Receipt' : 'Official Receipt'}</div>
           <div class="receipt-number"><strong>Receipt No:</strong> ${receipt?.receipt_number || 'N/A'}</div>
           <div class="info-row"><span class="info-label">Date:</span><span class="info-value">${formatDate(receipt?.date)}</span></div>
-          <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${receipt?.student_name || 'N/A'}</span></div>
-          <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${receipt?.class_name || 'N/A'}</span></div>
-          <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || 'School Fees'}</span></div>
+          ${detailsHTML}
+          <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || receipt?.description || 'Transaction'}</span></div>
           ${receipt?.term ? `<div class="info-row"><span class="info-label">Term:</span><span class="info-value">${receipt.term}</span></div>` : ''}
           ${receipt?.academic_year ? `<div class="info-row"><span class="info-label">Year:</span><span class="info-value">${receipt.academic_year}</span></div>` : ''}
           <div class="info-row"><span class="info-label">Method:</span><span class="info-value">${receipt?.payment_method || 'Cash'}</span></div>
@@ -212,13 +249,27 @@ export const openReceiptInNewTab = (receipt) => {
   const formatDate = (dateStr) => !dateStr ? 'N/A' : new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   const formatAmount = (amount) => Number(amount || 0).toLocaleString('en', { minimumFractionDigits: 2 })
 
-  // ✅ Balance info HTML
+  const isStudentPayment = !!receipt?.student_name && receipt?.student_name !== 'N/A'
+
   const balanceHTML = receipt?.balance_info ? `
     <div style="border-top:1px dashed #ccc; margin-top:8px; padding-top:5px;">
       <div class="info-row"><span class="info-label">Total Fee:</span><span class="info-value">SSP ${formatAmount(receipt.balance_info.total_fee)}</span></div>
       <div class="info-row"><span class="info-label">Total Paid:</span><span class="info-value">SSP ${formatAmount(receipt.balance_info.total_paid)}</span></div>
       <div class="info-row" style="font-weight:bold;"><span class="info-label">Balance:</span><span class="info-value" style="color:${receipt.balance_info.is_cleared ? '#059669' : '#dc2626'};">${receipt.balance_info.balance_display}</span></div>
     </div>` : ''
+
+  let detailsHTML = ''
+  if (isStudentPayment) {
+    detailsHTML = `
+      <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${receipt?.student_name || 'N/A'}</span></div>
+      <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${receipt?.class_name || 'N/A'}</span></div>
+    `
+  } else {
+    detailsHTML = `
+      ${receipt?.organization_name ? `<div class="info-row"><span class="info-label">Organization:</span><span class="info-value">${receipt.organization_name}</span></div>` : ''}
+      ${receipt?.representative_name ? `<div class="info-row"><span class="info-label">Representative:</span><span class="info-value">${receipt.representative_name}</span></div>` : ''}
+    `
+  }
 
   const newTab = window.open('', '_blank')
   if (!newTab) { alert('Pop-up blocked!'); return }
@@ -243,12 +294,11 @@ export const openReceiptInNewTab = (receipt) => {
       @media print { body { background:white; padding:0; } .receipt { box-shadow:none; border:1px solid #000; } .toolbar { display:none; } }
     </style></head>
     <body>
-      <div class="receipt"><div class="letterhead-wrapper"><img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" /><div class="letterhead-fallback"><h2>${receipt?.school?.name || 'School Name'}</h2>${receipt?.school?.motto ? `<p><em>"${receipt.school.motto}"</em></p>` : ''}<p>${receipt?.school?.address || ''} | Tel: ${receipt?.school?.phone || ''}</p></div></div>
-      <div class="receipt-content"><div class="receipt-title">Payment Receipt</div><div class="receipt-number"><strong>Receipt No:</strong> ${receipt?.receipt_number || 'N/A'}</div>
+      <div class="receipt"><div class="letterhead-wrapper"><img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" /><div class="letterhead-fallback"><h2>${receipt?.school?.name || 'School Name'}</h2>${receipt?.school?.motto ? `<p><em>"${receipt.school.motto}"</em></p>` : ''}<p>${typeof receipt?.school?.address === 'string' ? receipt.school.address : ''} | Tel: ${receipt?.school?.phone || ''}</p></div></div>
+      <div class="receipt-content"><div class="receipt-title">${isStudentPayment ? 'Payment Receipt' : 'Official Receipt'}</div><div class="receipt-number"><strong>Receipt No:</strong> ${receipt?.receipt_number || 'N/A'}</div>
       <div class="info-row"><span class="info-label">Date:</span><span class="info-value">${formatDate(receipt?.date)}</span></div>
-      <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${receipt?.student_name || 'N/A'}</span></div>
-      <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${receipt?.class_name || 'N/A'}</span></div>
-      <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || 'School Fees'}</span></div>
+      ${detailsHTML}
+      <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || receipt?.description || 'Transaction'}</span></div>
       <div class="info-row"><span class="info-label">Method:</span><span class="info-value">${receipt?.payment_method || 'Cash'}</span></div>
       <div class="amount-section"><div>AMOUNT PAID</div><div class="amount-value">SSP ${formatAmount(receipt?.amount)}</div><div class="amount-words">${receipt?.amount_words || ''}</div></div>
       ${balanceHTML}
