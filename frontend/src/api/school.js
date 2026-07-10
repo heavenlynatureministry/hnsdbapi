@@ -41,7 +41,6 @@ const schoolAPI = {
   
   // Settings
   resetAcademicData: async (data) => api.post('/school/reset-academic', data),
-  resetFinancialData: async (data) => api.post('/financial/reset', data),
   getSettings: async (params = {}) => api.get('/school/settings', { params }),
   updateSetting: async (data) => api.put('/school/settings', data),
   getSetting: async (key) => api.get(`/school/settings/${key}`),
