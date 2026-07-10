@@ -9,25 +9,25 @@ import Button from '../../components/common/Button'
 import FormInput from '../../components/common/FormInput'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import { ArrowLeft, Save, DollarSign, Printer, Eye } from 'lucide-react'
+import { ArrowLeft, Save, DollarSign, Printer, Eye, Building2, User, Phone } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const TYPE_OPTIONS = [
   { value: '', label: '-- Select Type --' },
-  { value: 'income', label: 'Income' },
+  { value: 'income', label: 'Income (Donation/Grant/Fundraising)' },
   { value: 'expense', label: 'Expense' },
 ]
 
 const INCOME_CATEGORIES = [
   { value: '', label: '-- Select Category --' },
+  { value: 'donations', label: 'Donations' },
+  { value: 'grants', label: 'Grants' },
+  { value: 'fundraising', label: 'Fundraising' },
   { value: 'tuition_fees', label: 'Tuition Fees' },
   { value: 'registration_fees', label: 'Registration Fees' },
   { value: 'examination_fees', label: 'Examination Fees' },
   { value: 'transportation_fees', label: 'Transportation Fees' },
   { value: 'uniform_fees', label: 'Uniform Fees' },
-  { value: 'donations', label: 'Donations' },
-  { value: 'grants', label: 'Grants' },
-  { value: 'fundraising', label: 'Fundraising' },
   { value: 'other_income', label: 'Other Income' },
 ]
 
@@ -109,6 +109,9 @@ function TransactionForm() {
     category: '',
     description: '',
     payment_method: '',
+    organization_name: '',
+    representative_name: '',
+    representative_phone: '',
     academic_year: currentYear,
     term: currentTerm,
     notes: '',
@@ -132,7 +135,6 @@ function TransactionForm() {
   const fetchTransaction = async () => {
     setFetching(true)
     try {
-      // ✅ Interceptor returns response.data directly
       const response = await financialAPI.getTransaction(id)
       
       if (response?.success && response.data) {
@@ -144,6 +146,9 @@ function TransactionForm() {
           category: t.category || '',
           description: t.description || '',
           payment_method: t.payment_method || '',
+          organization_name: t.organization_name || '',
+          representative_name: t.representative_name || '',
+          representative_phone: t.representative_phone || '',
           academic_year: t.academic_year || currentYear,
           term: t.term || currentTerm,
           notes: t.notes || '',
@@ -196,6 +201,9 @@ function TransactionForm() {
         category: formData.category,
         description: formData.description.trim(),
         payment_method: formData.payment_method,
+        organization_name: formData.organization_name.trim(),
+        representative_name: formData.representative_name.trim(),
+        representative_phone: formData.representative_phone.trim(),
         academic_year: formData.academic_year,
         term: formData.term,
         notes: formData.notes || '',
@@ -208,10 +216,6 @@ function TransactionForm() {
         response = await financialAPI.createTransaction(payload)
       }
 
-      // ✅ Interceptor already returns response.data
-      // So response = { success: true, message: "...", data: {...} }
-      // Use response directly, NOT response?.data
-      
       if (response?.success === true) {
         const transactionId = response.data?._id || response.data?.id || id
         
@@ -250,7 +254,6 @@ function TransactionForm() {
     }
     try {
       toast.loading('Generating receipt...')
-      // ✅ Interceptor returns response.data directly
       const response = await financialAPI.getTransactionReceipt(transactionId)
       toast.dismiss()
       if (response?.success === true && response.data) {
@@ -283,7 +286,7 @@ function TransactionForm() {
     <div className="space-y-6 max-w-2xl animate-fade-in-up">
       <PageHeader
         title={isEdit ? 'Edit Transaction' : 'Record Transaction'}
-        subtitle={isEdit ? 'Update transaction details' : 'Record a new financial transaction'}
+        subtitle={isEdit ? 'Update transaction details' : 'Record income/expense for organizations, churches, companies, etc.'}
         actions={
           <div className="flex gap-2">
             {isEdit && savedTransactionId && (
@@ -300,34 +303,74 @@ function TransactionForm() {
 
       <Card>
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Transaction Type & Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormSelect label="Transaction Type *" name="transaction_type" value={formData.transaction_type} onChange={handleChange} options={TYPE_OPTIONS} error={errors.transaction_type} />
             <FormInput label="Date *" name="transaction_date" type="date" value={formData.transaction_date} onChange={handleChange} error={errors.transaction_date} />
           </div>
 
+          {/* Amount & Payment Method */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput label="Amount (SSP) *" name="amount" type="number" value={formData.amount} onChange={handleChange} error={errors.amount} placeholder="0.00" min="0" step="0.01" />
             <FormSelect label="Payment Method *" name="payment_method" value={formData.payment_method} onChange={handleChange} options={PAYMENT_METHODS} error={errors.payment_method} />
           </div>
 
+          {/* Category */}
           <FormSelect label="Category *" name="category" value={formData.category} onChange={handleChange} options={categories} error={errors.category} disabled={!formData.transaction_type} />
 
+          {/* Description */}
           <div>
             <label className="form-label">Description *</label>
-            <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className={`form-input ${errors.description ? 'error' : ''}`} placeholder="Describe the transaction..." />
+            <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className={`form-input ${errors.description ? 'error' : ''}`} placeholder="e.g., Donation from Christ Embassy Church for school renovation..." />
             {errors.description && <p className="form-error">{errors.description}</p>}
           </div>
 
+          {/* ✅ Organization Details Section */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+              <Building2 size={16} /> Organization / Donor Details (Optional)
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormInput 
+                label="Organization Name" 
+                name="organization_name" 
+                value={formData.organization_name} 
+                onChange={handleChange} 
+                placeholder="e.g., Christ Embassy Church, MTN Foundation" 
+              />
+              <FormInput 
+                label="Representative Name" 
+                name="representative_name" 
+                value={formData.representative_name} 
+                onChange={handleChange} 
+                placeholder="e.g., Pastor John Doe" 
+              />
+            </div>
+            <div className="mt-3">
+              <FormInput 
+                label="Representative Phone" 
+                name="representative_phone" 
+                value={formData.representative_phone} 
+                onChange={handleChange} 
+                placeholder="e.g., +211 900 000 000" 
+                type="tel"
+              />
+            </div>
+          </div>
+
+          {/* Academic Year & Term */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormSelect label="Academic Year" name="academic_year" value={formData.academic_year} onChange={handleChange} options={ACADEMIC_YEAR_OPTIONS} />
             <FormSelect label="Term" name="term" value={formData.term} onChange={handleChange} options={TERM_OPTIONS} />
           </div>
 
+          {/* Notes */}
           <div>
             <label className="form-label">Notes</label>
             <textarea name="notes" value={formData.notes} onChange={handleChange} rows={2} className="form-input" placeholder="Additional notes..." />
           </div>
 
+          {/* Action Buttons */}
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
             <Button type="submit" variant="primary" loading={loading} icon={<Save size={18} />} disabled={loading}>
               {loading ? (isEdit ? 'Updating...' : 'Recording...') : (isEdit ? 'Update' : 'Record')} Transaction
