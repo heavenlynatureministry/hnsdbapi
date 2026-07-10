@@ -512,31 +512,62 @@ async def list_transactions(type: Optional[str] = Query(None, alias="type"), cat
 @router.post("")
 @router.post("/")
 async def create_transaction(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin", "accountant"))):
+    """Record a transaction (income/expense) - for organizations, donations, church, etc."""
     db = get_database()
     try: body = await request.json()
     except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
-    td = body.get('transaction_date', ''); amt = body.get('amount', 0)
-    tt = body.get('transaction_type', ''); cat = body.get('category', '')
+    
+    td = body.get('transaction_date', '')
+    amt = body.get('amount', 0)
+    tt = body.get('transaction_type', '')
+    cat = body.get('category', '')
     desc = body.get('description', '')
+    
     if not td or not amt or not tt or not desc:
         raise HTTPException(status_code=400, detail="Date, amount, type, and description are required")
+    
     try: date_obj = datetime.strptime(td, '%Y-%m-%d')
     except ValueError: raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
     academic_year = body.get('academic_year') or _get_current_academic_year()
     term = body.get('term') or _get_current_term()
     approval_status = body.get('status', body.get('approval_status', 'completed'))
     reference_number = body.get('reference_number') or await _generate_receipt_number(db)
-    doc = {"transaction_date": date_obj, "amount": float(amt), "transaction_type": tt, "category": cat,
-           "description": desc, "payment_method": body.get('payment_method', 'cash'),
-           "reference_number": reference_number, "recorded_by": current_user.get("_id"),
-           "recorded_by_name": current_user.get("first_name", "") + " " + current_user.get("last_name", ""),
-           "approval_status": approval_status, "academic_year": academic_year, "term": term,
-           "notes": body.get('notes', ''), "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
+    
+    # ✅ Organization/Donor fields
+    organization_name = body.get('organization_name', '').strip()
+    representative_name = body.get('representative_name', '').strip()
+    representative_phone = body.get('representative_phone', '').strip()
+    
+    doc = {
+        "transaction_date": date_obj,
+        "amount": float(amt),
+        "transaction_type": tt,
+        "category": cat,
+        "description": desc,
+        "payment_method": body.get('payment_method', 'cash'),
+        "reference_number": reference_number,
+        "recorded_by": current_user.get("_id"),
+        "recorded_by_name": current_user.get("first_name", "") + " " + current_user.get("last_name", ""),
+        "approval_status": approval_status,
+        "academic_year": academic_year,
+        "term": term,
+        "notes": body.get('notes', ''),
+        # ✅ Organization fields
+        "organization_name": organization_name,
+        "representative_name": representative_name,
+        "representative_phone": representative_phone,
+        "paid_by": representative_name or organization_name or body.get('paid_by', ''),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    doc = {k: v for k, v in doc.items() if v is not None and v != ''}
+    
     result = await db.financial_records.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
-    print(f"✅ Transaction: {reference_number}")
+    print(f"✅ Transaction: {reference_number} | {organization_name or 'N/A'}")
     return {"success": True, "message": "Transaction recorded", "data": parse_mongo_document(doc)}
-
+    
 
 @router.get("/{transaction_id}")
 async def get_transaction(transaction_id: str = Path(...), current_user: Dict[str, Any] = Depends(get_current_user)):
