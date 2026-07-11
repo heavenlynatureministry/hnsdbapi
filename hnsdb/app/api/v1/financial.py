@@ -177,31 +177,51 @@ async def get_summary(academic_year: Optional[str] = Query(None), current_user: 
 async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_database()
     year = _get_current_academic_year()
-    income = await db.financial_records.aggregate([
-        {"$match": {"transaction_type": "income", "approval_status": "approved", "academic_year": year}},
+    
+    # Income from transactions (donations, grants, etc.)
+    tx_income = await db.financial_records.aggregate([
+        {"$match": {"transaction_type": "income", "approval_status": "completed", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
-    expenses = await db.financial_records.aggregate([
-        {"$match": {"transaction_type": "expense", "approval_status": "approved", "academic_year": year}},
+    
+    # Expenses from transactions
+    tx_expenses = await db.financial_records.aggregate([
+        {"$match": {"transaction_type": "expense", "approval_status": "completed", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
-    ti = income[0]["total"] if income else 0; te = expenses[0]["total"] if expenses else 0
+    
+    # Student payments
+    payment_total = await db.payments.aggregate([
+        {"$match": {"academic_year": year, "status": "completed"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount_paid"}, "count": {"$sum": 1}}
+    ]).to_list(length=1)
+    
+    tx_income_total = tx_income[0]["total"] if tx_income else 0
+    tx_expense_total = tx_expenses[0]["total"] if tx_expenses else 0
+    payment_amt = payment_total[0]["total"] if payment_total else 0
+    payment_count = payment_total[0]["count"] if payment_total else 0
+    
+    # Combined totals
+    total_income = tx_income_total + payment_amt
+    total_expenses = tx_expense_total
+    net_balance = total_income - total_expenses
+    
     pending = await db.financial_records.count_documents({"approval_status": "pending"})
     recent = await db.financial_records.find().sort("created_at", -1).limit(5).to_list(length=5)
     recent = [parse_mongo_document(t) for t in recent]
-    total_payments = await db.payments.count_documents({"academic_year": year})
-    payment_total = await db.payments.aggregate([
-        {"$match": {"academic_year": year}}, {"$group": {"_id": None, "total": {"$sum": "$amount_paid"}}}
-    ]).to_list(length=1)
+    
     return {"success": True, "message": "Dashboard retrieved",
             "data": {"academic_year": year, "current_term": _get_current_term(),
-                     "current_balance": round(ti - te, 2), "total_income": round(ti, 2),
-                     "total_expenses": round(te, 2), "pending_approvals": pending,
-                     "total_payments": total_payments,
-                     "total_payments_amount": round(payment_total[0]["total"], 2) if payment_total else 0,
+                     "total_income": round(total_income, 2),
+                     "total_expenses": round(total_expenses, 2),
+                     "net_balance": round(net_balance, 2),
+                     "student_payments": round(payment_amt, 2),
+                     "student_payments_count": payment_count,
+                     "donations_income": round(tx_income_total, 2),
+                     "pending_approvals": pending,
                      "recent_transactions": recent}}
-
-
+    
+    
 # =========================================================================
 # STUDENT FEE BALANCE
 # =========================================================================
