@@ -423,6 +423,9 @@ function FeeStructures() {
                 { value: 'Term 1', label: 'Term 1 Only' },
                 { value: 'Term 2', label: 'Term 2 Only' },
                 { value: 'Term 3', label: 'Term 3 Only' },
+                { value: 'Term 1 & 2', label: 'Term 1 & 2' },
+                { value: 'Term 2 & 3', label: 'Term 2 & 3' },
+                { value: 'Term 1, 2 & 3', label: 'Term 1, 2 & 3 (Full Year)' },
               ]} 
             />
           </div>
