@@ -136,7 +136,7 @@ export const exportReceipt = (receipt) => {
           </div>
           ${balanceHTML}
           <div class="signature-section">
-            <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div class="signature-name">${receipt?.received_by || '________________'}</div></div>
+            <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div class="signature-name">${receipt?.received_by || 'School Bursar'}</div></div>
             <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Paid By</div><div class="signature-name">${receipt?.paid_by || '________________'}</div></div>
           </div>
           <div class="receipt-footer"><p>Computer-generated receipt</p><p>Thank you! | ${receipt?.school?.name || 'School'}</p></div>
@@ -231,7 +231,7 @@ export const printReceiptDirect = (receipt) => {
           <div class="info-row"><span class="info-label">Method:</span><span class="info-value">${receipt?.payment_method || 'Cash'}</span></div>
           <div class="amount-section"><div class="amount-label">Amount Paid</div><div class="amount-value">SSP ${formatAmount(receipt?.amount)}</div><div class="amount-words">${receipt?.amount_words || ''}</div></div>
           ${balanceHTML}
-          <div class="signature-section"><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div class="signature-name">${receipt?.received_by || '________________'}</div></div><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Paid By</div><div class="signature-name">${receipt?.paid_by || '________________'}</div></div></div>
+          <div class="signature-section"><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div class="signature-name">${receipt?.received_by || 'School Bursar'}</div></div><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Paid By</div><div class="signature-name">${receipt?.paid_by || '________________'}</div></div></div>
           <div class="receipt-footer"><p>Computer-generated receipt</p><p>Thank you! | ${receipt?.school?.name || 'School'}</p></div>
         </div>
       </div>
@@ -302,7 +302,7 @@ export const openReceiptInNewTab = (receipt) => {
       <div class="info-row"><span class="info-label">Method:</span><span class="info-value">${receipt?.payment_method || 'Cash'}</span></div>
       <div class="amount-section"><div>AMOUNT PAID</div><div class="amount-value">SSP ${formatAmount(receipt?.amount)}</div><div class="amount-words">${receipt?.amount_words || ''}</div></div>
       ${balanceHTML}
-      <div class="signature-section"><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div>${receipt?.received_by || ''}</div></div><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Paid By</div><div>${receipt?.paid_by || ''}</div></div></div>
+      <div class="signature-section"><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div>${receipt?.received_by || 'School Bursar'}</div></div><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Paid By</div><div>${receipt?.paid_by || ''}</div></div></div>
       <div class="receipt-footer"><p>Computer-generated receipt</p><p>Thank you for your payment!</p></div></div></div>
       <div class="toolbar"><button class="btn-print" onclick="window.print()">🖨️ Print / Save PDF</button><button class="btn-close" onclick="window.close()">✕ Close</button></div>
     </body></html>
