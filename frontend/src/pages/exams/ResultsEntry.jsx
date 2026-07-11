@@ -81,6 +81,35 @@ function ResultsEntry() {
     setQuickFill('')
   }
 
+  /**
+   * Parse a score value from CSV, handling formats like:
+   * - "70" -> 70
+   * - "70.00" -> 70
+   * - "70.00%" -> 70
+   * - "70%" -> 70
+   * - " 70 % " -> 70
+   */
+  const parseScore = (value) => {
+    if (value === undefined || value === null || value === '') return NaN
+    // Remove %, commas, spaces, and any other non-numeric chars except decimal point
+    const cleaned = String(value).replace(/[%\s,]/g, '')
+    return parseFloat(cleaned)
+  }
+
+  /**
+   * Auto-detect CSV delimiter (tab, comma, or semicolon)
+   */
+  const detectDelimiter = (text) => {
+    const firstLine = text.split('\n')[0] || ''
+    const tabCount = (firstLine.match(/\t/g) || []).length
+    const commaCount = (firstLine.match(/,/g) || []).length
+    const semicolonCount = (firstLine.match(/;/g) || []).length
+    
+    if (tabCount >= commaCount && tabCount >= semicolonCount) return '\t'
+    if (semicolonCount >= commaCount) return ';'
+    return ','
+  }
+
   // Handle CSV file upload
   const handleCSVUpload = (e) => {
     const file = e.target.files?.[0]
@@ -96,7 +125,10 @@ function ResultsEntry() {
           return
         }
 
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+        // Auto-detect delimiter
+        const delimiter = detectDelimiter(text)
+
+        const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase())
         const nameCol = headers.findIndex(h => h === 'name' || h === 'student_name' || h === 'student')
         const scoreCol = headers.findIndex(h => h === 'score' || h === 'marks' || h === 'result')
         const remarksCol = headers.findIndex(h => h === 'remarks' || h === 'notes')
@@ -110,12 +142,16 @@ function ResultsEntry() {
         const newResults = [...results]
 
         for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(',').map(v => v.trim())
+          const values = lines[i].split(delimiter).map(v => v.trim())
           const studentName = values[nameCol]?.toLowerCase()
-          const score = parseFloat(values[scoreCol])
+          // ✅ Use parseScore to handle percentage signs
+          const score = parseScore(values[scoreCol])
           const remarks = remarksCol >= 0 ? values[remarksCol] : ''
 
-          if (!studentName || isNaN(score)) continue
+          if (!studentName || isNaN(score)) {
+            console.log(`Skipping row ${i + 1}: name="${studentName}", score="${values[scoreCol]}" -> parsed=${score}`)
+            continue
+          }
 
           // Find matching student by name (case-insensitive)
           const matchIndex = newResults.findIndex(r =>
@@ -130,9 +166,14 @@ function ResultsEntry() {
           }
         }
 
-        setResults(newResults)
-        toast.success(`Updated ${updated} scores from CSV`)
+        if (updated === 0) {
+          toast.error('No matching students found. Check names match the student list.')
+        } else {
+          setResults(newResults)
+          toast.success(`Updated ${updated} scores from CSV`)
+        }
       } catch (error) {
+        console.error('CSV parse error:', error)
         toast.error('Failed to parse CSV file')
       }
     }
@@ -143,10 +184,10 @@ function ResultsEntry() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  // Download CSV template
+  // Download CSV template (now uses tab delimiter for Excel compatibility)
   const downloadTemplate = () => {
-    const headers = 'Name,Score,Remarks\n'
-    const rows = results.map(r => `"${r.student_name}",,`).join('\n')
+    const headers = 'Name\tScore\tRemarks\n'
+    const rows = results.map(r => `"${r.student_name}"\t\t`).join('\n')
     const csv = headers + rows
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
