@@ -616,7 +616,7 @@ async def get_results(
     exam_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get exam results"""
+    """Get exam results with student list for results entry"""
     db = get_database()
     
     obj_id = _safe_objectid(exam_id)
@@ -625,23 +625,58 @@ async def get_results(
     exam = await db.exams.find_one({"_id": obj_id})
     if not exam: raise HTTPException(status_code=404, detail="Exam not found")
     
-    results = await db.exam_results.find({"exam_id": obj_id}).to_list(length=None)
-    results = [parse_mongo_document(r) for r in results]
+    # Get existing results
+    existing_results = await db.exam_results.find({"exam_id": obj_id}).to_list(length=None)
+    existing_results = [parse_mongo_document(r) for r in existing_results]
     
-    scores = [r["score"] for r in results if r.get("score") is not None]
+    # Get students in the class
+    class_id = exam.get("class_id")
+    students = []
+    if class_id:
+        students = await db.students.find({
+            "current_class_id": class_id, 
+            "status": "active"
+        }).to_list(length=None)
+        students = [parse_mongo_document(s) for s in students]
+    
+    # Merge: For each student, check if they already have a result
+    student_results = []
+    for student in students:
+        existing = next(
+            (r for r in existing_results if str(r.get("student_id")) == str(student.get("_id"))), 
+            None
+        )
+        student_results.append({
+            "student_id": str(student.get("_id")),
+            "student_name": f"{student.get('first_name', '')} {student.get('last_name', '')}".strip(),
+            "score": existing.get("score") if existing else None,
+            "remarks": existing.get("remarks", "") if existing else "",
+            "grade": existing.get("grade") if existing else None,
+        })
+    
+    # Calculate statistics
+    scores = [r["score"] for r in existing_results if r.get("score") is not None]
     stats = {
-        "total_students": len(results),
+        "total_students": len(students),
+        "results_entered": len(existing_results),
         "highest_score": max(scores) if scores else 0,
         "lowest_score": min(scores) if scores else 0,
         "average_score": round(sum(scores) / len(scores), 2) if scores else 0,
-        "pass_rate": round(sum(1 for r in results if r.get("is_passed")) / len(results) * 100, 2) if results else 0
+        "pass_rate": round(sum(1 for r in existing_results if r.get("is_passed")) / len(existing_results) * 100, 2) if existing_results else 0
     }
     
     return {
-        "success": True, "message": "Results retrieved",
+        "success": True, 
+        "message": "Results retrieved",
         "data": {
-            "exam": {"_id": str(exam["_id"]), "exam_name": exam.get("exam_name", ""), "max_score": exam.get("max_score", 100), "pass_mark": exam.get("pass_mark", 50)},
-            "results": results, "statistics": stats
+            "exam_name": exam.get("exam_name", ""),
+            "class_name": exam.get("class_name", ""),
+            "subject_name": exam.get("subject_name", exam.get("exam_name", "")),
+            "max_score": exam.get("max_score", 100),
+            "pass_mark": exam.get("pass_mark", 50),
+            "students": student_results,
+            "results": existing_results,
+            "statistics": stats
         }
     }
 
