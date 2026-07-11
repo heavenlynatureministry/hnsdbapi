@@ -52,6 +52,9 @@ const TERM_OPTIONS = [
   { value: 'Term 1', label: 'Term 1' },
   { value: 'Term 2', label: 'Term 2' },
   { value: 'Term 3', label: 'Term 3' },
+  { value: 'Term 1 & 2', label: 'Term 1 & 2' },
+  { value: 'Term 2 & 3', label: 'Term 2 & 3' },
+  { value: 'Term 1, 2 & 3', label: 'Term 1, 2 & 3 (Full Year)' },
 ]
 
 const STATUS_OPTIONS = [
