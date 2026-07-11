@@ -381,15 +381,8 @@ async def record_payment(request: Request, current_user: Dict[str, Any] = Depend
     payment_status = body.get('status', 'completed')
     term = body.get('term') or _get_current_term()
 
-    # ✅ Updated: Changed fallback from "System" to "School Bursar"
+    # ✅ Always use "School Bursar" on receipts, regardless of who is logged in
     recorded_by_name = "School Bursar"
-    try:
-        first = current_user.get("first_name", "")
-        last = current_user.get("last_name", "")
-        if first or last:
-            recorded_by_name = f"{first} {last}".strip()
-    except Exception:
-        pass
 
     doc = {
         "student_id": sid,
@@ -538,7 +531,7 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
         except Exception:
             pass
 
-    # ✅ Updated: Changed fallback from empty string to "School Bursar"
+    # ✅ Always show "School Bursar" on receipts
     receipt_data = {
         "receipt_number": record.get("receipt_number") or record.get("reference_number", ""),
         "record_id": str(record["_id"]),
