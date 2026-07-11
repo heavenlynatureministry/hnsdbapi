@@ -699,6 +699,16 @@ async def delete_exam_results(
     return {"success": True, "message": f"Deleted {result.deleted_count} results, exam reset to scheduled"}
 
 
+# ✅ NEW: Bulk endpoint that the frontend calls
+@router.post("/results/bulk")
+async def bulk_record_results(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))
+):
+    """Bulk record exam results - same as single record"""
+    return await record_results(request, current_user)
+
+
 @router.post("/results")
 async def record_results(
     request: Request,
@@ -765,7 +775,7 @@ async def record_results(
     )
     
     return {"success": True, "message": f"Recorded {successful} results"}
-
+    
 
 @router.get("/student/{student_id}")
 async def get_student_results(
