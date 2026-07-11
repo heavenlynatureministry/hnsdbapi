@@ -12,7 +12,8 @@ import Badge from '../../components/common/Badge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { 
   DollarSign, Plus, Download, TrendingUp, TrendingDown,
-  MoreVertical, Edit, Trash2, CheckCircle, XCircle, Clock, Eye, Printer
+  MoreVertical, Edit, Trash2, CheckCircle, XCircle, Clock, Eye, Printer,
+  GraduationCap, Building2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -33,12 +34,28 @@ function TransactionsList() {
   const [showReceipt, setShowReceipt] = useState(false)
   const [receiptData, setReceiptData] = useState(null)
   
+  // ✅ Dashboard data for combined stats
+  const [dashboardData, setDashboardData] = useState(null)
+  
   const limit = 20
 
   useEffect(() => {
-    updatePageTitle('Financial Transactions')
-    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Financial', path: '/financial' }])
+    updatePageTitle('Financial Overview')
+    updateBreadcrumbs([{ label: 'Dashboard', path: '/dashboard' }, { label: 'Financial' }])
+    fetchDashboard()
   }, [])
+
+  // ✅ Fetch combined dashboard stats
+  const fetchDashboard = async () => {
+    try {
+      const response = await financialAPI.getDashboard()
+      if (response?.success) {
+        setDashboardData(response.data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch dashboard:', error)
+    }
+  }
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true)
@@ -51,7 +68,6 @@ function TransactionsList() {
         limit,
       })
       
-      // Interceptor returns response.data directly
       const data = response?.data || response
       const txnList = data?.transactions || data || []
       const safeTxns = Array.isArray(txnList) ? txnList : []
@@ -81,6 +97,7 @@ function TransactionsList() {
       toast.success('Transaction deleted')
       setShowDelete(null)
       fetchTransactions()
+      fetchDashboard()
     } catch (error) {
       toast.error(error.message || 'Failed to delete transaction')
     }
@@ -129,45 +146,87 @@ function TransactionsList() {
 
   const safeTransactions = Array.isArray(transactions) ? transactions : []
   
-  const totalIncome = safeTransactions
+  // Transaction-only stats (for reference)
+  const txIncome = safeTransactions
     .filter(t => t?.transaction_type === 'income' && (t?.approval_status === 'approved' || t?.approval_status === 'completed'))
     .reduce((s, t) => s + (t?.amount || 0), 0)
-  const totalExpenses = safeTransactions
+  const txExpenses = safeTransactions
     .filter(t => t?.transaction_type === 'expense' && (t?.approval_status === 'approved' || t?.approval_status === 'completed'))
     .reduce((s, t) => s + (t?.amount || 0), 0)
-  
-  const completedCount = safeTransactions.filter(t => 
-    t?.approval_status === 'approved' || t?.approval_status === 'completed'
-  ).length
+
+  // ✅ Combined stats from dashboard (payments + transactions)
+  const totalIncome = dashboardData?.total_income || txIncome
+  const totalExpenses = dashboardData?.total_expenses || txExpenses
+  const netBalance = dashboardData?.net_balance || (totalIncome - totalExpenses)
+  const studentPayments = dashboardData?.student_payments || 0
+  const donationsIncome = dashboardData?.donations_income || 0
 
   return (
     <div className="space-y-6 animate-fade-in-up">
       <PageHeader
-        title="Financial Transactions"
-        subtitle="Manage income and expense records"
+        title="Financial Overview"
+        subtitle={`Total collected: SSP ${(totalIncome || 0).toLocaleString()} • Student Payments: SSP ${(studentPayments || 0).toLocaleString()} • Donations: SSP ${(donationsIncome || 0).toLocaleString()}`}
         actions={
-          <Link to="/financial/new" className="btn btn-primary">
-            <Plus size={18} /> Add Transaction
-          </Link>
+          <div className="flex gap-2">
+            <Link to="/financial/payments" className="btn btn-secondary">
+              <GraduationCap size={18} /> Student Payments
+            </Link>
+            <Link to="/financial/new" className="btn btn-primary">
+              <Plus size={18} /> Add Transaction
+            </Link>
+          </div>
         }
       />
 
-      {/* Stats */}
+      {/* ✅ Combined Stats - Payments + Transactions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Income', value: `SSP ${totalIncome.toLocaleString()}`, icon: TrendingUp, color: 'bg-green-100 text-green-600' },
-          { label: 'Total Expenses', value: `SSP ${totalExpenses.toLocaleString()}`, icon: TrendingDown, color: 'bg-red-100 text-red-600' },
-          { label: 'Net Balance', value: `SSP ${(totalIncome - totalExpenses).toLocaleString()}`, icon: DollarSign, color: 'bg-blue-100 text-blue-600' },
-          { label: 'Completed', value: completedCount, icon: CheckCircle, color: 'bg-emerald-100 text-emerald-600' },
+          { label: 'Total Income', value: `SSP ${(totalIncome || 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-green-100 text-green-600', sub: 'Payments + Donations' },
+          { label: 'Student Payments', value: `SSP ${(studentPayments || 0).toLocaleString()}`, icon: GraduationCap, color: 'bg-blue-100 text-blue-600', sub: `${dashboardData?.student_payments_count || 0} payments` },
+          { label: 'Donations/Income', value: `SSP ${(donationsIncome || 0).toLocaleString()}`, icon: Building2, color: 'bg-purple-100 text-purple-600', sub: 'Orgs & donations' },
+          { label: 'Total Expenses', value: `SSP ${(totalExpenses || 0).toLocaleString()}`, icon: TrendingDown, color: 'bg-red-100 text-red-600', sub: `Balance: SSP ${(netBalance || 0).toLocaleString()}` },
         ].map((stat, i) => (
           <div key={i} className="stat-card">
             <div className={`stat-card-icon ${stat.color}`}><stat.icon size={20} /></div>
             <div className="stat-card-value text-sm">{stat.value}</div>
             <div className="stat-card-label">{stat.label}</div>
+            <div className="text-xs text-gray-400 mt-1">{stat.sub}</div>
           </div>
         ))}
       </div>
 
+      {/* Quick Links */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Link to="/financial/payments" className="card p-4 hover:shadow-md transition-shadow flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+            <GraduationCap size={20} className="text-blue-600" />
+          </div>
+          <div>
+            <p className="font-medium text-sm">Student Payments</p>
+            <p className="text-xs text-gray-500">Record & view student fee payments</p>
+          </div>
+        </Link>
+        <Link to="/financial/fees" className="card p-4 hover:shadow-md transition-shadow flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <DollarSign size={20} className="text-green-600" />
+          </div>
+          <div>
+            <p className="font-medium text-sm">Fee Structures</p>
+            <p className="text-xs text-gray-500">Set annual school fees</p>
+          </div>
+        </Link>
+        <Link to="/financial/new" className="card p-4 hover:shadow-md transition-shadow flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+            <Building2 size={20} className="text-purple-600" />
+          </div>
+          <div>
+            <p className="font-medium text-sm">Record Transaction</p>
+            <p className="text-xs text-gray-500">Donations, expenses, income</p>
+          </div>
+        </Link>
+      </div>
+
+      {/* Transaction Filters */}
       <div className="card">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1"><SearchBar value={search} onChange={setSearch} placeholder="Search transactions..." /></div>
@@ -187,6 +246,7 @@ function TransactionsList() {
         </div>
       </div>
 
+      {/* Transactions Table */}
       {loading ? <LoadingSpinner /> : safeTransactions.length === 0 ? (
         <EmptyState icon={<DollarSign size={48} />} title="No transactions" description="No transactions found." action={<Link to="/financial/new" className="btn btn-primary">Add Transaction</Link>} />
       ) : (
@@ -194,7 +254,7 @@ function TransactionsList() {
           <div className="table-container">
             <table className="table">
               <thead>
-                <tr><th>Date</th><th>Reference</th><th>Description</th><th>Category</th><th>Type</th><th>Amount</th><th>Status</th><th className="text-right">Actions</th></tr>
+                <tr><th>Date</th><th>Reference</th><th>Description</th><th>Organization</th><th>Type</th><th>Amount</th><th>Status</th><th className="text-right">Actions</th></tr>
               </thead>
               <tbody>
                 {safeTransactions.map((txn) => (
@@ -202,7 +262,7 @@ function TransactionsList() {
                     <td className="text-sm">{txn?.transaction_date ? new Date(txn.transaction_date).toLocaleDateString() : 'N/A'}</td>
                     <td className="text-xs font-mono">{txn?.reference_number || 'N/A'}</td>
                     <td className="text-sm max-w-xs truncate">{txn?.description || 'N/A'}</td>
-                    <td className="text-sm">{getCategoryDisplay(txn?.category)}</td>
+                    <td className="text-sm">{txn?.organization_name || txn?.representative_name || 'N/A'}</td>
                     <td><Badge variant={txn?.transaction_type === 'income' ? 'success' : 'danger'}>{txn?.transaction_type || 'N/A'}</Badge></td>
                     <td className={`text-sm font-semibold ${txn?.transaction_type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
                       {txn?.transaction_type === 'income' ? '+' : '-'} SSP {(txn?.amount || 0).toLocaleString()}
