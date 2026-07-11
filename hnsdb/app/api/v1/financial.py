@@ -381,7 +381,8 @@ async def record_payment(request: Request, current_user: Dict[str, Any] = Depend
     payment_status = body.get('status', 'completed')
     term = body.get('term') or _get_current_term()
 
-    recorded_by_name = "System"
+    # ✅ Updated: Changed fallback from "System" to "School Bursar"
+    recorded_by_name = "School Bursar"
     try:
         first = current_user.get("first_name", "")
         last = current_user.get("last_name", "")
@@ -537,6 +538,7 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
         except Exception:
             pass
 
+    # ✅ Updated: Changed fallback from empty string to "School Bursar"
     receipt_data = {
         "receipt_number": record.get("receipt_number") or record.get("reference_number", ""),
         "record_id": str(record["_id"]),
@@ -550,7 +552,7 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
         "payment_for": payment_for,
         "term": record.get("term", ""),
         "academic_year": year,
-        "received_by": record.get("recorded_by_name", ""),
+        "received_by": record.get("recorded_by_name", "School Bursar"),
         "paid_by": paid_by or "N/A",
         "balance_info": balance_info,
         "organization_name": record.get("organization_name", ""),
