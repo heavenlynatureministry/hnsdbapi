@@ -37,62 +37,79 @@ def _get_current_academic_year() -> str:
 def _get_current_term() -> str:
     """Calculate current term dynamically."""
     month = datetime.utcnow().month
-    if 2 <= month <= 4: return "Term 1"
-    elif 5 <= month <= 7: return "Term 2"
-    elif 9 <= month <= 11: return "Term 3"
-    elif month == 8: return "Term 2 Break"
-    else: return "Annual Break"
+    if 2 <= month <= 4:
+        return "Term 1"
+    elif 5 <= month <= 7:
+        return "Term 2"
+    elif 9 <= month <= 11:
+        return "Term 3"
+    elif month == 8:
+        return "Term 2 Break"
+    else:
+        return "Annual Break"
 
 
 def _number_to_words(amount: float) -> str:
     """Convert number to words for receipt."""
+    amount = round(float(amount), 2)
+    
     ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
-    teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", 
+    teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
              "Seventeen", "Eighteen", "Nineteen"]
     tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
     thousands = ["", "Thousand", "Million", "Billion"]
-    
-    def convert_less_than_thousand(n: int) -> str:
-        if n == 0: return ""
-        elif n < 10: return ones[n]
-        elif n < 20: return teens[n - 10]
-        elif n < 100: return tens[n // 10] + (" " + ones[n % 10] if n % 10 != 0 else "")
-        else: return ones[n // 100] + " Hundred" + (" and " + convert_less_than_thousand(n % 100) if n % 100 != 0 else "")
-    
-    def convert_integer(n: int) -> str:
-        if n == 0: return "Zero"
+
+    def convert_less_than_thousand(n):
+        if n == 0:
+            return ""
+        elif n < 10:
+            return ones[n]
+        elif n < 20:
+            return teens[n - 10]
+        elif n < 100:
+            return tens[n // 10] + (" " + ones[n % 10] if n % 10 != 0 else "")
+        else:
+            return ones[n // 100] + " Hundred" + (" and " + convert_less_than_thousand(n % 100) if n % 100 != 0 else "")
+
+    def convert_integer(n):
+        if n == 0:
+            return "Zero"
         result = ""
         thousand_counter = 0
         while n > 0:
             if n % 1000 != 0:
                 prefix = convert_less_than_thousand(n % 1000)
-                if thousand_counter > 0: prefix += " " + thousands[thousand_counter]
+                if thousand_counter > 0:
+                    prefix += " " + thousands[thousand_counter]
                 result = prefix + " " + result if result else prefix
             n //= 1000
             thousand_counter += 1
         return result
-    
-    if amount == 0: return "Zero South Sudanese Pounds Only"
+
+    if amount == 0:
+        return "Zero South Sudanese Pounds Only"
+
     whole = int(amount)
     decimal = int(round((amount - whole) * 100))
+
     result = convert_integer(whole) + " South Sudanese Pound"
-    if whole != 1: result += "s"
+    if whole != 1:
+        result += "s"
+
     if decimal > 0:
         result += " and " + convert_integer(decimal) + " Piaster"
-        if decimal != 1: result += "s"
+        if decimal != 1:
+            result += "s"
+
     return result + " Only"
 
 
 async def _generate_receipt_number(db) -> str:
-    """
-    Generate a UNIFIED sequential number for ALL financial records.
-    Format: HNSRCT-000000001
-    One sequence for payments AND transactions.
-    """
+    """Generate a UNIFIED sequential number for ALL financial records."""
     if db is not None:
         try:
             latest_num = 0
-            
+
             last_payment = await db.payments.find_one(
                 {"receipt_number": {"$regex": "^HNSRCT-[0-9]{9}$"}},
                 sort=[("created_at", -1)]
@@ -102,10 +119,11 @@ async def _generate_receipt_number(db) -> str:
                     num_str = last_payment["receipt_number"].replace("HNSRCT-", "")
                     if num_str.isdigit() and len(num_str) == 9:
                         num = int(num_str)
-                        if num > latest_num: latest_num = num
+                        if num > latest_num:
+                            latest_num = num
                 except (ValueError, AttributeError):
                     pass
-            
+
             last_record = await db.financial_records.find_one(
                 {"reference_number": {"$regex": "^HNSRCT-[0-9]{9}$"}},
                 sort=[("created_at", -1)]
@@ -115,18 +133,19 @@ async def _generate_receipt_number(db) -> str:
                     num_str = last_record["reference_number"].replace("HNSRCT-", "")
                     if num_str.isdigit() and len(num_str) == 9:
                         num = int(num_str)
-                        if num > latest_num: latest_num = num
+                        if num > latest_num:
+                            latest_num = num
                 except (ValueError, AttributeError):
                     pass
-            
+
             if latest_num > 0:
                 next_num = latest_num + 1
                 print(f"✅ Generated: HNSRCT-{next_num:09d} (latest: {latest_num})")
                 return f"HNSRCT-{next_num:09d}"
-                    
+
         except Exception as e:
             print(f"⚠️ Receipt number error: {e}")
-    
+
     return "HNSRCT-000000001"
 
 
@@ -135,17 +154,22 @@ async def _calculate_balance(db, student_oid, fee_type: str, academic_year: str)
     fee_structure = await db.fee_structure.find_one({
         "fee_type": fee_type, "academic_year": academic_year, "status": "active"
     })
-    total_fee = fee_structure.get("amount", 0) if fee_structure else 0
+    total_fee = round(float(fee_structure.get("amount", 0)), 2) if fee_structure else 0
+
     all_payments = await db.payments.find({
         "student_id": student_oid, "fee_type": fee_type,
         "academic_year": academic_year, "status": "completed"
     }).to_list(length=None)
-    total_paid = sum(p.get("amount_paid", 0) for p in all_payments)
-    balance = max(0, total_fee - total_paid)
+
+    total_paid = round(sum(p.get("amount_paid", 0) for p in all_payments), 2)
+    balance = round(max(0, total_fee - total_paid), 2)
+
     return {
         "fee_type": fee_type,
         "fee_name": fee_structure.get("fee_name", fee_type.replace("_", " ").title()) if fee_structure else fee_type,
-        "total_fee": total_fee, "total_paid": total_paid, "balance": balance,
+        "total_fee": total_fee,
+        "total_paid": total_paid,
+        "balance": balance,
         "balance_display": "NIL" if balance <= 0 else f"SSP {balance:,.2f}",
         "is_cleared": balance <= 0
     }
@@ -159,20 +183,20 @@ async def _calculate_balance(db, student_oid, fee_type: str, academic_year: str)
 async def get_summary(academic_year: Optional[str] = Query(None), current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_database()
     year = academic_year or _get_current_academic_year()
-    
+
     income_result = await db.financial_records.aggregate([
         {"$match": {"transaction_type": "income", "approval_status": "approved", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
-    
+
     expenses_result = await db.financial_records.aggregate([
         {"$match": {"transaction_type": "expense", "approval_status": "approved", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
-    
+
     total_income = income_result[0]["total"] if income_result else 0
     total_expenses = expenses_result[0]["total"] if expenses_result else 0
-    
+
     return {
         "success": True,
         "message": "Summary retrieved",
@@ -189,35 +213,35 @@ async def get_summary(academic_year: Optional[str] = Query(None), current_user: 
 async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_database()
     year = _get_current_academic_year()
-    
+
     tx_income_result = await db.financial_records.aggregate([
         {"$match": {"transaction_type": "income", "approval_status": "completed", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
-    
+
     tx_expenses_result = await db.financial_records.aggregate([
         {"$match": {"transaction_type": "expense", "approval_status": "completed", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
-    
+
     payment_result = await db.payments.aggregate([
         {"$match": {"academic_year": year, "status": "completed"}},
         {"$group": {"_id": None, "total": {"$sum": "$amount_paid"}, "count": {"$sum": 1}}}
     ]).to_list(length=1)
-    
+
     tx_income_total = tx_income_result[0]["total"] if tx_income_result else 0
     tx_expense_total = tx_expenses_result[0]["total"] if tx_expenses_result else 0
     payment_amt = payment_result[0]["total"] if payment_result else 0
     payment_count = payment_result[0]["count"] if payment_result else 0
-    
+
     total_income = tx_income_total + payment_amt
     total_expenses = tx_expense_total
     net_balance = total_income - total_expenses
-    
+
     pending = await db.financial_records.count_documents({"approval_status": "pending"})
     recent = await db.financial_records.find().sort("created_at", -1).limit(5).to_list(length=5)
     recent = [parse_mongo_document(t) for t in recent]
-    
+
     return {
         "success": True,
         "message": "Dashboard retrieved",
@@ -245,27 +269,38 @@ async def get_student_balance(student_id: str, academic_year: Optional[str] = Qu
                                fee_type: Optional[str] = Query(None), current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_database()
     sid = _safe_objectid(student_id)
-    if not sid: raise HTTPException(status_code=400, detail="Invalid student ID")
+    if not sid:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
     student = await db.students.find_one({"_id": sid})
-    if not student: raise HTTPException(status_code=404, detail="Student not found")
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
     year = academic_year or _get_current_academic_year()
     fee_filter = {"academic_year": year, "status": "active"}
-    if fee_type: fee_filter["fee_type"] = fee_type
+    if fee_type:
+        fee_filter["fee_type"] = fee_type
     fee_structures = await db.fee_structure.find(fee_filter).to_list(length=None)
     payments = await db.payments.find({"student_id": sid, "academic_year": year, "status": "completed"}).to_list(length=None)
     balances = []
     for fee in fee_structures:
         ft = fee.get("fee_type", "other")
-        tp = sum(p.get("amount_paid", 0) for p in payments if p.get("fee_type") == ft)
-        bal = max(0, fee.get("amount", 0) - tp)
-        balances.append({"fee_name": fee.get("fee_name", ft), "fee_type": ft, "total_fee": fee.get("amount", 0),
-                         "total_paid": tp, "balance": bal, "balance_display": "NIL" if bal <= 0 else f"SSP {bal:,.2f}",
-                         "is_cleared": bal <= 0, "academic_year": year})
-    total_outstanding = sum(b["balance"] for b in balances)
-    return {"success": True, "message": "Student balance retrieved",
-            "data": {"student_id": student_id, "student_name": f"{student.get('first_name', '')} {student.get('last_name', '')}".strip(),
-                     "academic_year": year, "balances": balances, "total_outstanding": total_outstanding,
-                     "total_outstanding_display": "NIL" if total_outstanding <= 0 else f"SSP {total_outstanding:,.2f}"}}
+        tp = round(sum(p.get("amount_paid", 0) for p in payments if p.get("fee_type") == ft), 2)
+        bal = round(max(0, fee.get("amount", 0) - tp), 2)
+        balances.append({
+            "fee_name": fee.get("fee_name", ft), "fee_type": ft, "total_fee": round(fee.get("amount", 0), 2),
+            "total_paid": tp, "balance": bal,
+            "balance_display": "NIL" if bal <= 0 else f"SSP {bal:,.2f}",
+            "is_cleared": bal <= 0, "academic_year": year
+        })
+    total_outstanding = round(sum(b["balance"] for b in balances), 2)
+    return {
+        "success": True, "message": "Student balance retrieved",
+        "data": {
+            "student_id": student_id,
+            "student_name": f"{student.get('first_name', '')} {student.get('last_name', '')}".strip(),
+            "academic_year": year, "balances": balances, "total_outstanding": total_outstanding,
+            "total_outstanding_display": "NIL" if total_outstanding <= 0 else f"SSP {total_outstanding:,.2f}"
+        }
+    }
 
 
 # =========================================================================
@@ -281,60 +316,112 @@ async def list_payments(student_id: Optional[str] = Query(None), search: Optiona
     filter_query = {}
     if student_id:
         sid = _safe_objectid(student_id)
-        if sid: filter_query["student_id"] = sid
-    if search: filter_query["$or"] = [{"student_name": {"$regex": search, "$options": "i"}}, {"receipt_number": {"$regex": search, "$options": "i"}}]
-    if academic_year: filter_query["academic_year"] = academic_year
-    if status: filter_query["status"] = status
+        if sid:
+            filter_query["student_id"] = sid
+    if search:
+        filter_query["$or"] = [
+            {"student_name": {"$regex": search, "$options": "i"}},
+            {"receipt_number": {"$regex": search, "$options": "i"}}
+        ]
+    if academic_year:
+        filter_query["academic_year"] = academic_year
+    if status:
+        filter_query["status"] = status
     skip = (page - 1) * limit
     total = await db.payments.count_documents(filter_query)
     payments = await db.payments.find(filter_query).sort("payment_date", -1).skip(skip).limit(limit).to_list(length=limit)
-    return {"success": True, "message": "Payments retrieved",
-            "data": {"payments": [parse_mongo_document(p) for p in payments], "total": total, "page": page, "limit": limit}}
+    return {
+        "success": True, "message": "Payments retrieved",
+        "data": {"payments": [parse_mongo_document(p) for p in payments], "total": total, "page": page, "limit": limit}
+    }
 
 
 @router.post("/payments")
 async def record_payment(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin", "accountant"))):
+    """Record a student payment with precise amount handling."""
     db = get_database()
-    try: body = await request.json()
-    except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
-    student_id = body.get('student_id', ''); amount_paid = body.get('amount_paid', body.get('amount', 0))
-    if not student_id: raise HTTPException(status_code=400, detail="Student ID is required")
-    if not amount_paid or float(amount_paid) <= 0: raise HTTPException(status_code=400, detail="Valid amount is required")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    student_id = body.get('student_id', '')
+    amount_paid = body.get('amount_paid', body.get('amount', 0))
+
+    if not student_id:
+        raise HTTPException(status_code=400, detail="Student ID is required")
+    if not amount_paid or float(amount_paid) <= 0:
+        raise HTTPException(status_code=400, detail="Valid amount is required")
+
+    # ✅ Round to 2 decimal places to avoid floating point issues
+    amount_paid = round(float(amount_paid), 2)
+
     sid = _safe_objectid(student_id)
-    if not sid: raise HTTPException(status_code=400, detail="Invalid student ID format")
+    if not sid:
+        raise HTTPException(status_code=400, detail="Invalid student ID format")
+
     student = await db.students.find_one({"_id": sid})
-    if not student: raise HTTPException(status_code=404, detail="Student not found")
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
     student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
+
     class_name = ""
     try:
         if student.get("current_class_id"):
             cls = await db.classes.find_one({"_id": student["current_class_id"]})
-            if cls: class_name = cls.get("class_name", "")
-    except Exception: pass
+            if cls:
+                class_name = cls.get("class_name", "")
+    except Exception:
+        pass
+
     receipt_number = body.get('receipt_number') or await _generate_receipt_number(db)
     academic_year = body.get('academic_year') or _get_current_academic_year()
-    fee_type = body.get('fee_type', 'tuition'); payment_status = body.get('status', 'completed')
+    fee_type = body.get('fee_type', 'tuition')
+    payment_status = body.get('status', 'completed')
+    term = body.get('term') or _get_current_term()
+
     recorded_by_name = "System"
     try:
-        first = current_user.get("first_name", ""); last = current_user.get("last_name", "")
-        if first or last: recorded_by_name = f"{first} {last}".strip()
-    except Exception: pass
-    doc = {"student_id": sid, "student_name": student_name, "class_name": class_name,
-           "amount_paid": float(amount_paid), "payment_method": body.get('payment_method', 'cash'),
-           "payment_type": body.get('payment_type', 'school_fees'), "fee_type": fee_type,
-           "paid_by": body.get('paid_by', student_name), "payment_date": datetime.utcnow(),
-           "receipt_number": receipt_number, "status": payment_status,
-           "recorded_by": current_user.get("_id"), "recorded_by_name": recorded_by_name,
-           "academic_year": academic_year, "term": body.get('term') or _get_current_term(),
-           "notes": body.get('notes', ''), "transaction_reference": body.get('transaction_reference', ''),
-           "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
+        first = current_user.get("first_name", "")
+        last = current_user.get("last_name", "")
+        if first or last:
+            recorded_by_name = f"{first} {last}".strip()
+    except Exception:
+        pass
+
+    doc = {
+        "student_id": sid,
+        "student_name": student_name,
+        "class_name": class_name,
+        "amount_paid": amount_paid,
+        "payment_method": body.get('payment_method', 'cash'),
+        "payment_type": body.get('payment_type', 'school_fees'),
+        "fee_type": fee_type,
+        "paid_by": body.get('paid_by', student_name),
+        "payment_date": datetime.utcnow(),
+        "receipt_number": receipt_number,
+        "status": payment_status,
+        "recorded_by": current_user.get("_id"),
+        "recorded_by_name": recorded_by_name,
+        "academic_year": academic_year,
+        "term": term,
+        "notes": body.get('notes', ''),
+        "transaction_reference": body.get('transaction_reference', ''),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
     doc = {k: v for k, v in doc.items() if v is not None}
+
     try:
         result = await db.payments.insert_one(doc)
-        doc["_id"] = str(result.inserted_id); doc = parse_mongo_document(doc)
+        doc["_id"] = str(result.inserted_id)
+        doc = parse_mongo_document(doc)
+
         balance_info = await _calculate_balance(db, sid, fee_type, academic_year)
         doc["balance_info"] = balance_info
-        print(f"✅ Payment: {receipt_number} | Balance: {balance_info['balance_display']}")
+
+        print(f"✅ Payment: {receipt_number} | Amount: SSP {amount_paid:,.2f} | Balance: {balance_info['balance_display']}")
         return {"success": True, "message": "Payment recorded successfully", "data": doc}
     except Exception as e:
         print(f"❌ Payment error: {str(e)}")
@@ -345,9 +432,11 @@ async def record_payment(request: Request, current_user: Dict[str, Any] = Depend
 async def get_payment(payment_id: str = Path(...), current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_database()
     obj_id = _safe_objectid(payment_id)
-    if not obj_id: raise HTTPException(status_code=400, detail="Invalid payment ID")
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid payment ID")
     payment = await db.payments.find_one({"_id": obj_id})
-    if not payment: raise HTTPException(status_code=404, detail="Payment not found")
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
     return {"success": True, "message": "Payment retrieved", "data": parse_mongo_document(payment)}
 
 
@@ -356,16 +445,22 @@ async def update_payment(payment_id: str = Path(...), request: Request = None,
                           current_user: Dict[str, Any] = Depends(require_role("admin", "accountant"))):
     db = get_database()
     obj_id = _safe_objectid(payment_id)
-    if not obj_id: raise HTTPException(status_code=400, detail="Invalid payment ID")
-    try: body = await request.json()
-    except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
-    if not body: raise HTTPException(status_code=400, detail="No fields to update")
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid payment ID")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    if not body:
+        raise HTTPException(status_code=400, detail="No fields to update")
     allowed_fields = ["status", "notes", "payment_method", "transaction_reference", "academic_year", "term"]
     update_data = {k: v for k, v in body.items() if k in allowed_fields}
-    if not update_data: raise HTTPException(status_code=400, detail="No valid fields to update")
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
     update_data["updated_at"] = datetime.utcnow()
     result = await db.payments.find_one_and_update({"_id": obj_id}, {"$set": update_data}, return_document=True)
-    if not result: raise HTTPException(status_code=404, detail="Payment not found")
+    if not result:
+        raise HTTPException(status_code=404, detail="Payment not found")
     return {"success": True, "message": "Payment updated", "data": parse_mongo_document(result)}
 
 
@@ -373,9 +468,11 @@ async def update_payment(payment_id: str = Path(...), request: Request = None,
 async def delete_payment(payment_id: str = Path(...), current_user: Dict[str, Any] = Depends(require_role("admin"))):
     db = get_database()
     obj_id = _safe_objectid(payment_id)
-    if not obj_id: raise HTTPException(status_code=400, detail="Invalid payment ID")
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid payment ID")
     payment = await db.payments.find_one({"_id": obj_id})
-    if not payment: raise HTTPException(status_code=404, detail="Payment not found")
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
     await db.payments.delete_one({"_id": obj_id})
     return {"success": True, "message": "Payment deleted"}
 
@@ -387,8 +484,10 @@ async def delete_payment(payment_id: str = Path(...), current_user: Dict[str, An
 @router.get("/next-receipt-number")
 async def get_next_receipt_number(current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_database()
-    return {"success": True, "message": "Next receipt number generated",
-            "data": {"receipt_number": await _generate_receipt_number(db)}}
+    return {
+        "success": True, "message": "Next receipt number generated",
+        "data": {"receipt_number": await _generate_receipt_number(db)}
+    }
 
 
 @router.get("/receipt/{record_id}")
@@ -396,20 +495,22 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
     """Get receipt data for payment or transaction"""
     db = get_database()
     obj_id = _safe_objectid(record_id)
-    if not obj_id: raise HTTPException(status_code=400, detail="Invalid ID")
-    
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid ID")
+
     record = await db.payments.find_one({"_id": obj_id})
     is_payment = True
-    
+
     if not record:
         record = await db.financial_records.find_one({"_id": obj_id})
         is_payment = False
-        if not record: raise HTTPException(status_code=404, detail="Record not found")
-    
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+
     student_name = record.get("student_name", "")
     class_name = record.get("class_name", "")
     paid_by = record.get("paid_by", "") or record.get("recorded_by_name", "")
-    
+
     if record.get("student_id") and not student_name:
         try:
             student = await db.students.find_one({"_id": record["student_id"]})
@@ -417,21 +518,25 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
                 student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
                 if student.get("current_class_id") and not class_name:
                     cls = await db.classes.find_one({"_id": student["current_class_id"]})
-                    if cls: class_name = cls.get("class_name", "")
-        except Exception: pass
-    
+                    if cls:
+                        class_name = cls.get("class_name", "")
+        except Exception:
+            pass
+
     school = await db.school_info.find_one({}) or {}
-    amount = record.get("amount_paid") or record.get("amount", 0)
+    amount = round(float(record.get("amount_paid") or record.get("amount", 0)), 2)
     fee_type = record.get("fee_type", "tuition")
     year = record.get("academic_year", "")
-    
+
     payment_for = record.get("payment_type") or record.get("fee_type") or record.get("description", "School Fees")
-    
+
     balance_info = None
     if is_payment and record.get("student_id"):
-        try: balance_info = await _calculate_balance(db, record["student_id"], fee_type, year)
-        except Exception: pass
-    
+        try:
+            balance_info = await _calculate_balance(db, record["student_id"], fee_type, year)
+        except Exception:
+            pass
+
     receipt_data = {
         "receipt_number": record.get("receipt_number") or record.get("reference_number", ""),
         "record_id": str(record["_id"]),
@@ -439,8 +544,8 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
         "student_name": student_name or "N/A",
         "student_id": str(record.get("student_id", "")),
         "class_name": class_name or "N/A",
-        "amount": float(amount),
-        "amount_words": _number_to_words(float(amount)),
+        "amount": amount,
+        "amount_words": _number_to_words(amount),
         "payment_method": record.get("payment_method", "Cash"),
         "payment_for": payment_for,
         "term": record.get("term", ""),
@@ -450,10 +555,12 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
         "balance_info": balance_info,
         "organization_name": record.get("organization_name", ""),
         "representative_name": record.get("representative_name", ""),
-        "school": {"name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
-                   "address": school.get("address", ""), "phone": school.get("phone", ""),
-                   "email": school.get("email", ""), "motto": school.get("motto", "Nurturing Right Leaders"),
-                   "logo_url": school.get("logo_url", "/logo.png")}
+        "school": {
+            "name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
+            "address": school.get("address", ""), "phone": school.get("phone", ""),
+            "email": school.get("email", ""), "motto": school.get("motto", "Nurturing Right Leaders"),
+            "logo_url": school.get("logo_url", "/logo.png")
+        }
     }
     return {"success": True, "message": "Receipt data retrieved", "data": receipt_data}
 
@@ -466,25 +573,38 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
 async def get_fee_structure(academic_year: Optional[str] = Query(None), current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_database()
     filter_query = {}
-    if academic_year: filter_query["academic_year"] = academic_year
+    if academic_year:
+        filter_query["academic_year"] = academic_year
     fees = await db.fee_structure.find(filter_query).to_list(length=None)
-    return {"success": True, "message": "Fee structure retrieved",
-            "data": {"fees": [parse_mongo_document(f) for f in fees], "total": len(fees),
-                     "academic_year": academic_year or _get_current_academic_year()}}
+    return {
+        "success": True, "message": "Fee structure retrieved",
+        "data": {
+            "fees": [parse_mongo_document(f) for f in fees],
+            "total": len(fees),
+            "academic_year": academic_year or _get_current_academic_year()
+        }
+    }
 
 
 @router.post("/fees")
 async def create_fee(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin", "accountant"))):
     db = get_database()
-    try: body = await request.json()
-    except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
-    fee_name = body.get('fee_name', '').strip(); amount = body.get('amount', 0)
-    if not fee_name or not amount: raise HTTPException(status_code=400, detail="Fee name and amount are required")
-    doc = {"fee_name": fee_name, "fee_type": body.get('fee_type', 'tuition'), "amount": float(amount),
-           "class_level": body.get('class_level'), "academic_year": body.get('academic_year') or _get_current_academic_year(),
-           "term": body.get('term') or _get_current_term(), "description": body.get('description', ''),
-           "is_mandatory": body.get('is_mandatory', True), "status": "active",
-           "created_by": current_user.get("_id"), "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    fee_name = body.get('fee_name', '').strip()
+    amount = body.get('amount', 0)
+    if not fee_name or not amount:
+        raise HTTPException(status_code=400, detail="Fee name and amount are required")
+    doc = {
+        "fee_name": fee_name, "fee_type": body.get('fee_type', 'tuition'),
+        "amount": round(float(amount), 2), "class_level": body.get('class_level'),
+        "academic_year": body.get('academic_year') or _get_current_academic_year(),
+        "term": body.get('term') or _get_current_term(), "description": body.get('description', ''),
+        "is_mandatory": body.get('is_mandatory', True), "status": "active",
+        "created_by": current_user.get("_id"), "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
+    }
     result = await db.fee_structure.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     return {"success": True, "message": "Fee created", "data": parse_mongo_document(doc)}
@@ -495,16 +615,22 @@ async def update_fee(fee_id: str = Path(...), request: Request = None,
                       current_user: Dict[str, Any] = Depends(require_role("admin", "accountant"))):
     db = get_database()
     obj_id = _safe_objectid(fee_id)
-    if not obj_id: raise HTTPException(status_code=400, detail="Invalid fee ID")
-    try: body = await request.json()
-    except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
-    if not body: raise HTTPException(status_code=400, detail="No fields to update")
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid fee ID")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    if not body:
+        raise HTTPException(status_code=400, detail="No fields to update")
     allowed_fields = ["fee_name", "amount", "fee_type", "class_level", "description", "is_mandatory", "status", "term"]
     update_data = {k: v for k, v in body.items() if k in allowed_fields}
-    if not update_data: raise HTTPException(status_code=400, detail="No valid fields to update")
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
     update_data["updated_at"] = datetime.utcnow()
     result = await db.fee_structure.find_one_and_update({"_id": obj_id}, {"$set": update_data}, return_document=True)
-    if not result: raise HTTPException(status_code=404, detail="Fee not found")
+    if not result:
+        raise HTTPException(status_code=404, detail="Fee not found")
     return {"success": True, "message": "Fee updated", "data": parse_mongo_document(result)}
 
 
@@ -512,26 +638,30 @@ async def update_fee(fee_id: str = Path(...), request: Request = None,
 async def delete_fee(fee_id: str = Path(...), current_user: Dict[str, Any] = Depends(require_role("admin"))):
     db = get_database()
     obj_id = _safe_objectid(fee_id)
-    if not obj_id: raise HTTPException(status_code=400, detail="Invalid fee ID")
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid fee ID")
     result = await db.fee_structure.delete_one({"_id": obj_id})
-    if result.deleted_count == 0: raise HTTPException(status_code=404, detail="Fee not found")
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Fee not found")
     return {"success": True, "message": "Fee deleted"}
 
 
 # =========================================================================
-# ✅ RESET FINANCIAL DATA - MUST BE BEFORE TRANSACTION ROUTES
+# RESET FINANCIAL DATA
 # =========================================================================
 
 @router.post("/reset")
 async def reset_financial_data(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin"))):
     """⚠️ Reset all financial data"""
     db = get_database()
-    try: body = await request.json()
-    except Exception: body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
     confirmation = body.get("confirmation", "").strip().upper()
     if confirmation != "DELETE ALL FINANCIAL DATA":
         raise HTTPException(status_code=400, detail="You must type 'DELETE ALL FINANCIAL DATA' to confirm reset")
-    
+
     results = {}
     try:
         if body.get("reset_transactions", True):
@@ -551,16 +681,26 @@ async def reset_financial_data(request: Request, current_user: Dict[str, Any] = 
             await db.budgets.delete_many({})
             results["budgets_deleted"] = c
         try:
-            changed_by = None; uid = current_user.get("_id")
-            if uid: cv = _safe_objectid(uid)
-            if cv: changed_by = cv
-            await db.audit_log.insert_one({"table_name": "financial_reset", "record_id": f"RESET-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
-                "operation": "RESET_ALL", "changed_by": changed_by, "details": results, "changed_at": datetime.utcnow()})
-        except Exception as e: print(f"⚠️ Audit log: {e}")
+            changed_by = None
+            uid = current_user.get("_id")
+            if uid:
+                cv = _safe_objectid(uid)
+                if cv:
+                    changed_by = cv
+            await db.audit_log.insert_one({
+                "table_name": "financial_reset",
+                "record_id": f"RESET-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                "operation": "RESET_ALL", "changed_by": changed_by,
+                "details": results, "changed_at": datetime.utcnow()
+            })
+        except Exception as e:
+            print(f"⚠️ Audit log: {e}")
         total = sum(results.values())
         print(f"🔄 Financial reset: {results} | Total: {total}")
-        return {"success": True, "message": "Financial data reset complete",
-                "data": {"results": results, "total_deleted": total}}
+        return {
+            "success": True, "message": "Financial data reset complete",
+            "data": {"results": results, "total_deleted": total}
+        }
     except Exception as e:
         print(f"❌ Reset error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to reset: {str(e)}")
@@ -578,16 +718,29 @@ async def list_transactions(type: Optional[str] = Query(None, alias="type"), cat
                              limit: int = Query(20, ge=1, le=100), current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_database()
     filter_query = {}
-    if type: filter_query["transaction_type"] = type
-    if category: filter_query["category"] = category
-    if status: filter_query["approval_status"] = status
-    if academic_year: filter_query["academic_year"] = academic_year
-    if search: filter_query["$or"] = [{"description": {"$regex": search, "$options": "i"}}, {"reference_number": {"$regex": search, "$options": "i"}}]
+    if type:
+        filter_query["transaction_type"] = type
+    if category:
+        filter_query["category"] = category
+    if status:
+        filter_query["approval_status"] = status
+    if academic_year:
+        filter_query["academic_year"] = academic_year
+    if search:
+        filter_query["$or"] = [
+            {"description": {"$regex": search, "$options": "i"}},
+            {"reference_number": {"$regex": search, "$options": "i"}}
+        ]
     skip = (page - 1) * limit
     total = await db.financial_records.count_documents(filter_query)
     transactions = await db.financial_records.find(filter_query).sort("transaction_date", -1).skip(skip).limit(limit).to_list(length=limit)
-    return {"success": True, "message": "Transactions retrieved",
-            "data": {"transactions": [parse_mongo_document(t) for t in transactions], "total": total, "page": page, "limit": limit}}
+    return {
+        "success": True, "message": "Transactions retrieved",
+        "data": {
+            "transactions": [parse_mongo_document(t) for t in transactions],
+            "total": total, "page": page, "limit": limit
+        }
+    }
 
 
 @router.post("")
@@ -595,19 +748,30 @@ async def list_transactions(type: Optional[str] = Query(None, alias="type"), cat
 async def create_transaction(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin", "accountant"))):
     """Record a transaction (income/expense) - for organizations, donations, church, etc."""
     db = get_database()
-    try: body = await request.json()
-    except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
-    td = body.get('transaction_date', ''); amt = body.get('amount', 0)
-    tt = body.get('transaction_type', ''); cat = body.get('category', '')
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    td = body.get('transaction_date', '')
+    amt = body.get('amount', 0)
+    tt = body.get('transaction_type', '')
+    cat = body.get('category', '')
     desc = body.get('description', '')
+
     if not td or not amt or not tt or not desc:
         raise HTTPException(status_code=400, detail="Date, amount, type, and description are required")
-    try: date_obj = datetime.strptime(td, '%Y-%m-%d')
-    except ValueError: raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    try:
+        date_obj = datetime.strptime(td, '%Y-%m-%d')
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
     academic_year = body.get('academic_year') or _get_current_academic_year()
     term = body.get('term') or _get_current_term()
     approval_status = body.get('status', body.get('approval_status', 'completed'))
     reference_number = body.get('reference_number') or await _generate_receipt_number(db)
+
     organization_name = body.get('organization_name', '').strip()
     representative_name = body.get('representative_name', '').strip()
     representative_phone = body.get('representative_phone', '').strip()
