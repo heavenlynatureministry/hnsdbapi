@@ -159,18 +159,30 @@ async def _calculate_balance(db, student_oid, fee_type: str, academic_year: str)
 async def get_summary(academic_year: Optional[str] = Query(None), current_user: Dict[str, Any] = Depends(get_current_user)):
     db = get_database()
     year = academic_year or _get_current_academic_year()
-    income = await db.financial_records.aggregate([
+    
+    income_result = await db.financial_records.aggregate([
         {"$match": {"transaction_type": "income", "approval_status": "approved", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
-    expenses = await db.financial_records.aggregate([
+    
+    expenses_result = await db.financial_records.aggregate([
         {"$match": {"transaction_type": "expense", "approval_status": "approved", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
-    return {"success": True, "message": "Summary retrieved",
-            "data": {"academic_year": year, "income": {"total": round(income[0]["total"] if income else 0, 2)},
-                     "expense": {"total": round(expenses[0]["total"] if expenses else 0, 2)},
-                     "balance": round((income[0]["total"] if income else 0) - (expenses[0]["total"] if expenses else 0), 2)}}
+    
+    total_income = income_result[0]["total"] if income_result else 0
+    total_expenses = expenses_result[0]["total"] if expenses_result else 0
+    
+    return {
+        "success": True,
+        "message": "Summary retrieved",
+        "data": {
+            "academic_year": year,
+            "income": {"total": round(total_income, 2)},
+            "expense": {"total": round(total_expenses, 2)},
+            "balance": round(total_income - total_expenses, 2)
+        }
+    }
 
 
 @router.get("/dashboard")
