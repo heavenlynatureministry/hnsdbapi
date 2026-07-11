@@ -190,30 +190,26 @@ async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current
     db = get_database()
     year = _get_current_academic_year()
     
-    # Income from transactions (donations, grants, etc.)
-    tx_income = await db.financial_records.aggregate([
+    tx_income_result = await db.financial_records.aggregate([
         {"$match": {"transaction_type": "income", "approval_status": "completed", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
     
-    # Expenses from transactions
-    tx_expenses = await db.financial_records.aggregate([
+    tx_expenses_result = await db.financial_records.aggregate([
         {"$match": {"transaction_type": "expense", "approval_status": "completed", "academic_year": year}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]).to_list(length=1)
     
-    # Student payments
-    payment_total = await db.payments.aggregate([
+    payment_result = await db.payments.aggregate([
         {"$match": {"academic_year": year, "status": "completed"}},
-        {"$group": {"_id": None, "total": {"$sum": "$amount_paid"}, "count": {"$sum": 1}}
+        {"$group": {"_id": None, "total": {"$sum": "$amount_paid"}, "count": {"$sum": 1}}}
     ]).to_list(length=1)
     
-    tx_income_total = tx_income[0]["total"] if tx_income else 0
-    tx_expense_total = tx_expenses[0]["total"] if tx_expenses else 0
-    payment_amt = payment_total[0]["total"] if payment_total else 0
-    payment_count = payment_total[0]["count"] if payment_total else 0
+    tx_income_total = tx_income_result[0]["total"] if tx_income_result else 0
+    tx_expense_total = tx_expenses_result[0]["total"] if tx_expenses_result else 0
+    payment_amt = payment_result[0]["total"] if payment_result else 0
+    payment_count = payment_result[0]["count"] if payment_result else 0
     
-    # Combined totals
     total_income = tx_income_total + payment_amt
     total_expenses = tx_expense_total
     net_balance = total_income - total_expenses
@@ -222,18 +218,24 @@ async def financial_dashboard(current_user: Dict[str, Any] = Depends(get_current
     recent = await db.financial_records.find().sort("created_at", -1).limit(5).to_list(length=5)
     recent = [parse_mongo_document(t) for t in recent]
     
-    return {"success": True, "message": "Dashboard retrieved",
-            "data": {"academic_year": year, "current_term": _get_current_term(),
-                     "total_income": round(total_income, 2),
-                     "total_expenses": round(total_expenses, 2),
-                     "net_balance": round(net_balance, 2),
-                     "student_payments": round(payment_amt, 2),
-                     "student_payments_count": payment_count,
-                     "donations_income": round(tx_income_total, 2),
-                     "pending_approvals": pending,
-                     "recent_transactions": recent}}
-    
-    
+    return {
+        "success": True,
+        "message": "Dashboard retrieved",
+        "data": {
+            "academic_year": year,
+            "current_term": _get_current_term(),
+            "total_income": round(total_income, 2),
+            "total_expenses": round(total_expenses, 2),
+            "net_balance": round(net_balance, 2),
+            "student_payments": round(payment_amt, 2),
+            "student_payments_count": payment_count,
+            "donations_income": round(tx_income_total, 2),
+            "pending_approvals": pending,
+            "recent_transactions": recent
+        }
+    }
+
+
 # =========================================================================
 # STUDENT FEE BALANCE
 # =========================================================================
