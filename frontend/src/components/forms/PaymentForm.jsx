@@ -38,8 +38,11 @@ const TERMS = [
   { value: 'Term 1', label: 'Term 1' },
   { value: 'Term 2', label: 'Term 2' },
   { value: 'Term 3', label: 'Term 3' },
+  { value: 'Term 1 & 2', label: 'Term 1 & 2' },
+  { value: 'Term 2 & 3', label: 'Term 2 & 3' },
+  { value: 'Term 1, 2 & 3', label: 'Term 1, 2 & 3 (Full Year)' },
 ]
-
+  
 const PAYMENT_TYPES = [
   { value: 'school_fees', label: 'School Fees' },
   { value: 'registration', label: 'Registration' },
