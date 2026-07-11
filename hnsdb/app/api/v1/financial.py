@@ -93,7 +93,6 @@ async def _generate_receipt_number(db) -> str:
         try:
             latest_num = 0
             
-            # Check payments collection
             last_payment = await db.payments.find_one(
                 {"receipt_number": {"$regex": "^HNSRCT-[0-9]{9}$"}},
                 sort=[("created_at", -1)]
@@ -107,7 +106,6 @@ async def _generate_receipt_number(db) -> str:
                 except (ValueError, AttributeError):
                     pass
             
-            # Check financial_records collection
             last_record = await db.financial_records.find_one(
                 {"reference_number": {"$regex": "^HNSRCT-[0-9]{9}$"}},
                 sort=[("created_at", -1)]
@@ -366,7 +364,6 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
     obj_id = _safe_objectid(record_id)
     if not obj_id: raise HTTPException(status_code=400, detail="Invalid ID")
     
-    # Try payments first, then financial_records
     record = await db.payments.find_one({"_id": obj_id})
     is_payment = True
     
@@ -417,6 +414,8 @@ async def get_receipt(record_id: str = Path(...), current_user: Dict[str, Any] =
         "received_by": record.get("recorded_by_name", ""),
         "paid_by": paid_by or "N/A",
         "balance_info": balance_info,
+        "organization_name": record.get("organization_name", ""),
+        "representative_name": record.get("representative_name", ""),
         "school": {"name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
                    "address": school.get("address", ""), "phone": school.get("phone", ""),
                    "email": school.get("email", ""), "motto": school.get("motto", "Nurturing Right Leaders"),
@@ -486,6 +485,54 @@ async def delete_fee(fee_id: str = Path(...), current_user: Dict[str, Any] = Dep
 
 
 # =========================================================================
+# ✅ RESET FINANCIAL DATA - MUST BE BEFORE TRANSACTION ROUTES
+# =========================================================================
+
+@router.post("/reset")
+async def reset_financial_data(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin"))):
+    """⚠️ Reset all financial data"""
+    db = get_database()
+    try: body = await request.json()
+    except Exception: body = {}
+    confirmation = body.get("confirmation", "").strip().upper()
+    if confirmation != "DELETE ALL FINANCIAL DATA":
+        raise HTTPException(status_code=400, detail="You must type 'DELETE ALL FINANCIAL DATA' to confirm reset")
+    
+    results = {}
+    try:
+        if body.get("reset_transactions", True):
+            c = await db.financial_records.count_documents({})
+            await db.financial_records.delete_many({})
+            results["transactions_deleted"] = c
+        if body.get("reset_payments", True):
+            c = await db.payments.count_documents({})
+            await db.payments.delete_many({})
+            results["payments_deleted"] = c
+        if body.get("reset_fees", True):
+            c = await db.fee_structure.count_documents({})
+            await db.fee_structure.delete_many({})
+            results["fees_deleted"] = c
+        if body.get("reset_budgets", True):
+            c = await db.budgets.count_documents({})
+            await db.budgets.delete_many({})
+            results["budgets_deleted"] = c
+        try:
+            changed_by = None; uid = current_user.get("_id")
+            if uid: cv = _safe_objectid(uid)
+            if cv: changed_by = cv
+            await db.audit_log.insert_one({"table_name": "financial_reset", "record_id": f"RESET-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                "operation": "RESET_ALL", "changed_by": changed_by, "details": results, "changed_at": datetime.utcnow()})
+        except Exception as e: print(f"⚠️ Audit log: {e}")
+        total = sum(results.values())
+        print(f"🔄 Financial reset: {results} | Total: {total}")
+        return {"success": True, "message": "Financial data reset complete",
+                "data": {"results": results, "total_deleted": total}}
+    except Exception as e:
+        print(f"❌ Reset error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset: {str(e)}")
+
+
+# =========================================================================
 # TRANSACTIONS
 # =========================================================================
 
@@ -516,58 +563,37 @@ async def create_transaction(request: Request, current_user: Dict[str, Any] = De
     db = get_database()
     try: body = await request.json()
     except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
-    
-    td = body.get('transaction_date', '')
-    amt = body.get('amount', 0)
-    tt = body.get('transaction_type', '')
-    cat = body.get('category', '')
+    td = body.get('transaction_date', ''); amt = body.get('amount', 0)
+    tt = body.get('transaction_type', ''); cat = body.get('category', '')
     desc = body.get('description', '')
-    
     if not td or not amt or not tt or not desc:
         raise HTTPException(status_code=400, detail="Date, amount, type, and description are required")
-    
     try: date_obj = datetime.strptime(td, '%Y-%m-%d')
     except ValueError: raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    
     academic_year = body.get('academic_year') or _get_current_academic_year()
     term = body.get('term') or _get_current_term()
     approval_status = body.get('status', body.get('approval_status', 'completed'))
     reference_number = body.get('reference_number') or await _generate_receipt_number(db)
-    
-    # ✅ Organization/Donor fields
     organization_name = body.get('organization_name', '').strip()
     representative_name = body.get('representative_name', '').strip()
     representative_phone = body.get('representative_phone', '').strip()
-    
     doc = {
-        "transaction_date": date_obj,
-        "amount": float(amt),
-        "transaction_type": tt,
-        "category": cat,
-        "description": desc,
-        "payment_method": body.get('payment_method', 'cash'),
-        "reference_number": reference_number,
-        "recorded_by": current_user.get("_id"),
+        "transaction_date": date_obj, "amount": float(amt), "transaction_type": tt, "category": cat,
+        "description": desc, "payment_method": body.get('payment_method', 'cash'),
+        "reference_number": reference_number, "recorded_by": current_user.get("_id"),
         "recorded_by_name": current_user.get("first_name", "") + " " + current_user.get("last_name", ""),
-        "approval_status": approval_status,
-        "academic_year": academic_year,
-        "term": term,
-        "notes": body.get('notes', ''),
-        # ✅ Organization fields
-        "organization_name": organization_name,
-        "representative_name": representative_name,
-        "representative_phone": representative_phone,
+        "approval_status": approval_status, "academic_year": academic_year, "term": term,
+        "notes": body.get('notes', ''), "organization_name": organization_name,
+        "representative_name": representative_name, "representative_phone": representative_phone,
         "paid_by": representative_name or organization_name or body.get('paid_by', ''),
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
+        "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
     }
     doc = {k: v for k, v in doc.items() if v is not None and v != ''}
-    
     result = await db.financial_records.insert_one(doc)
     doc["_id"] = str(result.inserted_id)
     print(f"✅ Transaction: {reference_number} | {organization_name or 'N/A'}")
     return {"success": True, "message": "Transaction recorded", "data": parse_mongo_document(doc)}
-    
+
 
 @router.get("/{transaction_id}")
 async def get_transaction(transaction_id: str = Path(...), current_user: Dict[str, Any] = Depends(get_current_user)):
