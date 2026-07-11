@@ -110,7 +110,7 @@ function ResultsEntry() {
     return ','
   }
 
-  // Handle CSV file upload
+    // Handle CSV file upload
   const handleCSVUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -128,13 +128,24 @@ function ResultsEntry() {
         // Auto-detect delimiter
         const delimiter = detectDelimiter(text)
 
-        const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase())
-        const nameCol = headers.findIndex(h => h === 'name' || h === 'student_name' || h === 'student')
-        const scoreCol = headers.findIndex(h => h === 'score' || h === 'marks' || h === 'result')
-        const remarksCol = headers.findIndex(h => h === 'remarks' || h === 'notes')
+        // ✅ FIXED: Better header parsing - handle quotes and BOM characters
+        const rawHeaders = lines[0].split(delimiter).map(h => 
+          h.trim()
+            .replace(/^["']|["']$/g, '')  // Remove surrounding quotes
+            .replace(/^\uFEFF/, '')        // Remove BOM character
+            .toLowerCase()
+        )
+        
+        console.log('Detected delimiter:', delimiter === '\t' ? 'TAB' : delimiter === ',' ? 'COMMA' : 'SEMICOLON')
+        console.log('Raw headers:', rawHeaders)
+
+        const nameCol = rawHeaders.findIndex(h => h === 'name' || h === 'student_name' || h === 'student')
+        const scoreCol = rawHeaders.findIndex(h => h === 'score' || h === 'marks' || h === 'result')
+        const remarksCol = rawHeaders.findIndex(h => h === 'remarks' || h === 'notes')
 
         if (nameCol === -1 || scoreCol === -1) {
-          toast.error('CSV must have "Name" and "Score" columns')
+          console.error('Column detection failed. nameCol:', nameCol, 'scoreCol:', scoreCol)
+          toast.error(`CSV must have "Name" and "Score" columns. Found: ${rawHeaders.join(', ')}`)
           return
         }
 
@@ -142,7 +153,13 @@ function ResultsEntry() {
         const newResults = [...results]
 
         for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(delimiter).map(v => v.trim())
+          // ✅ FIXED: Better value parsing - handle quoted values
+          const rawValues = lines[i].split(delimiter)
+          const values = rawValues.map(v => 
+            v.trim()
+              .replace(/^["']|["']$/g, '')  // Remove surrounding quotes
+          )
+          
           const studentName = values[nameCol]?.toLowerCase()
           // ✅ Use parseScore to handle percentage signs
           const score = parseScore(values[scoreCol])
@@ -183,7 +200,7 @@ function ResultsEntry() {
     // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
-
+  
   // Download CSV template (now uses tab delimiter for Excel compatibility)
   const downloadTemplate = () => {
     const headers = 'Name\tScore\tRemarks\n'
