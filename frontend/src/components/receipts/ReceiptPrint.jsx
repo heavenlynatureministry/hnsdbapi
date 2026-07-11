@@ -195,7 +195,7 @@ function ReceiptPrint({ receipt, onClose }) {
                 <div className="text-center w-2/5">
                   <div className="border-b border-black mb-1 h-6">&nbsp;</div>
                   <div className="text-xs">Received By</div>
-                  <div className="text-xs">{receipt?.received_by || ''}</div>
+                  <div className="text-xs">{receipt?.received_by || 'School Bursar'}</div>
                 </div>
                 <div className="text-center w-2/5">
                   <div className="border-b border-black mb-1 h-6">&nbsp;</div>
