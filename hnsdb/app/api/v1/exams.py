@@ -55,6 +55,121 @@ def _get_student_id_number(student: dict) -> str:
     return str(student_id)
 
 
+def _generate_remarks(percentage: float, is_annual: bool = False) -> str:
+    """Generate remarks based on performance percentage."""
+    if percentage >= 80:
+        base = "Excellent performance! Keep up the great work."
+        if is_annual:
+            base += " Promoted to the next class."
+        return base
+    elif percentage >= 70:
+        base = "Very good performance. Continue working hard."
+        if is_annual:
+            base += " Promoted to the next class."
+        return base
+    elif percentage >= 60:
+        base = "Good performance. There is room for improvement."
+        if is_annual:
+            base += " Promoted to the next class."
+        return base
+    elif percentage >= 50:
+        base = "Satisfactory performance. More effort is needed."
+        if is_annual:
+            base += " Promoted to the next class with recommendation for extra support."
+        return base
+    else:
+        base = "Needs significant improvement. Extra support recommended."
+        if is_annual:
+            base += " Advised to repeat the class for better foundation."
+        return base
+
+
+def _get_next_class_name(class_name: str) -> str:
+    """Get the next class name based on current class."""
+    if not class_name:
+        return "Next Class"
+    
+    # Map of class progression (South Sudan system)
+    progression = {
+        "N1": "N2", "N2": "N3", "N3": "P1",
+        "P1": "P2", "P2": "P3", "P3": "P4",
+        "P4": "P5", "P5": "P6", "P6": "P7",
+        "P7": "P8", "P8": "S1",
+        "S1": "S2", "S2": "S3", "S3": "S4",
+    }
+    
+    # Try exact match
+    if class_name.upper() in progression:
+        return progression[class_name.upper()]
+    
+    # Try to match pattern like "Primary 1" -> "Primary 2"
+    for key, value in progression.items():
+        if key in class_name.upper():
+            return class_name.upper().replace(key, value)
+    
+    return f"Next Level after {class_name}"
+
+
+async def _calculate_position(db, student_oid, class_id, overall_percentage, term, academic_year) -> tuple:
+    """Calculate student's position in class. Returns (position, out_of)."""
+    try:
+        # Get all active students in the class
+        classmates = await db.students.find({
+            "current_class_id": class_id,
+            "status": "active"
+        }).to_list(length=None)
+        
+        total_students = len(classmates)
+        
+        if total_students <= 1:
+            return "1", str(total_students)
+        
+        # Calculate percentages for all classmates
+        class_percentages = []
+        
+        for classmate in classmates:
+            c_oid = classmate["_id"]
+            
+            c_results = await db.exam_results.find({
+                "student_id": c_oid,
+                "term": term,
+                "academic_year": academic_year
+            }).to_list(length=None)
+            
+            if not c_results:
+                c_results = await db.exam_results.find({"student_id": c_oid}).to_list(length=None)
+            
+            c_exam_ids = [r["exam_id"] for r in c_results if r.get("exam_id")]
+            c_exams = await db.exams.find({"_id": {"$in": c_exam_ids}}).to_list(length=None) if c_exam_ids else []
+            c_exam_map = {str(e["_id"]): e for e in c_exams}
+            
+            c_total_score = 0
+            c_total_max = 0
+            
+            for cr in c_results:
+                c_exam = c_exam_map.get(str(cr.get("exam_id", "")), {})
+                c_total_score += float(cr.get("score", 0))
+                c_total_max += float(c_exam.get("max_score", 100))
+            
+            if c_total_max > 0:
+                c_pct = round((c_total_score / c_total_max * 100), 1)
+                class_percentages.append(c_pct)
+            else:
+                class_percentages.append(0)
+        
+        # Sort descending and find position (1-based)
+        class_percentages.sort(reverse=True)
+        
+        # Find the rank of the student's percentage
+        # Handle ties by finding first occurrence
+        position = class_percentages.index(overall_percentage) + 1 if overall_percentage in class_percentages else total_students
+        
+        return str(position), str(total_students)
+    except Exception as e:
+        print(f"Error calculating position: {e}")
+        return "N/A", "N/A"
+
+
 @router.get("")
 @router.get("/")
 async def list_exams(
@@ -335,17 +450,17 @@ async def generate_report_card(
     
     student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
     student_id_number = _get_student_id_number(student)
+    student_oid = student.get("_id")
     
     class_name = ""
-    if student.get("current_class_id"):
+    class_id = student.get("current_class_id")
+    if class_id:
         try:
-            cls = await db.classes.find_one({"_id": student["current_class_id"]})
+            cls = await db.classes.find_one({"_id": class_id})
             if cls:
                 class_name = cls.get("class_name", "")
         except Exception:
             pass
-    
-    student_oid = student.get("_id")
     
     results = await db.exam_results.find({
         "student_id": student_oid,
@@ -407,8 +522,23 @@ async def generate_report_card(
     attendance_present = sum(1 for r in attendance_records if r.get("status") in ["present", "late"])
     attendance_rate = round((attendance_present / attendance_total * 100), 1) if attendance_total > 0 else 0
     
-    position = body.get("position", "N/A")
-    out_of = body.get("out_of", "N/A")
+    # ✅ Auto-calculate position if not provided
+    position = body.get("position")
+    out_of = body.get("out_of")
+    
+    if not position and class_id:
+        position, out_of = await _calculate_position(db, student_oid, class_id, overall_percentage, term, academic_year)
+    
+    if not position:
+        position = "N/A"
+    if not out_of:
+        out_of = "N/A"
+    
+    # ✅ Auto-generate remarks if not provided
+    remarks = body.get("remarks", "")
+    if not remarks:
+        remarks = _generate_remarks(overall_percentage, is_annual=False)
+    
     verify_url = f"https://hnsdbapi.vercel.app/verify-report/{student_id_number}"
     
     return {
@@ -430,7 +560,7 @@ async def generate_report_card(
                 "position": position,
                 "out_of": out_of,
                 "result": "Pass" if overall_percentage >= 50 else "Fail",
-                "remarks": body.get("remarks", ""),
+                "remarks": remarks,
                 "conduct": body.get("conduct", "Good")
             },
             "term": term,
@@ -493,17 +623,17 @@ async def generate_annual_report_card(
     
     student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
     student_id_number = _get_student_id_number(student)
+    student_oid = student.get("_id")
     
     class_name = ""
-    if student.get("current_class_id"):
+    class_id = student.get("current_class_id")
+    if class_id:
         try:
-            cls = await db.classes.find_one({"_id": student["current_class_id"]})
+            cls = await db.classes.find_one({"_id": class_id})
             if cls:
                 class_name = cls.get("class_name", "")
         except Exception:
             pass
-    
-    student_oid = student.get("_id")
     
     # Get all results
     all_results = await db.exam_results.find({"student_id": student_oid}).to_list(length=None)
@@ -513,13 +643,12 @@ async def generate_annual_report_card(
     exams = await db.exams.find({"_id": {"$in": exam_ids}}).to_list(length=None) if exam_ids else []
     exam_map = {str(e["_id"]): e for e in exams}
     
-    # ✅ FIXED: Helper to get position/out_of/remarks with safe defaults
-    def get_body_value(key, default="N/A"):
+    def get_body_value(key, default=None):
         return body.get(key, default)
     
     # Organize results by term
-    def build_term_results(term_name):
-        """Build results for a specific term"""
+    async def build_term_results(term_name):
+        """Build results for a specific term with auto-calculated position and remarks"""
         term_results = [
             r for r in all_results 
             if r.get("term") == term_name or 
@@ -559,23 +688,54 @@ async def generate_annual_report_card(
         
         overall_percentage = round((total_score / total_max * 100), 1) if total_max > 0 else 0
         
-        # ✅ Fixed: Use safe get_body_value helper
+        # ✅ Auto-calculate position
+        term_position = get_body_value(f"position_{term_name.lower().replace(' ', '_')}")
+        term_out_of = get_body_value(f"out_of_{term_name.lower().replace(' ', '_')}")
+        
+        if not term_position and class_id:
+            term_position, term_out_of = await _calculate_position(
+                db, student_oid, class_id, overall_percentage, term_name, academic_year
+            )
+        
+        # ✅ Auto-generate remarks
+        term_remarks = get_body_value(f"remarks_{term_name.lower().replace(' ', '_')}", "")
+        if not term_remarks:
+            term_remarks = _generate_remarks(overall_percentage, is_annual=False)
+        
         return {
             "subjects": subjects_list,
             "total_score": total_score,
             "total_max": total_max,
             "percentage": overall_percentage,
             "grade": _calculate_grade(overall_percentage),
-            "position": get_body_value(f"position_{term_name.lower().replace(' ', '_')}", "N/A"),
-            "out_of": get_body_value(f"out_of_{term_name.lower().replace(' ', '_')}", "N/A"),
+            "position": term_position or "N/A",
+            "out_of": term_out_of or "N/A",
             "result": "Pass" if overall_percentage >= 50 else "Fail",
-            "remarks": get_body_value(f"remarks_{term_name.lower().replace(' ', '_')}", ""),
+            "remarks": term_remarks,
             "conduct": get_body_value(f"conduct_{term_name.lower().replace(' ', '_')}", "Good")
         }
     
-    term1_data = build_term_results("Term 1")
-    term2_data = build_term_results("Term 2")
-    term3_data = build_term_results("Term 3")
+    term1_data = await build_term_results("Term 1")
+    term2_data = await build_term_results("Term 2")
+    term3_data = await build_term_results("Term 3")
+    
+    # ✅ Calculate overall annual performance
+    all_term_percentages = []
+    if term1_data: all_term_percentages.append(term1_data["percentage"])
+    if term2_data: all_term_percentages.append(term2_data["percentage"])
+    if term3_data: all_term_percentages.append(term3_data["percentage"])
+    
+    annual_average = round(sum(all_term_percentages) / len(all_term_percentages), 1) if all_term_percentages else 0
+    
+    # ✅ Generate annual remarks with promotional statement
+    annual_remarks = body.get("annual_remarks", "")
+    if not annual_remarks:
+        annual_remarks = _generate_remarks(annual_average, is_annual=True)
+        next_class = _get_next_class_name(class_name)
+        if annual_average >= 50:
+            annual_remarks += f" Student will proceed to {next_class} in the next academic year."
+        else:
+            annual_remarks += f" Student is advised to repeat {class_name} for a stronger foundation."
     
     school = await db.school_info.find_one({}) or {}
     verify_url = f"https://hnsdbapi.vercel.app/verify-report/{student_id_number}"
@@ -593,6 +753,14 @@ async def generate_annual_report_card(
             "term1": term1_data,
             "term2": term2_data,
             "term3": term3_data,
+            "annual_summary": {
+                "average_percentage": annual_average,
+                "grade": _calculate_grade(annual_average),
+                "remarks": annual_remarks,
+                "result": "Pass" if annual_average >= 50 else "Fail",
+                "next_class": _get_next_class_name(class_name) if annual_average >= 50 else class_name,
+                "promotion_status": "Promoted" if annual_average >= 50 else "Repeat"
+            },
             "academic_year": academic_year,
             "verify_url": verify_url,
             "school": {
