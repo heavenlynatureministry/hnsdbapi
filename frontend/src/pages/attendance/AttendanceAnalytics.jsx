@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
-import attendanceAPI from '../../../api/attendance'
+import attendanceAPI from '../../api/attendance'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -124,7 +124,7 @@ function AttendanceAnalytics() {
       />
 
       <Card>
-        <div className="flex items-end gap-4">
+        <div className="flex items-end gap-4 flex-wrap">
           <FormSelect
             label="Period"
             value={period}
@@ -139,7 +139,7 @@ function AttendanceAnalytics() {
           </Button>
           {generated && (
             <Button onClick={handleExportPDF} variant="secondary" icon={<Download size={18} />}>
-              Export
+              Export PDF
             </Button>
           )}
         </div>
@@ -198,14 +198,14 @@ function AttendanceAnalytics() {
           {/* Risk Distribution */}
           {reportData.risk_distribution && (
             <Card title="Attendance Distribution">
-              <div className="grid grid-cols-4 gap-4 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                 {[
-                  { label: 'Present', value: reportData.risk_distribution.low, color: 'bg-green-100 text-green-600' },
-                  { label: 'Late', value: reportData.risk_distribution.medium, color: 'bg-yellow-100 text-yellow-600' },
-                  { label: 'Excused', value: reportData.risk_distribution.high, color: 'bg-orange-100 text-orange-600' },
-                  { label: 'Absent', value: reportData.risk_distribution.critical, color: 'bg-red-100 text-red-600' },
+                  { label: 'Present', value: reportData.risk_distribution.low || 0, color: 'bg-green-100 text-green-600' },
+                  { label: 'Late', value: reportData.risk_distribution.medium || 0, color: 'bg-yellow-100 text-yellow-600' },
+                  { label: 'Excused', value: reportData.risk_distribution.high || 0, color: 'bg-orange-100 text-orange-600' },
+                  { label: 'Absent', value: reportData.risk_distribution.critical || 0, color: 'bg-red-100 text-red-600' },
                 ].map((risk, i) => (
-                  <div key={i} className={`p-4 rounded-lg ${risk.color} bg-opacity-20`}>
+                  <div key={i} className={`p-4 rounded-lg bg-opacity-20 ${risk.color.split(' ')[0]}`}>
                     <p className="text-2xl font-bold">{risk.value}</p>
                     <p className="text-sm font-medium">{risk.label}</p>
                   </div>
