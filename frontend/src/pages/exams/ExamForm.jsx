@@ -25,11 +25,15 @@ const EXAM_TYPE_OPTIONS = [
   { value: 'oral', label: 'Oral' },
 ]
 
+// ✅ Updated: Multi-term options
 const TERM_OPTIONS = [
   { value: '', label: '-- Select Term --' },
   { value: 'Term 1', label: 'Term 1' },
   { value: 'Term 2', label: 'Term 2' },
   { value: 'Term 3', label: 'Term 3' },
+  { value: 'Term 1 & 2', label: 'Term 1 & 2' },
+  { value: 'Term 2 & 3', label: 'Term 2 & 3' },
+  { value: 'Term 1, 2 & 3', label: 'Term 1, 2 & 3 (Full Year)' },
 ]
 
 const CLASS_PLACEHOLDER = [{ value: '', label: '-- Select Class --' }]
@@ -53,13 +57,13 @@ function ExamForm() {
     exam_type: '',
     class_id: '',
     subject_id: '',
-    exam_date: '',
+    exam_date: new Date().toISOString().split('T')[0],
     start_time: '',
     end_time: '',
     max_score: 100,
     pass_mark: 50,
     weight: 1.0,
-    academic_year: currentAcademicYear || new Date().getFullYear() + '/' + (new Date().getFullYear() + 1),
+    academic_year: currentAcademicYear || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
     term: currentTerm || '',
     instructions: '',
   })
@@ -98,27 +102,41 @@ function ExamForm() {
 
   const fetchSubjects = async () => {
     try {
-      // Use schoolAPI.getSubjects() instead of examsAPI.listSubjects()
-      const response = await schoolAPI.getSubjects()
+      // Try examsAPI first, then fallback to schoolAPI
       let subjectList = []
       
-      if (response?.data?.success && Array.isArray(response.data.data)) {
-        subjectList = response.data.data
-      } else if (response?.success && Array.isArray(response.data)) {
-        subjectList = response.data
-      } else if (Array.isArray(response?.data)) {
-        subjectList = response.data
+      try {
+        const response = await examsAPI.listSubjects()
+        if (response?.data?.subjects) {
+          subjectList = response.data.subjects
+        } else if (response?.success && Array.isArray(response.data)) {
+          subjectList = response.data
+        }
+      } catch {
+        // Fallback to schoolAPI
+        const response = await schoolAPI.getSubjects()
+        if (response?.data?.success && Array.isArray(response.data.data)) {
+          subjectList = response.data.data
+        } else if (response?.success && Array.isArray(response.data)) {
+          subjectList = response.data
+        } else if (Array.isArray(response?.data)) {
+          subjectList = response.data
+        }
       }
       
       // Convert string subjects to objects if needed
       const formattedSubjects = subjectList.map(s => {
         if (typeof s === 'string') return { name: s, id: s }
-        return s
+        return { name: s.name || s.subject_name || s, id: s._id || s.id || s.subject_id || s.name || s }
       })
       
-      setSubjects(formattedSubjects)
+      if (formattedSubjects.length > 0) {
+        setSubjects(formattedSubjects)
+      } else {
+        throw new Error('Empty subjects')
+      }
     } catch (error) {
-      console.error('Failed to fetch subjects:', error)
+      console.error('Failed to fetch subjects, using defaults:', error)
       // Fallback to default subjects
       setSubjects([
         { name: 'English Language', id: 'english' },
@@ -149,14 +167,14 @@ function ExamForm() {
           exam_name: exam.exam_name || '',
           exam_type: exam.exam_type || '',
           class_id: exam.class_id || '',
-          subject_id: exam.subject_id || '',
-          exam_date: exam.exam_date?.split('T')[0] || '',
+          subject_id: exam.subject_id || exam.subject || '',
+          exam_date: exam.exam_date?.split('T')[0] || new Date().toISOString().split('T')[0],
           start_time: exam.start_time || '',
           end_time: exam.end_time || '',
           max_score: exam.max_score || 100,
           pass_mark: exam.pass_mark || 50,
           weight: exam.weight || 1.0,
-          academic_year: exam.academic_year || currentAcademicYear || new Date().getFullYear() + '/' + (new Date().getFullYear() + 1),
+          academic_year: exam.academic_year || currentAcademicYear || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
           term: exam.term || currentTerm || '',
           instructions: exam.instructions || '',
         })
@@ -198,7 +216,7 @@ function ExamForm() {
     setLoading(true)
     try {
       const payload = {
-        exam_name: formData.exam_name,
+        exam_name: formData.exam_name.trim(),
         exam_type: formData.exam_type,
         class_id: formData.class_id,
         subject_id: formData.subject_id,
