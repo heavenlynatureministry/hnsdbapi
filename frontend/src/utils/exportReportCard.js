@@ -78,66 +78,63 @@ export const exportAnnualReportCard = (reportData, orientation = 'portrait') => 
 }
 
 // =========================================================================
-// SHARED CSS - Border, Watermark, Spacing
+// SHARED CSS - Compact, transparent, watermark-friendly
 // =========================================================================
 const SHARED_CSS = `
-  @page { margin: 0; }
+  @page { size: A4; margin: 0; }
   @media print { 
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; } 
     .no-print { display: none !important; } 
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Georgia', 'Times New Roman', serif; font-size: 13px; color: #1a1a1a; background: #e5e7eb; padding: 15px; line-height: 1.7; }
-  .page-wrapper { width: 100%; max-width: 220mm; margin: 0 auto; padding: 0; }
-  .page { position: relative; width: 100%; min-height: 287mm; margin: 0 auto; padding: 0; background: transparent; overflow: hidden; 
-    border: 2px solid #1a56db; border-radius: 4px; }
-  .watermark { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: 0.08; }
+  body { font-family: 'Georgia', 'Times New Roman', serif; font-size: 11px; color: #1a1a1a; background: #e5e7eb; padding: 10px; line-height: 1.4; }
+  .page-wrapper { width: 210mm; margin: 0 auto; }
+  .page { position: relative; width: 210mm; min-height: 297mm; margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  .watermark { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: 0.07; }
   .watermark img { width: 100%; height: 100%; object-fit: cover; }
-  .content { position: relative; z-index: 1; padding: 14mm 16mm; background: transparent; }
+  .content { position: relative; z-index: 1; padding: 10mm 12mm; }
 
-  .letterhead { text-align: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 3px double #1a56db; }
-  .letterhead img { width: 100%; max-width: 100%; height: auto; display: block; }
-  .letterhead-fallback { display: none; text-align: center; padding: 10px; background: rgba(255,255,255,0.9); }
+  .letterhead { text-align: center; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 2px double #1a56db; }
+  .letterhead img { width: 100%; height: auto; display: block; }
+  .letterhead-fallback { display: none; text-align: center; padding: 6px; background: rgba(255,255,255,0.9); }
 
-  .title { text-align: center; font-size: 20px; font-weight: bold; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 4px; color: #1a3a6b; }
-  .subtitle { text-align: center; font-size: 14px; margin-bottom: 16px; color: #555; font-style: italic; }
+  .title { text-align: center; font-size: 15px; font-weight: bold; margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 3px; color: #1a3a6b; }
+  .subtitle { text-align: center; font-size: 11px; margin-bottom: 8px; color: #555; }
 
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; font-size: 13px; padding: 12px 14px; 
-    border: 2px solid #1a56db; background: rgba(255,255,255,0.85); border-radius: 4px; }
-  .info-item { display: flex; align-items: center; padding: 4px 0; }
-  .info-label { font-weight: bold; width: 85px; font-size: 12px; color: #1a3a6b; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px; font-size: 11px; padding: 6px 8px; 
+    border: 1px solid #ccc; background: rgba(255,255,255,0.8); }
+  .info-item { display: flex; align-items: center; padding: 2px 0; }
+  .info-label { font-weight: bold; width: 70px; font-size: 10px; color: #444; }
 
-  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
-  th { background: #1a56db; color: white; padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 11px; }
+  th { background: #1a56db; color: white; padding: 5px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
   th.center { text-align: center; }
-  td { padding: 9px 12px; border-bottom: 1px solid #ddd; font-size: 13px; }
+  td { padding: 4px 8px; border-bottom: 1px solid #ddd; font-size: 11px; }
   td.center { text-align: center; }
-  tr:nth-child(even) { background: rgba(248,249,250,0.7); }
-  .total-row { font-weight: bold; background: rgba(26,86,219,0.08) !important; font-size: 14px; }
-  .total-row td { padding: 11px 12px; border-top: 2px solid #1a56db; }
+  tr:nth-child(even) { background: rgba(248,249,250,0.6); }
+  .total-row { font-weight: bold; background: rgba(26,86,219,0.1) !important; font-size: 12px; }
+  .total-row td { padding: 5px 8px; border-top: 1.5px solid #1a56db; }
 
-  .section-spacer { height: 20px; }
-
-  .summary-section { margin-top: 20px; display: flex; gap: 16px; }
-  .summary-box { flex: 1; padding: 14px 16px; border: 2px solid #1a56db; background: rgba(255,255,255,0.85); font-size: 12px; border-radius: 4px; }
-  .summary-item { display: flex; padding: 6px 0; border-bottom: 1px dotted #ccc; }
+  .summary-section { margin-top: 8px; display: flex; gap: 10px; }
+  .summary-box { flex: 1; padding: 6px 10px; border: 1px solid #ccc; background: rgba(255,255,255,0.8); font-size: 10px; }
+  .summary-item { display: flex; padding: 2px 0; border-bottom: 1px dotted #ddd; }
   .summary-item:last-child { border-bottom: none; }
-  .summary-label { font-weight: bold; width: 100px; font-size: 11px; color: #1a3a6b; }
-  .remarks-box { flex: 1; padding: 14px 16px; border: 2px solid #ddd; font-size: 12px; background: rgba(255,255,255,0.85); min-height: 60px; border-radius: 4px; }
-  .remarks-box p { margin-top: 10px; line-height: 1.6; }
+  .summary-label { font-weight: bold; width: 75px; font-size: 9px; }
+  .remarks-box { flex: 1; padding: 6px 10px; border: 1px solid #ccc; font-size: 10px; background: rgba(255,255,255,0.8); min-height: 40px; }
+  .remarks-box p { margin-top: 4px; line-height: 1.3; }
 
-  .verify-section { margin-top: 24px; padding: 12px 14px; border: 2px solid #1a56db; background: rgba(240,244,255,0.9); text-align: center; font-size: 11px; border-radius: 4px; }
-  .verify-link { font-family: 'Courier New', monospace; font-weight: bold; color: #1a56db; word-break: break-all; font-size: 12px; }
+  .verify-section { margin-top: 8px; padding: 5px 10px; border: 1px solid #1a56db; background: rgba(240,244,255,0.8); text-align: center; font-size: 9px; }
+  .verify-link { font-family: 'Courier New', monospace; font-weight: bold; color: #1a56db; word-break: break-all; font-size: 10px; }
 
-  .signatures { display: flex; justify-content: space-between; margin-top: 35px; font-size: 12px; padding: 0 10px; }
+  .signatures { display: flex; justify-content: space-between; margin-top: 14px; font-size: 10px; padding: 0 5px; }
   .sig-box { text-align: center; width: 40%; }
-  .sig-line { border-bottom: 1.5px solid #000; margin-bottom: 6px; height: 35px; }
+  .sig-line { border-bottom: 1px solid #000; margin-bottom: 3px; height: 22px; }
 
-  .next-term { text-align: center; font-size: 11px; margin-top: 20px; color: #1a3a6b; font-weight: bold; }
-  .footer { text-align: center; font-size: 10px; margin-top: 16px; padding-top: 10px; border-top: 2px solid #1a56db; color: #666; line-height: 1.5; }
+  .next-term { text-align: center; font-size: 9px; margin-top: 8px; color: #555; font-weight: bold; }
+  .footer { text-align: center; font-size: 8px; margin-top: 6px; padding-top: 4px; border-top: 1px solid #ccc; color: #666; }
 
-  .print-toolbar { text-align: center; padding: 12px; margin-top: 15px; background: #f0f0f0; border-radius: 8px; border: 1px solid #ddd; }
-  .btn { padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; margin: 4px; }
+  .print-toolbar { text-align: center; padding: 8px; margin-top: 10px; background: #f0f0f0; border-radius: 6px; }
+  .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; margin: 3px; }
   .btn-print { background: #2563eb; color: white; }
   .btn-close { background: #6b7280; color: white; }
 
@@ -164,9 +161,6 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
   const resultText = results?.result || (percentage >= 50 ? 'Pass' : 'Fail')
   const resultClass = resultText === 'Pass' ? 'pass' : 'fail'
   const isLandscape = orientation === 'landscape'
-  const pageStyle = isLandscape 
-    ? `.page { max-width: 297mm; min-height: 197mm; }`
-    : `.page { max-width: 210mm; min-height: 287mm; }`
 
   return `
     <!DOCTYPE html>
@@ -176,7 +170,7 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
       <meta charset="utf-8">
       <style>
         ${SHARED_CSS}
-        ${pageStyle}
+        ${isLandscape ? '.page-wrapper { width: 297mm; } .page { width: 297mm; min-height: 210mm; }' : ''}
       </style>
     </head>
     <body>
@@ -186,7 +180,7 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
           <div class="content">
             <div class="letterhead">
               <img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'" />
-              <div class="letterhead-fallback"><h2 style="font-size:17px;">${school?.name || 'School Name'}</h2><p style="font-size:12px;"><em>"${school?.motto || ''}"</em></p></div>
+              <div class="letterhead-fallback"><h2 style="font-size:14px;">${school?.name || 'School Name'}</h2><p style="font-size:10px;"><em>"${school?.motto || ''}"</em></p></div>
             </div>
             <div class="title">ACADEMIC REPORT CARD</div>
             <div class="subtitle">${term || ''} &bull; ${academic_year || ''}</div>
@@ -199,14 +193,12 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
             </div>
 
             <table>
-              <thead><tr><th>SUBJECTS</th><th class="center">MARKS SCORED</th><th>REMARKS</th></tr></thead>
+              <thead><tr><th>SUBJECTS</th><th class="center">MARKS</th><th>REMARKS</th></tr></thead>
               <tbody>
                 ${subjects.map(s => `<tr><td><strong>${s.name || s.subject || 'N/A'}</strong></td><td class="center">${s.score || 0}</td><td>${getRemark(s.grade)}</td></tr>`).join('')}
                 <tr class="total-row"><td><strong>TOTAL</strong></td><td class="center"><strong>${totalScore}</strong></td><td class="${resultClass}"><strong>${resultText.toUpperCase()}</strong></td></tr>
               </tbody>
             </table>
-
-            <div class="section-spacer"></div>
 
             <div class="summary-section">
               <div class="summary-box">
@@ -216,21 +208,17 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
                 <div class="summary-item"><span class="summary-label">Result:</span><span class="${resultClass}"><strong>${resultText}</strong></span></div>
               </div>
               <div class="remarks-box">
-                <strong>Director of Studies' Remarks:</strong>
-                <p>${results?.remarks || '___________________________________________'}</p>
+                <strong>Remarks:</strong>
+                <p>${results?.remarks || '________________________________'}</p>
               </div>
             </div>
 
-            <div class="section-spacer"></div>
-
-            ${verify_url ? `<div class="verify-section"><p><strong>🔒 Verify Online:</strong> <span class="verify-link">${verify_url}</span></p></div>` : ''}
+            ${verify_url ? `<div class="verify-section"><strong>🔒 Verify:</strong> <span class="verify-link">${verify_url}</span></div>` : ''}
 
             <div class="signatures">
               <div class="sig-box"><div class="sig-line"></div><strong>Director of Studies</strong></div>
               <div class="sig-box"><div class="sig-line"></div><strong>Head Teacher</strong></div>
             </div>
-
-            <div class="section-spacer"></div>
 
             <div class="next-term"><strong>Next Academic Year:</strong> January ${String(parseInt(academic_year?.split('/')[1] || new Date().getFullYear() + 1))}</div>
             <div class="footer">
@@ -266,23 +254,22 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
       <meta charset="utf-8">
       <style>
         ${SHARED_CSS}
-        .page { max-width: 210mm; min-height: 287mm; }
         .info-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
         .info-item { flex-wrap: wrap; }
-        .info-label { width: auto; margin-right: 5px; }
-        th { padding: 10px 8px; font-size: 10px; }
-        th.subject-col { text-align: left; padding-left: 10px; }
-        td { padding: 8px 8px; text-align: center; font-size: 13px; }
-        td.subject-col { text-align: left; font-weight: bold; padding-left: 10px; }
-        .total-row td { padding: 10px 8px; }
-        .summary-row td { padding: 9px 8px; background: rgba(240,244,255,0.9); font-weight: bold; font-size: 12px; }
-        .annual-summary { margin-top: 20px; padding: 14px 16px; border: 2px solid #1a56db; background: rgba(240,244,255,0.9); border-radius: 4px; }
-        .annual-summary h4 { margin-bottom: 10px; font-size: 14px; color: #1a3a6b; }
-        .annual-summary p { font-size: 12px; line-height: 1.7; margin-bottom: 6px; }
-        .remarks-section { margin-top: 20px; padding: 14px 16px; border: 2px solid #ddd; font-size: 12px; min-height: 55px; background: rgba(255,255,255,0.85); border-radius: 4px; line-height: 1.6; }
-        .signatures { margin-top: 40px; }
+        .info-label { width: auto; margin-right: 4px; }
+        th { padding: 4px 5px; font-size: 8px; }
+        th.subject-col { text-align: left; padding-left: 6px; }
+        td { padding: 3px 5px; text-align: center; font-size: 10px; }
+        td.subject-col { text-align: left; font-weight: bold; padding-left: 6px; }
+        .total-row td { padding: 4px 5px; }
+        .summary-row td { padding: 3px 5px; background: rgba(240,244,255,0.8); font-weight: bold; font-size: 9px; }
+        .annual-summary { margin-top: 8px; padding: 6px 10px; border: 1px solid #1a56db; background: rgba(240,244,255,0.8); font-size: 10px; }
+        .annual-summary h4 { margin-bottom: 3px; font-size: 11px; }
+        .annual-summary p { font-size: 10px; line-height: 1.3; margin-bottom: 2px; }
+        .remarks-section { margin-top: 8px; padding: 6px 10px; border: 1px solid #ccc; font-size: 10px; min-height: 35px; background: rgba(255,255,255,0.8); line-height: 1.3; }
+        .signatures { margin-top: 12px; }
         .sig-box { width: 30%; }
-        .sig-line { height: 32px; }
+        .sig-line { height: 20px; }
       </style>
     </head>
     <body>
@@ -292,7 +279,7 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
           <div class="content">
             <div class="letterhead">
               <img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'" />
-              <div class="letterhead-fallback"><h2 style="font-size:17px;">${school?.name || 'School Name'}</h2><p style="font-size:12px;"><em>"${school?.motto || ''}"</em></p></div>
+              <div class="letterhead-fallback"><h2 style="font-size:14px;">${school?.name || 'School Name'}</h2><p style="font-size:10px;"><em>"${school?.motto || ''}"</em></p></div>
             </div>
             <div class="title">ANNUAL ACADEMIC REPORT CARD</div>
             <div class="subtitle">${academic_year || ''}</div>
@@ -319,30 +306,23 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
               </tbody>
             </table>
             
-            <div class="section-spacer"></div>
-
             ${annual_summary ? `
             <div class="annual-summary">
               <h4>📋 Annual Summary</h4>
-              <p><strong>Average:</strong> ${annual_summary.average_percentage || 'N/A'}% | <strong>Grade:</strong> ${annual_summary.grade || 'N/A'}</p>
-              <p><strong>Status:</strong> <span class="${annual_summary.promotion_status === 'Promoted' ? 'promoted' : 'repeat'}">${annual_summary.promotion_status || 'N/A'}</span> | <strong>Next Class:</strong> ${annual_summary.next_class || 'N/A'}</p>
-              <p><strong>Remarks:</strong> ${annual_summary.remarks || ''}</p>
+              <p><strong>Avg:</strong> ${annual_summary.average_percentage || 'N/A'}% | <strong>Grade:</strong> ${annual_summary.grade || 'N/A'} | <strong>Status:</strong> <span class="${annual_summary.promotion_status === 'Promoted' ? 'promoted' : 'repeat'}">${annual_summary.promotion_status || 'N/A'}</span></p>
+              <p><strong>Next:</strong> ${annual_summary.next_class || 'N/A'} | ${annual_summary.remarks || ''}</p>
             </div>
             ` : ''}
             
-            <div class="remarks-section"><strong>Director of Studies' Remarks:</strong><br/> ${term3?.remarks || term2?.remarks || term1?.remarks || '___________________________________________________________________________'}</div>
-            
-            <div class="section-spacer"></div>
-            
-            ${verify_url ? `<div class="verify-section"><p><strong>🔒 Verify Online:</strong> <span class="verify-link">${verify_url}</span></p></div>` : ''}
+            <div class="remarks-section"><strong>Remarks:</strong> ${term3?.remarks || term2?.remarks || term1?.remarks || '________________________________'}</div>
+
+            ${verify_url ? `<div class="verify-section"><strong>🔒 Verify:</strong> <span class="verify-link">${verify_url}</span></div>` : ''}
             
             <div class="signatures">
-              <div class="sig-box"><div class="sig-line"></div><strong>Director of Studies</strong></div>
+              <div class="sig-box"><div class="sig-line"></div><strong>Dir. of Studies</strong></div>
               <div class="sig-box"><div class="sig-line"></div><strong>Head Teacher</strong></div>
               <div class="sig-box"><div class="sig-line"></div><strong>Parent/Guardian</strong></div>
             </div>
-
-            <div class="section-spacer"></div>
 
             <div class="next-term"><strong>Next Academic Year:</strong> January ${String(parseInt(academic_year?.split('/')[1] || new Date().getFullYear() + 1))}</div>
             <div class="footer">
@@ -378,21 +358,24 @@ function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year
       <meta charset="utf-8">
       <style>
         ${SHARED_CSS}
-        .page { max-width: 297mm; min-height: 197mm; }
-        .content { padding: 10mm 12mm; }
+        .page-wrapper { width: 297mm; }
+        .page { width: 297mm; min-height: 210mm; }
+        .content { padding: 8mm 10mm; }
         .info-grid { grid-template-columns: 1fr 1fr 1fr; }
-        th { padding: 8px 6px; font-size: 10px; }
-        th.subject-col { text-align: left; padding-left: 8px; }
-        td { padding: 6px 6px; text-align: center; font-size: 12px; }
-        td.subject-col { text-align: left; font-weight: bold; padding-left: 8px; }
-        .total-row td { padding: 8px 6px; }
-        .summary-row td { padding: 7px 6px; background: rgba(240,244,255,0.9); font-weight: bold; font-size: 11px; }
-        .annual-summary { margin-top: 16px; padding: 12px 14px; border: 2px solid #1a56db; background: rgba(240,244,255,0.9); border-radius: 4px; }
-        .annual-summary h4 { margin-bottom: 8px; font-size: 13px; }
-        .annual-summary p { font-size: 11px; line-height: 1.6; margin-bottom: 4px; }
-        .remarks-section { margin-top: 16px; padding: 12px 14px; font-size: 12px; }
-        .signatures { margin-top: 35px; }
-        .sig-line { height: 28px; }
+        th { padding: 4px 5px; font-size: 8px; }
+        th.subject-col { text-align: left; padding-left: 6px; }
+        td { padding: 3px 5px; text-align: center; font-size: 10px; }
+        td.subject-col { text-align: left; font-weight: bold; padding-left: 6px; }
+        .total-row td { padding: 4px 5px; }
+        .summary-row td { padding: 3px 5px; background: rgba(240,244,255,0.8); font-weight: bold; font-size: 9px; }
+        .annual-summary { margin-top: 6px; padding: 5px 8px; border: 1px solid #1a56db; background: rgba(240,244,255,0.8); font-size: 10px; }
+        .annual-summary h4 { margin-bottom: 2px; font-size: 10px; }
+        .annual-summary p { font-size: 9px; line-height: 1.3; margin-bottom: 1px; }
+        .remarks-section { margin-top: 6px; padding: 5px 8px; font-size: 10px; min-height: 30px; }
+        .signatures { margin-top: 10px; }
+        .sig-line { height: 18px; }
+        .title { font-size: 14px; margin: 4px 0 2px; }
+        .subtitle { margin-bottom: 4px; }
       </style>
     </head>
     <body>
@@ -402,7 +385,7 @@ function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year
           <div class="content">
             <div class="letterhead">
               <img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'" />
-              <div class="letterhead-fallback"><h2 style="font-size:16px;">${school?.name || 'School Name'}</h2><p style="font-size:11px;"><em>"${school?.motto || ''}"</em></p></div>
+              <div class="letterhead-fallback"><h2 style="font-size:13px;">${school?.name || 'School Name'}</h2><p style="font-size:9px;"><em>"${school?.motto || ''}"</em></p></div>
             </div>
             <div class="title">ANNUAL ACADEMIC REPORT CARD ${academic_year || ''}</div>
             <div class="info-grid">
@@ -427,29 +410,23 @@ function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year
               </tbody>
             </table>
             
-            <div class="section-spacer"></div>
-
             ${annual_summary ? `
             <div class="annual-summary">
               <h4>📋 Annual Summary</h4>
-              <p><strong>Average:</strong> ${annual_summary.average_percentage || 'N/A'}% | <strong>Grade:</strong> ${annual_summary.grade || 'N/A'} | <strong>Status:</strong> <span class="${annual_summary.promotion_status === 'Promoted' ? 'promoted' : 'repeat'}">${annual_summary.promotion_status || 'N/A'}</span></p>
-              <p><strong>Next Class:</strong> ${annual_summary.next_class || 'N/A'} | <strong>Remarks:</strong> ${annual_summary.remarks || ''}</p>
+              <p><strong>Avg:</strong> ${annual_summary.average_percentage || 'N/A'}% | <strong>Grade:</strong> ${annual_summary.grade || 'N/A'} | <strong>Status:</strong> <span class="${annual_summary.promotion_status === 'Promoted' ? 'promoted' : 'repeat'}">${annual_summary.promotion_status || 'N/A'}</span> | <strong>Next:</strong> ${annual_summary.next_class || 'N/A'}</p>
+              <p>${annual_summary.remarks || ''}</p>
             </div>
             ` : ''}
             
-            <div class="remarks-section"><strong>Director of Studies' Remarks:</strong><br/> ${term3?.remarks || term2?.remarks || term1?.remarks || ''}</div>
-            
-            <div class="section-spacer"></div>
+            <div class="remarks-section"><strong>Remarks:</strong> ${term3?.remarks || term2?.remarks || term1?.remarks || '________________________________'}</div>
 
-            ${verify_url ? `<div class="verify-section"><p><strong>🔒 Verify Online:</strong> <span class="verify-link">${verify_url}</span></p></div>` : ''}
+            ${verify_url ? `<div class="verify-section"><strong>🔒 Verify:</strong> <span class="verify-link">${verify_url}</span></div>` : ''}
             
             <div class="signatures">
-              <div class="sig-box"><div class="sig-line"></div><strong>Director of Studies</strong></div>
+              <div class="sig-box"><div class="sig-line"></div><strong>Dir. of Studies</strong></div>
               <div class="sig-box"><div class="sig-line"></div><strong>Head Teacher</strong></div>
               <div class="sig-box"><div class="sig-line"></div><strong>Parent/Guardian</strong></div>
             </div>
-
-            <div class="section-spacer"></div>
 
             <div class="next-term"><strong>Next Academic Year:</strong> January ${String(parseInt(academic_year?.split('/')[1] || new Date().getFullYear() + 1))}</div>
             <div class="footer">
