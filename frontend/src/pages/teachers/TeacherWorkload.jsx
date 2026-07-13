@@ -19,6 +19,7 @@ function TeacherWorkload() {
 
   const [loading, setLoading] = useState(true)
   const [workload, setWorkload] = useState(null)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     updatePageTitle('Teacher Workload')
@@ -32,36 +33,112 @@ function TeacherWorkload() {
 
   const fetchWorkload = async () => {
     setLoading(true)
+    setError(null)
     try {
+      // Try the workload endpoint first
       const response = await teachersAPI.getWorkload(id)
       if (response?.success && response.data) {
         setWorkload(response.data)
       } else if (response?.data) {
         setWorkload(response.data)
       } else {
-        toast.error('Failed to load workload data')
-        navigate('/teachers')
+        // Fallback: try getting teacher details and build workload from it
+        await fetchWorkloadFromTeacher()
       }
     } catch (error) {
-      console.error('Failed to fetch workload:', error)
-      toast.error('Failed to load workload data')
-      navigate('/teachers')
+      console.error('Failed to fetch workload, trying fallback:', error)
+      // Fallback: build workload from teacher details
+      await fetchWorkloadFromTeacher()
     } finally {
       setLoading(false)
     }
   }
 
-  if (loading) return <LoadingSpinner fullScreen />
-  if (!workload) return null
+  // Fallback: Build workload data from teacher details if workload API not available
+  const fetchWorkloadFromTeacher = async () => {
+    try {
+      const response = await teachersAPI.getById(id)
+      if (response?.success && response.data) {
+        const teacher = response.data
+        
+        // Build workload object from teacher data
+        const classes = teacher.classes_info || teacher.classes || []
+        const subjects = teacher.subjects || []
+        const periodsPerWeek = teacher.periods_per_week || (classes.length * 5) // estimate
+        
+        const builtWorkload = {
+          teacher_name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim(),
+          total_classes: classes.length,
+          max_classes: teacher.max_classes || 5,
+          total_subjects: Array.isArray(subjects) ? subjects.length : 0,
+          max_subjects: teacher.max_subjects || 5,
+          total_periods_per_week: periodsPerWeek,
+          max_periods: teacher.max_periods || 30,
+          workload_level: periodsPerWeek > 25 ? 'high' : periodsPerWeek > 15 ? 'medium' : 'low',
+          warnings: periodsPerWeek > 30 ? ['Exceeds maximum periods per week'] : [],
+          class_teacher_of: teacher.class_teacher_of || '',
+          classes_detail: classes.map((c, i) => ({
+            class_id: c.class_id || c._id || i,
+            class_name: typeof c === 'string' ? c : (c.class_name || c.name || `Class ${i + 1}`),
+            class_level: typeof c === 'object' ? (c.class_level || c.level || '') : '',
+            students_count: c.students_count || c.student_count || 0,
+            periods_per_week: c.periods_per_week || 5,
+          })),
+          subjects_detail: Array.isArray(subjects) 
+            ? subjects.map(s => typeof s === 'string' ? { name: s } : s)
+            : [],
+        }
+        
+        setWorkload(builtWorkload)
+        toast.success('Workload loaded from teacher details')
+      } else {
+        setError('Could not load workload data')
+        toast.error('Failed to load workload data')
+      }
+    } catch (fallbackError) {
+      console.error('Fallback also failed:', fallbackError)
+      setError('Failed to load workload data')
+      toast.error('Failed to load workload data')
+    }
+  }
 
-  const utilizationPercentage = workload.max_periods > 0
-    ? Math.round((workload.total_periods_per_week / workload.max_periods) * 100)
+  if (loading) return <LoadingSpinner fullScreen />
+  
+  if (error || !workload) {
+    return (
+      <div className="space-y-6 max-w-3xl animate-fade-in-up">
+        <PageHeader
+          title="Teacher Workload"
+          actions={
+            <button onClick={() => navigate('/teachers')} className="btn btn-secondary">
+              <ArrowLeft size={18} /> Back
+            </button>
+          }
+        />
+        <Card>
+          <div className="text-center py-8">
+            <AlertTriangle size={48} className="text-yellow-500 mx-auto mb-4" />
+            <p className="text-gray-500">{error || 'No workload data available.'}</p>
+            <button onClick={() => navigate('/teachers')} className="btn btn-primary mt-4">
+              Back to Teachers
+            </button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  const totalStudents = (workload.classes_detail || []).reduce((s, c) => s + (c.students_count || 0), 0)
+  const maxPeriods = workload.max_periods || 30
+  const totalPeriods = workload.total_periods_per_week || 0
+  const utilizationPercentage = maxPeriods > 0
+    ? Math.round((totalPeriods / maxPeriods) * 100)
     : 0
 
   return (
     <div className="space-y-6 max-w-3xl animate-fade-in-up">
       <PageHeader
-        title={`Workload: ${workload.teacher_name}`}
+        title={`Workload: ${workload.teacher_name || 'Teacher'}`}
         actions={
           <button onClick={() => navigate('/teachers')} className="btn btn-secondary">
             <ArrowLeft size={18} /> Back
@@ -72,10 +149,10 @@ function TeacherWorkload() {
       {/* Overview Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Classes', value: `${workload.total_classes || 0} / ${workload.max_classes || 0}`, icon: School, color: 'bg-blue-100 text-blue-600' },
-          { label: 'Subjects', value: `${workload.total_subjects || 0} / ${workload.max_subjects || 0}`, icon: BookOpen, color: 'bg-purple-100 text-purple-600' },
-          { label: 'Periods/Week', value: `${workload.total_periods_per_week || 0} / ${workload.max_periods || 0}`, icon: Clock, color: 'bg-green-100 text-green-600' },
-          { label: 'Total Students', value: (workload.classes_detail || []).reduce((s, c) => s + (c.students_count || 0), 0), icon: Users, color: 'bg-orange-100 text-orange-600' },
+          { label: 'Classes', value: `${workload.total_classes || 0} / ${workload.max_classes || 5}`, icon: School, color: 'bg-blue-100 text-blue-600' },
+          { label: 'Subjects', value: `${workload.total_subjects || 0} / ${workload.max_subjects || 5}`, icon: BookOpen, color: 'bg-purple-100 text-purple-600' },
+          { label: 'Periods/Week', value: `${totalPeriods} / ${maxPeriods}`, icon: Clock, color: 'bg-green-100 text-green-600' },
+          { label: 'Total Students', value: totalStudents, icon: Users, color: 'bg-orange-100 text-orange-600' },
         ].map((stat, i) => (
           <div key={i} className="stat-card">
             <div className={`stat-card-icon ${stat.color}`}><stat.icon size={20} /></div>
@@ -133,11 +210,16 @@ function TeacherWorkload() {
           <p className="text-sm text-gray-500 text-center py-4">No class assignments.</p>
         ) : (
           <div className="space-y-3">
-            {workload.classes_detail.map((cls) => (
-              <div key={cls.class_id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            {workload.classes_detail.map((cls, index) => (
+              <div key={cls.class_id || index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div>
-                  <p className="font-medium">{cls.class_name} ({cls.class_level})</p>
-                  <p className="text-sm text-gray-500">{cls.students_count} students • {cls.periods_per_week} periods/week</p>
+                  <p className="font-medium">
+                    {cls.class_name || 'Class'} 
+                    {cls.class_level ? ` (${cls.class_level})` : ''}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {cls.students_count || 0} students • {cls.periods_per_week || 0} periods/week
+                  </p>
                 </div>
                 {workload.class_teacher_of === cls.class_name && (
                   <Badge variant="info">Class Teacher</Badge>
@@ -147,6 +229,19 @@ function TeacherWorkload() {
           </div>
         )}
       </Card>
+
+      {/* Subjects Detail (if available) */}
+      {(workload.subjects_detail || []).length > 0 && (
+        <Card title="Subjects">
+          <div className="flex flex-wrap gap-2">
+            {workload.subjects_detail.map((s, i) => (
+              <Badge key={i} variant="info">
+                {typeof s === 'string' ? s : (s.name || s.subject_name || `Subject ${i + 1}`)}
+              </Badge>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
