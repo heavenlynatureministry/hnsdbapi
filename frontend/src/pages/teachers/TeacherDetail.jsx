@@ -25,6 +25,11 @@ function TeacherDetail() {
   const [activeTab, setActiveTab] = useState('info')
   const [showDeactivate, setShowDeactivate] = useState(false)
 
+  // Separate state for each tab's data
+  const [reviews, setReviews] = useState([])
+  const [trainingHistory, setTrainingHistory] = useState([])
+  const [tabLoading, setTabLoading] = useState({})
+
   useEffect(() => {
     updatePageTitle('Teacher Details')
     updateBreadcrumbs([
@@ -51,6 +56,61 @@ function TeacherDetail() {
       navigate('/teachers')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Fetch tab data when tab changes
+  useEffect(() => {
+    if (!teacher) return
+    
+    const fetchTabData = async () => {
+      setTabLoading(prev => ({ ...prev, [activeTab]: true }))
+      try {
+        switch (activeTab) {
+          case 'reviews':
+            await fetchReviews()
+            break
+          case 'training':
+            await fetchTraining()
+            break
+        }
+      } finally {
+        setTabLoading(prev => ({ ...prev, [activeTab]: false }))
+      }
+    }
+    
+    fetchTabData()
+  }, [activeTab, teacher])
+
+  const fetchReviews = async () => {
+    try {
+      const response = await teachersAPI.getPerformanceReviews(id)
+      if (response?.success) {
+        setReviews(response.data?.reviews || response.data || [])
+      } else {
+        // Fall back to embedded data if API not available
+        setReviews(teacher.performance_reviews || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch reviews:', error)
+      // Fall back to embedded data
+      setReviews(teacher.performance_reviews || [])
+    }
+  }
+
+  const fetchTraining = async () => {
+    try {
+      const response = await teachersAPI.getTrainingHistory(id)
+      if (response?.success) {
+        setTrainingHistory(response.data?.training || response.data || [])
+      } else {
+        // Fall back to embedded data if API not available
+        setTrainingHistory(teacher.training_history || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch training history:', error)
+      // Fall back to embedded data
+      setTrainingHistory(teacher.training_history || [])
     }
   }
 
@@ -129,10 +189,10 @@ function TeacherDetail() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="flex items-center gap-2 text-sm text-gray-500">
-                <GraduationCap size={16} /> {teacher.qualification}
+                <GraduationCap size={16} /> {teacher.qualification || 'N/A'}
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-500">
-                <BookOpen size={16} /> {teacher.specialization}
+                <BookOpen size={16} /> {teacher.specialization || teacher.subjects?.join(', ') || 'N/A'}
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <Calendar size={16} /> Since {teacher.hire_date ? new Date(teacher.hire_date).getFullYear() : 'N/A'}
@@ -179,16 +239,16 @@ function TeacherDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card title="Contact Details">
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm"><Mail size={16} className="text-gray-400" /> {teacher.email}</div>
-              <div className="flex items-center gap-2 text-sm"><Phone size={16} className="text-gray-400" /> {teacher.phone_number}</div>
+              <div className="flex items-center gap-2 text-sm"><Mail size={16} className="text-gray-400" /> {teacher.email || 'N/A'}</div>
+              <div className="flex items-center gap-2 text-sm"><Phone size={16} className="text-gray-400" /> {teacher.phone_number || teacher.phone || 'N/A'}</div>
               <div className="flex items-center gap-2 text-sm"><MapPin size={16} className="text-gray-400" /> {teacher.address || 'N/A'}</div>
             </div>
           </Card>
           <Card title="Emergency Contact">
             <div className="space-y-3">
-              <p className="text-sm font-medium">{teacher.emergency_contact?.name || 'N/A'}</p>
-              <p className="text-sm text-gray-500">{teacher.emergency_contact?.relationship}</p>
-              <p className="text-sm text-gray-500">{teacher.emergency_contact?.phone_number}</p>
+              <p className="text-sm font-medium">{teacher.emergency_contact?.name || teacher.emergency_contact_name || 'N/A'}</p>
+              <p className="text-sm text-gray-500">{teacher.emergency_contact?.relationship || teacher.emergency_contact_relationship || ''}</p>
+              <p className="text-sm text-gray-500">{teacher.emergency_contact?.phone_number || teacher.emergency_contact_phone || ''}</p>
             </div>
           </Card>
           <Card title="Subjects">
@@ -196,17 +256,20 @@ function TeacherDetail() {
               {(teacher.subjects || []).length === 0 ? (
                 <p className="text-sm text-gray-500">No subjects assigned</p>
               ) : (
-                teacher.subjects.map((s) => <Badge key={s} variant="info">{s}</Badge>)
+                teacher.subjects.map((s, i) => <Badge key={i} variant="info">{typeof s === 'string' ? s : s.name || s.subject_name || JSON.stringify(s)}</Badge>)
               )}
             </div>
           </Card>
           <Card title="Classes">
             <div className="flex flex-wrap gap-2">
-              {(teacher.classes_info || []).length === 0 ? (
+              {(teacher.classes_info || teacher.classes || []).length === 0 ? (
                 <p className="text-sm text-gray-500">No classes assigned</p>
               ) : (
-                teacher.classes_info.map((c, i) => (
-                  <Badge key={i} variant="success">{c.class_name} ({c.class_level})</Badge>
+                (teacher.classes_info || teacher.classes || []).map((c, i) => (
+                  <Badge key={i} variant="success">
+                    {typeof c === 'string' ? c : c.class_name || c.name || `Class ${i + 1}`}
+                    {c.class_level ? ` (${c.class_level})` : ''}
+                  </Badge>
                 ))
               )}
             </div>
@@ -215,43 +278,53 @@ function TeacherDetail() {
       )}
 
       {activeTab === 'reviews' && (
-        <div className="space-y-4">
-          {(teacher.performance_reviews || []).length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-8">No performance reviews yet.</p>
-          ) : (
-            teacher.performance_reviews.map((review, index) => (
-              <Card key={index}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold text-primary-600">{review.rating}</span>
-                    <span className="text-sm text-gray-500">/ 5.0</span>
+        tabLoading.reviews ? <LoadingSpinner /> : (
+          <div className="space-y-4">
+            {reviews.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">No performance reviews yet.</p>
+            ) : (
+              reviews.map((review, index) => (
+                <Card key={review._id || index}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-bold text-primary-600">{review.rating}</span>
+                      <span className="text-sm text-gray-500">/ 5.0</span>
+                    </div>
+                    <span className="text-sm text-gray-400">
+                      {review.review_date ? new Date(review.review_date).toLocaleDateString() : 'N/A'}
+                    </span>
                   </div>
-                  <span className="text-sm text-gray-400">{new Date(review.review_date).toLocaleDateString()}</span>
-                </div>
-                <p className="text-sm text-gray-500">Reviewer: {review.reviewer}</p>
-                <p className="text-sm mt-2">{review.overall_comments}</p>
-              </Card>
-            ))
-          )}
-        </div>
+                  <p className="text-sm text-gray-500">Reviewer: {review.reviewer || review.reviewer_name || 'N/A'}</p>
+                  {review.overall_comments && <p className="text-sm mt-2">{review.overall_comments}</p>}
+                  {review.comments && <p className="text-sm mt-2">{review.comments}</p>}
+                </Card>
+              ))
+            )}
+          </div>
+        )
       )}
 
       {activeTab === 'training' && (
-        <div className="space-y-4">
-          {(teacher.training_history || []).length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-8">No training history yet.</p>
-          ) : (
-            teacher.training_history.map((training, index) => (
-              <Card key={index}>
-                <h4 className="font-semibold">{training.training_name}</h4>
-                <p className="text-sm text-gray-500">{training.provider}</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {new Date(training.start_date).toLocaleDateString()} - {new Date(training.end_date).toLocaleDateString()}
-                </p>
-              </Card>
-            ))
-          )}
-        </div>
+        tabLoading.training ? <LoadingSpinner /> : (
+          <div className="space-y-4">
+            {trainingHistory.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">No training history yet.</p>
+            ) : (
+              trainingHistory.map((training, index) => (
+                <Card key={training._id || index}>
+                  <h4 className="font-semibold">{training.training_name || training.name || 'Training'}</h4>
+                  <p className="text-sm text-gray-500">{training.provider || training.institution || 'N/A'}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {training.start_date ? new Date(training.start_date).toLocaleDateString() : 'N/A'} 
+                    {' - '} 
+                    {training.end_date ? new Date(training.end_date).toLocaleDateString() : 'N/A'}
+                  </p>
+                  {training.description && <p className="text-xs text-gray-500 mt-1">{training.description}</p>}
+                </Card>
+              ))
+            )}
+          </div>
+        )
       )}
 
       <ConfirmDialog
