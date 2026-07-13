@@ -3,6 +3,20 @@ import { getToken, removeToken, clearAll } from '../utils/storage'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://hns-api.onrender.com/api/v1'
 
+// Lazy import to avoid circular dependency
+let offlineManager = null
+const getOfflineManager = async () => {
+  if (!offlineManager) {
+    try {
+      const module = await import('../utils/offlineManager')
+      offlineManager = module.getOfflineManager()
+    } catch (e) {
+      console.warn('[Axios] Could not load offline manager:', e.message)
+    }
+  }
+  return offlineManager
+}
+
 const api = axios.create({
   baseURL: API_URL,
   timeout: 120000,
@@ -23,15 +37,13 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// Response interceptor - Handle errors
+// Response interceptor - Handle errors and offline queuing
 api.interceptors.response.use(
   (response) => {
-    // ✅ Return the unwrapped data (original behavior)
-    // The API returns { success: true, message: "...", data: {...} }
-    // So after this, callers get { success: true, message: "...", data: {...} } directly
+    // ✅ Return the unwrapped data
     return response.data
   },
-  (error) => {
+  async (error) => {
     const { response, config } = error
 
     if (response) {
@@ -61,12 +73,56 @@ api.interceptors.response.use(
       })
     }
 
-    console.error('Network error:', error.message)
+    // ✅ Network error (status 0) - Queue for offline sync
+    console.warn('[Axios] 📵 Network error - queueing request for sync:', config.method?.toUpperCase(), config.url)
+
+    const isMutation = ['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase())
+    const isGet = config.method?.toLowerCase() === 'get'
+
+    if (isMutation) {
+      // Queue mutations for later sync
+      try {
+        const om = await getOfflineManager()
+        if (om) {
+          await om.queueRequest(
+            config.method.toUpperCase(),
+            `${API_URL}${config.url}`,
+            config.data ? JSON.parse(JSON.stringify(config.data)) : null
+          )
+          // Return a success-like response so the UI doesn't show an error
+          return Promise.resolve({
+            success: true,
+            queued: true,
+            message: 'Saved offline. Will sync when connection is restored.',
+            data: config.data ? JSON.parse(JSON.stringify(config.data)) : null,
+          })
+        }
+      } catch (queueError) {
+        console.error('[Axios] Failed to queue offline request:', queueError)
+      }
+    } else if (isGet) {
+      // For GET requests, try to return cached data
+      try {
+        const om = await getOfflineManager()
+        if (om) {
+          const cached = await om.getCachedResponse(config.url)
+          if (cached) {
+            console.log('[Axios] 📦 Returning cached response for:', config.url)
+            return Promise.resolve(cached.data)
+          }
+        }
+      } catch (cacheError) {
+        console.warn('[Axios] Could not get cached response:', cacheError)
+      }
+    }
+
+    // If we can't queue or cache, reject with a helpful message
     return Promise.reject({
       status: 0,
-      message: 'Server is waking up (free tier). Please wait 30-60 seconds and try again.',
+      message: 'You are offline. Changes will be synced when connection is restored.',
       errors: null,
       data: null,
+      offline: true,
     })
   }
 )
