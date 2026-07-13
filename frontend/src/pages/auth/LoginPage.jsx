@@ -68,27 +68,9 @@ function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-blue-100 dark:from-gray-900 dark:to-gray-800 px-4 py-12">
       <div className="w-full max-w-md">
-        {/* Logo & Branding */}
-        <div className="text-center mb-8 animate-fade-in-up">
-          <img 
-            src="/logo.png" 
-            alt="Heavenly Nature School Logo" 
-            className="w-24 h-24 rounded-2xl object-cover shadow-lg mx-auto mb-4"
-            onError={(e) => {
-              e.target.style.display = 'none'
-              e.target.nextSibling.style.display = 'flex'
-            }}
-          />
-          <div className="w-24 h-24 rounded-2xl bg-primary-600 text-white shadow-lg mx-auto mb-4 items-center justify-center text-4xl font-bold" style={{ display: 'none' }}>
-            H
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Heavenly Nature School</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Management System</p>
-          <p className="text-sm text-primary-600 dark:text-primary-400 font-medium mt-2">Nurturing Right Leaders</p>
-        </div>
 
         {/* Login Card */}
-        <div className="card animate-fade-in-up-delay-1">
+        <div className="card animate-fade-in-up">
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Welcome Back</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Sign in to access your account</p>
