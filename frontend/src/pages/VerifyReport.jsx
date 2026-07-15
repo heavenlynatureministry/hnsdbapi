@@ -7,6 +7,7 @@ function VerifyReport() {
   const [loading, setLoading] = useState(true)
   const [valid, setValid] = useState(false)
   const [student, setStudent] = useState(null)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     if (studentId) {
@@ -16,33 +17,34 @@ function VerifyReport() {
 
   const verifyStudent = async (id) => {
     setLoading(true)
+    setError('')
     try {
-      // Try to find the student by HNS ID
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://hns-api.onrender.com/api/v1'}/exams/student/${id}`)
+      // ✅ Use the PUBLIC verification endpoint (no auth required)
+      const API_URL = import.meta.env.VITE_API_URL || 'https://hns-api.onrender.com'
+      const response = await fetch(`${API_URL}/verify-report/${id}`)
       const data = await response.json()
       
       if (data?.success && data?.data) {
         setValid(true)
-        setStudent(data.data)
-      } else {
-        // Try the report card endpoint
-        const reportResponse = await fetch(`${import.meta.env.VITE_API_URL || 'https://hns-api.onrender.com/api/v1'}/exams/report-cards/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ student_id: id }),
+        setStudent({
+          student_name: data.data.student?.name || 'N/A',
+          class_name: data.data.student?.class_name || 'N/A',
+          academic_summary: data.data.academic_summary || {},
+          total_exams: data.data.total_exams || 0,
+          school_name: data.data.school?.name || '',
+          verified_at: data.data.verified_at || new Date().toISOString(),
         })
-        const reportData = await reportResponse.json()
-        
-        if (reportData?.success) {
-          setValid(true)
-          setStudent(reportData.data)
-        } else {
-          setValid(false)
-        }
+      } else if (response.status === 404) {
+        setValid(false)
+        setError('Student not found in our system.')
+      } else {
+        setValid(false)
+        setError(data?.message || 'Could not verify report card.')
       }
     } catch (error) {
       console.error('Verification error:', error)
       setValid(false)
+      setError('Network error. Please check your connection and try again.')
     } finally {
       setLoading(false)
     }
@@ -101,7 +103,7 @@ function VerifyReport() {
             <div className="space-y-3 mb-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Student Name:</span>
-                <span className="font-medium">{student.student_name || student.student?.name || 'N/A'}</span>
+                <span className="font-medium">{student.student_name}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Student ID:</span>
@@ -113,19 +115,36 @@ function VerifyReport() {
                   <span className="font-medium">{student.class_name}</span>
                 </div>
               )}
+              {student.total_exams > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Exams Taken:</span>
+                  <span className="font-medium">{student.total_exams}</span>
+                </div>
+              )}
+              {student.academic_summary && Object.keys(student.academic_summary).length > 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                  <p className="text-xs text-gray-500 mb-1 font-medium">Term Summary:</p>
+                  {Object.entries(student.academic_summary).map(([term, data]) => (
+                    <div key={term} className="flex justify-between text-xs text-gray-500">
+                      <span>{term}:</span>
+                      <span>{data.subjects} subjects | {data.passed} passed</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           <div className="text-center text-sm text-gray-500 dark:text-gray-400 mb-4">
             {valid ? (
-              <p>This is a valid report card issued by Heavenly Nature Nursery & Primary School.</p>
+              <p>This is a valid report card issued by {student?.school_name || 'Heavenly Nature Nursery & Primary School'}.</p>
             ) : (
-              <p>This report card could not be verified. The student ID may be invalid or the record may not exist.</p>
+              <p>{error || 'This report card could not be verified. The student ID may be invalid or the record may not exist.'}</p>
             )}
           </div>
 
           <div className="text-center text-xs text-gray-400">
-            <p>Verified at: {new Date().toLocaleString()}</p>
+            <p>Verified at: {student?.verified_at ? new Date(student.verified_at).toLocaleString() : new Date().toLocaleString()}</p>
             <p>Verification ID: {studentId}</p>
           </div>
         </div>
