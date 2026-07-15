@@ -3,6 +3,7 @@ Heavenly Nature School Management System - Main Application
 Production-ready FastAPI application for Render deployment
 """
 from fastapi import FastAPI, Request, status, HTTPException
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -597,6 +598,194 @@ app.include_router(
     prefix=f"{API_PREFIX}/sync",
     tags=["Sync"]
 )
+
+
+# =========================================================================
+# REPORT VERIFICATION ENDPOINT (Public - No Auth Required)
+# =========================================================================
+@app.get("/verify-report/{student_id}")
+async def verify_report(student_id: str):
+    """
+    Public endpoint to verify a student's report card
+    No authentication required - accessible via QR code or link on report card
+    """
+    db = get_database()
+    
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        # Find student by various ID formats
+        from bson import ObjectId
+        
+        student = None
+        # Try ObjectId first
+        try:
+            obj_id = ObjectId(student_id)
+            student = await db.students.find_one({"_id": obj_id})
+        except Exception:
+            pass
+        
+        # Try student_id_number, student_id, admission_number
+        if not student:
+            student = await db.students.find_one({
+                "$or": [
+                    {"student_id": student_id},
+                    {"student_id_number": student_id},
+                    {"id_number": student_id},
+                    {"admission_number": student_id}
+                ]
+            })
+        
+        if not student:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
+        student_id_number = student.get("student_id") or student.get("student_id_number") or student.get("id_number") or student.get("admission_number") or str(student.get("_id", ""))
+        
+        class_name = ""
+        if student.get("current_class_id"):
+            cls = await db.classes.find_one({"_id": student["current_class_id"]})
+            if cls:
+                class_name = cls.get("class_name", "")
+        
+        # Get exam results
+        student_oid = student.get("_id")
+        results = await db.exam_results.find({"student_id": student_oid}).sort("created_at", -1).to_list(length=100)
+        
+        # Build result summary
+        terms_summary = {}
+        for r in results:
+            term = r.get("term", "Unknown")
+            if term not in terms_summary:
+                terms_summary[term] = {"subjects": 0, "total_score": 0, "passed": 0, "failed": 0}
+            terms_summary[term]["subjects"] += 1
+            score = float(r.get("score", 0))
+            terms_summary[term]["total_score"] += score
+            if r.get("is_passed"):
+                terms_summary[term]["passed"] += 1
+            else:
+                terms_summary[term]["failed"] += 1
+        
+        school = await db.school_info.find_one({}) or {}
+        
+        return {
+            "success": True,
+            "message": "Report card verified",
+            "data": {
+                "student": {
+                    "name": student_name,
+                    "student_id": str(student_id_number),
+                    "class_name": class_name,
+                    "status": student.get("status", "active")
+                },
+                "academic_summary": terms_summary,
+                "total_exams": len(results),
+                "school": {
+                    "name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
+                    "motto": school.get("motto", "Nurturing Right Leaders"),
+                    "phone": school.get("phone", ""),
+                    "email": school.get("email", "")
+                },
+                "verified_at": datetime.utcnow().isoformat(),
+                "verification_status": "valid"
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Verification error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to verify report card")
+
+
+# =========================================================================
+# VERIFICATION PAGE (HTML - Public)
+# =========================================================================
+@app.get("/verify-report/{student_id}/page")
+async def verify_report_page(student_id: str):
+    """
+    Public HTML page for report card verification
+    """
+    db = get_database()
+    
+    if db is None:
+        return HTMLResponse(content="<h1>Service Unavailable</h1><p>Please try again later.</p>", status_code=503)
+    
+    try:
+        from bson import ObjectId
+        
+        student = None
+        try:
+            obj_id = ObjectId(student_id)
+            student = await db.students.find_one({"_id": obj_id})
+        except Exception:
+            pass
+        
+        if not student:
+            student = await db.students.find_one({
+                "$or": [
+                    {"student_id": student_id},
+                    {"student_id_number": student_id},
+                    {"id_number": student_id},
+                    {"admission_number": student_id}
+                ]
+            })
+        
+        if not student:
+            return HTMLResponse(content="""
+            <html><head><title>Invalid Report Card</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>body{font-family:Arial,sans-serif;text-align:center;padding:50px;background:#f5f5f5}
+            .card{background:white;padding:30px;border-radius:10px;max-width:400px;margin:0 auto;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
+            .invalid{color:#dc2626;font-size:48px;margin-bottom:10px}.valid{color:#059669;font-size:48px;margin-bottom:10px}
+            </style></head><body>
+            <div class="card"><div class="invalid">❌</div><h2 style="color:#dc2626">Invalid Report Card</h2><p>Student ID not found in our system.</p><p style="color:#666;font-size:12px">ID: """ + student_id + """</p></div></body></html>""", status_code=404)
+        
+        student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
+        student_id_number = student.get("student_id") or student.get("student_id_number") or str(student.get("_id", ""))
+        
+        class_name = ""
+        if student.get("current_class_id"):
+            cls = await db.classes.find_one({"_id": student["current_class_id"]})
+            if cls:
+                class_name = cls.get("class_name", "")
+        
+        school = await db.school_info.find_one({}) or {}
+        school_name = school.get("school_name", "Heavenly Nature Nursery & Primary School")
+        
+        # Get results
+        results = await db.exam_results.find({"student_id": student.get("_id")}).sort("created_at", -1).to_list(length=50)
+        
+        results_html = ""
+        if results:
+            results_html = "<table style='width:100%;border-collapse:collapse;margin-top:15px'><tr style='background:#1a56db;color:white'><th style='padding:8px;text-align:left'>Subject</th><th style='padding:8px'>Score</th><th style='padding:8px'>Grade</th><th style='padding:8px'>Term</th></tr>"
+            for r in results[:20]:
+                exam = await db.exams.find_one({"_id": r.get("exam_id")}) if r.get("exam_id") else None
+                subject = exam.get("subject_name") or exam.get("exam_name", "N/A") if exam else "N/A"
+                results_html += f"<tr style='border-bottom:1px solid #ddd'><td style='padding:6px'>{subject}</td><td style='padding:6px;text-align:center'>{r.get('score', 'N/A')}</td><td style='padding:6px;text-align:center'>{r.get('grade', 'N/A')}</td><td style='padding:6px;text-align:center'>{r.get('term', 'N/A')}</td></tr>"
+            results_html += "</table>"
+        
+        return HTMLResponse(content=f"""
+        <html><head><title>Report Card Verified - {student_name}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>body{{font-family:Arial,sans-serif;text-align:center;padding:20px;background:#f5f5f5}}
+        .card{{background:white;padding:25px;border-radius:10px;max-width:500px;margin:0 auto;box-shadow:0 2px 10px rgba(0,0,0,0.1)}}
+        .valid{{color:#059669;font-size:48px;margin-bottom:10px}}h2{{color:#1a3a6b}}p{{color:#555;margin:5px 0}}
+        </style></head><body>
+        <div class="card"><div class="valid">✅</div><h2>Report Card Verified</h2>
+        <p style="font-size:18px;font-weight:bold;margin-top:10px">{student_name}</p>
+        <p>Student ID: <strong>{student_id_number}</strong></p>
+        <p>Class: <strong>{class_name}</strong></p>
+        <p>Status: <span style="color:#059669;font-weight:bold">Active</span></p>
+        {results_html}
+        <p style="margin-top:15px;font-size:11px;color:#999">Verified by {school_name}</p>
+        <p style="font-size:10px;color:#999">This report card is authentic and issued by the school.</p>
+        </div></body></html>""")
+    
+    except Exception as e:
+        logger.error(f"Verification page error: {e}")
+        return HTMLResponse(content="<h1>Error</h1><p>Could not verify report card. Please try again.</p>", status_code=500)
 
 
 # =========================================================================
