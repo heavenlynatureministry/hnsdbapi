@@ -1,6 +1,6 @@
 /**
  * Export Academic Report Card to Print/PDF
- * Includes letterhead background and watermark
+ * Full-page template background with content positioned inside printable area
  * Supports both single-term and annual (Portrait/Landscape) report cards
  */
 
@@ -10,7 +10,6 @@ export const exportReportCard = (reportData, orientation = 'portrait') => {
     return
   }
 
-  const letterheadUrl = window.location.origin + '/letter-head.jpg'
   const watermarkUrl = window.location.origin + '/ReportCardWM.jpg'
   
   const width = orientation === 'landscape' ? 1100 : 900
@@ -25,7 +24,7 @@ export const exportReportCard = (reportData, orientation = 'portrait') => {
 
   const { student, results, term, academic_year, school, verify_url } = reportData
 
-  printWindow.document.write(generateSingleTermHTML(student, results, term, academic_year, school, letterheadUrl, watermarkUrl, verify_url, orientation))
+  printWindow.document.write(generateSingleTermHTML(student, results, term, academic_year, school, watermarkUrl, verify_url, orientation))
   printWindow.document.close()
 
   printWindow.onload = () => {
@@ -44,7 +43,6 @@ export const exportAnnualReportCard = (reportData, orientation = 'portrait') => 
     return
   }
 
-  const letterheadUrl = window.location.origin + '/letter-head.jpg'
   const watermarkUrl = window.location.origin + '/ReportCardWM.jpg'
   
   const width = orientation === 'landscape' ? 1100 : 900
@@ -60,9 +58,9 @@ export const exportAnnualReportCard = (reportData, orientation = 'portrait') => 
   const { student, term1, term2, term3, academic_year, school, verify_url, annual_summary } = reportData
 
   if (orientation === 'landscape') {
-    printWindow.document.write(generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url, annual_summary))
+    printWindow.document.write(generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year, school, watermarkUrl, verify_url, annual_summary))
   } else {
-    printWindow.document.write(generateAnnualPortraitHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url, annual_summary))
+    printWindow.document.write(generateAnnualPortraitHTML(student, term1, term2, term3, academic_year, school, watermarkUrl, verify_url, annual_summary))
   }
   
   printWindow.document.close()
@@ -78,7 +76,7 @@ export const exportAnnualReportCard = (reportData, orientation = 'portrait') => 
 }
 
 // =========================================================================
-// SHARED CSS - Compact, transparent, watermark-friendly
+// SHARED CSS - Full template background with content inside printable area
 // =========================================================================
 const SHARED_CSS = `
   @page { size: A4; margin: 0; }
@@ -89,49 +87,122 @@ const SHARED_CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Georgia', 'Times New Roman', serif; font-size: 11px; color: #1a1a1a; background: #e5e7eb; padding: 10px; line-height: 1.4; }
   .page-wrapper { width: 210mm; margin: 0 auto; }
-  .page { position: relative; width: 210mm; min-height: 297mm; margin: 0; padding: 0; background: transparent; overflow: hidden; }
-  .watermark { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: 0.07; }
-  .watermark img { width: 100%; height: 100%; object-fit: cover; }
-  .content { position: relative; z-index: 1; padding: 10mm 12mm; }
+  
+  .page { 
+    position: relative; 
+    width: 210mm; 
+    min-height: 297mm; 
+    overflow: hidden; 
+    background: #fff; 
+  }
+  
+  .watermark { 
+    position: absolute; 
+    inset: 0; 
+    z-index: 0; 
+  }
+  .watermark img { 
+    width: 100%; 
+    height: 100%; 
+    object-fit: fill; 
+    opacity: 1; 
+    display: block; 
+  }
+  
+  .content { 
+    position: absolute; 
+    inset: 0; 
+    z-index: 5; 
+    padding: 34mm 18mm 25mm 18mm; 
+    background: transparent; 
+  }
 
-  .letterhead { text-align: center; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 2px double #1a56db; }
+  .letterhead { 
+    text-align: center; 
+    margin-bottom: 4px; 
+    border-bottom: none; 
+  }
   .letterhead img { width: 100%; height: auto; display: block; }
-  .letterhead-fallback { display: none; text-align: center; padding: 6px; background: rgba(255,255,255,0.9); }
+  .letterhead-fallback { display: none; text-align: center; padding: 4px; background: transparent; }
 
-  .title { text-align: center; font-size: 15px; font-weight: bold; margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 3px; color: #1a3a6b; }
-  .subtitle { text-align: center; font-size: 11px; margin-bottom: 8px; color: #555; }
+  .title { 
+    text-align: center; 
+    font-size: 14px; 
+    font-weight: bold; 
+    margin: 6px 0 3px; 
+    text-transform: uppercase; 
+    letter-spacing: 3px; 
+    color: #1a3a6b; 
+  }
+  .subtitle { text-align: center; font-size: 10px; margin-bottom: 6px; color: #555; }
 
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px; font-size: 11px; padding: 6px 8px; 
-    border: 1px solid #ccc; background: rgba(255,255,255,0.8); }
-  .info-item { display: flex; align-items: center; padding: 2px 0; }
-  .info-label { font-weight: bold; width: 70px; font-size: 10px; color: #444; }
+  .info-grid { 
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    gap: 3px; 
+    margin-bottom: 6px; 
+    font-size: 10px; 
+    padding: 5px 8px; 
+    border: none; 
+    background: transparent; 
+  }
+  .info-item { display: flex; align-items: center; padding: 1px 0; }
+  .info-label { font-weight: bold; width: 65px; font-size: 9px; color: #444; }
 
-  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 11px; }
-  th { background: #1a56db; color: white; padding: 5px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 10px; }
+  th { 
+    background: rgba(20,60,140,0.92); 
+    color: #fff; 
+    padding: 4px 6px; 
+    text-align: left; 
+    font-size: 8px; 
+    text-transform: uppercase; 
+    letter-spacing: 1px; 
+  }
   th.center { text-align: center; }
-  td { padding: 4px 8px; border-bottom: 1px solid #ddd; font-size: 11px; }
+  td { padding: 3px 6px; border-bottom: 1px solid #bbb; font-size: 10px; }
   td.center { text-align: center; }
-  tr:nth-child(even) { background: rgba(248,249,250,0.6); }
-  .total-row { font-weight: bold; background: rgba(26,86,219,0.1) !important; font-size: 12px; }
-  .total-row td { padding: 5px 8px; border-top: 1.5px solid #1a56db; }
+  tr:nth-child(even) { background: rgba(248,249,250,0.5); }
+  .total-row { font-weight: bold; background: rgba(26,86,219,0.12) !important; font-size: 11px; }
+  .total-row td { padding: 4px 6px; border-top: 1.5px solid #1a56db; }
 
-  .summary-section { margin-top: 8px; display: flex; gap: 10px; }
-  .summary-box { flex: 1; padding: 6px 10px; border: 1px solid #ccc; background: rgba(255,255,255,0.8); font-size: 10px; }
-  .summary-item { display: flex; padding: 2px 0; border-bottom: 1px dotted #ddd; }
+  .summary-section { margin-top: 6px; display: flex; gap: 8px; }
+  .summary-box { 
+    flex: 1; 
+    padding: 5px 8px; 
+    border: none; 
+    background: transparent; 
+    font-size: 10px; 
+  }
+  .summary-item { display: flex; padding: 2px 0; border-bottom: 1px dotted #bbb; }
   .summary-item:last-child { border-bottom: none; }
-  .summary-label { font-weight: bold; width: 75px; font-size: 9px; }
-  .remarks-box { flex: 1; padding: 6px 10px; border: 1px solid #ccc; font-size: 10px; background: rgba(255,255,255,0.8); min-height: 40px; }
-  .remarks-box p { margin-top: 4px; line-height: 1.3; }
+  .summary-label { font-weight: bold; width: 70px; font-size: 9px; }
+  .remarks-box { 
+    flex: 1; 
+    padding: 5px 8px; 
+    border: none; 
+    font-size: 10px; 
+    background: transparent; 
+    min-height: 35px; 
+  }
+  .remarks-box p { margin-top: 3px; line-height: 1.3; }
 
-  .verify-section { margin-top: 8px; padding: 5px 10px; border: 1px solid #1a56db; background: rgba(240,244,255,0.8); text-align: center; font-size: 9px; }
-  .verify-link { font-family: 'Courier New', monospace; font-weight: bold; color: #1a56db; word-break: break-all; font-size: 10px; }
+  .verify-section { 
+    margin-top: 6px; 
+    padding: 4px 8px; 
+    border: none; 
+    background: transparent; 
+    text-align: center; 
+    font-size: 8px; 
+  }
+  .verify-link { font-family: 'Courier New', monospace; font-weight: bold; color: #1a56db; word-break: break-all; font-size: 9px; }
 
-  .signatures { display: flex; justify-content: space-between; margin-top: 14px; font-size: 10px; padding: 0 5px; }
+  .signatures { display: flex; justify-content: space-between; margin-top: 12px; font-size: 10px; padding: 0 5px; }
   .sig-box { text-align: center; width: 40%; }
-  .sig-line { border-bottom: 1px solid #000; margin-bottom: 3px; height: 22px; }
+  .sig-line { border-bottom: 1px solid #000; margin-bottom: 2px; height: 20px; }
 
-  .next-term { text-align: center; font-size: 9px; margin-top: 8px; color: #555; font-weight: bold; }
-  .footer { text-align: center; font-size: 8px; margin-top: 6px; padding-top: 4px; border-top: 1px solid #ccc; color: #666; }
+  .next-term { text-align: center; font-size: 8px; margin-top: 6px; color: #555; font-weight: bold; }
+  .footer { text-align: center; font-size: 7px; margin-top: 4px; padding-top: 3px; border-top: 1px solid #bbb; color: #666; }
 
   .print-toolbar { text-align: center; padding: 8px; margin-top: 10px; background: #f0f0f0; border-radius: 6px; }
   .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; margin: 3px; }
@@ -147,7 +218,7 @@ const SHARED_CSS = `
 // =========================================================================
 // SINGLE TERM
 // =========================================================================
-function generateSingleTermHTML(student, results, term, academic_year, school, letterheadUrl, watermarkUrl, verify_url, orientation) {
+function generateSingleTermHTML(student, results, term, academic_year, school, watermarkUrl, verify_url, orientation) {
   const subjects = results?.subjects || []
   const totalScore = results?.total_score || subjects.reduce((sum, s) => sum + (parseFloat(s.score) || 0), 0)
   const totalMax = results?.total_max || subjects.reduce((sum, s) => sum + (parseFloat(s.max_score) || 0), 0)
@@ -170,7 +241,7 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
       <meta charset="utf-8">
       <style>
         ${SHARED_CSS}
-        ${isLandscape ? '.page-wrapper { width: 297mm; } .page { width: 297mm; min-height: 210mm; }' : ''}
+        ${isLandscape ? '.page-wrapper { width: 297mm; } .page { width: 297mm; min-height: 210mm; } .content { padding: 20mm 14mm 18mm 14mm; }' : ''}
       </style>
     </head>
     <body>
@@ -179,8 +250,7 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
           <div class="watermark"><img src="${watermarkUrl}" alt="" /></div>
           <div class="content">
             <div class="letterhead">
-              <img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'" />
-              <div class="letterhead-fallback"><h2 style="font-size:14px;">${school?.name || 'School Name'}</h2><p style="font-size:10px;"><em>"${school?.motto || ''}"</em></p></div>
+              <div class="letterhead-fallback" style="display:block;"><h2 style="font-size:13px;">${school?.name || 'School Name'}</h2><p style="font-size:9px;"><em>"${school?.motto || ''}"</em></p></div>
             </div>
             <div class="title">ACADEMIC REPORT CARD</div>
             <div class="subtitle">${term || ''} &bull; ${academic_year || ''}</div>
@@ -240,7 +310,7 @@ function generateSingleTermHTML(student, results, term, academic_year, school, l
 // =========================================================================
 // ANNUAL PORTRAIT
 // =========================================================================
-function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url, annual_summary) {
+function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year, school, watermarkUrl, verify_url, annual_summary) {
   const allSubjects = getUniqueSubjects(term1, term2, term3)
   const t1Total = term1?.total_score || 0
   const t2Total = term2?.total_score || 0
@@ -256,20 +326,22 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
         ${SHARED_CSS}
         .info-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
         .info-item { flex-wrap: wrap; }
-        .info-label { width: auto; margin-right: 4px; }
-        th { padding: 4px 5px; font-size: 8px; }
-        th.subject-col { text-align: left; padding-left: 6px; }
-        td { padding: 3px 5px; text-align: center; font-size: 10px; }
-        td.subject-col { text-align: left; font-weight: bold; padding-left: 6px; }
-        .total-row td { padding: 4px 5px; }
-        .summary-row td { padding: 3px 5px; background: rgba(240,244,255,0.8); font-weight: bold; font-size: 9px; }
-        .annual-summary { margin-top: 8px; padding: 6px 10px; border: 1px solid #1a56db; background: rgba(240,244,255,0.8); font-size: 10px; }
-        .annual-summary h4 { margin-bottom: 3px; font-size: 11px; }
-        .annual-summary p { font-size: 10px; line-height: 1.3; margin-bottom: 2px; }
-        .remarks-section { margin-top: 8px; padding: 6px 10px; border: 1px solid #ccc; font-size: 10px; min-height: 35px; background: rgba(255,255,255,0.8); line-height: 1.3; }
-        .signatures { margin-top: 12px; }
+        .info-label { width: auto; margin-right: 3px; }
+        th { padding: 3px 4px; font-size: 7px; }
+        th.subject-col { text-align: left; padding-left: 5px; }
+        td { padding: 2px 4px; text-align: center; font-size: 9px; }
+        td.subject-col { text-align: left; font-weight: bold; padding-left: 5px; }
+        .total-row td { padding: 3px 4px; }
+        .summary-row td { padding: 2px 4px; background: rgba(240,244,255,0.5); font-weight: bold; font-size: 8px; }
+        .annual-summary { margin-top: 6px; padding: 5px 8px; border: none; background: transparent; font-size: 9px; }
+        .annual-summary h4 { margin-bottom: 2px; font-size: 10px; }
+        .annual-summary p { font-size: 9px; line-height: 1.3; margin-bottom: 2px; }
+        .remarks-section { margin-top: 6px; padding: 5px 8px; border: none; font-size: 9px; min-height: 30px; background: transparent; line-height: 1.3; }
+        .signatures { margin-top: 10px; }
         .sig-box { width: 30%; }
-        .sig-line { height: 20px; }
+        .sig-line { height: 18px; }
+        .title { font-size: 13px; margin: 4px 0 2px; }
+        .subtitle { margin-bottom: 4px; font-size: 9px; }
       </style>
     </head>
     <body>
@@ -278,8 +350,7 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
           <div class="watermark"><img src="${watermarkUrl}" alt="" /></div>
           <div class="content">
             <div class="letterhead">
-              <img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'" />
-              <div class="letterhead-fallback"><h2 style="font-size:14px;">${school?.name || 'School Name'}</h2><p style="font-size:10px;"><em>"${school?.motto || ''}"</em></p></div>
+              <div class="letterhead-fallback" style="display:block;"><h2 style="font-size:13px;">${school?.name || 'School Name'}</h2><p style="font-size:9px;"><em>"${school?.motto || ''}"</em></p></div>
             </div>
             <div class="title">ANNUAL ACADEMIC REPORT CARD</div>
             <div class="subtitle">${academic_year || ''}</div>
@@ -344,7 +415,7 @@ function generateAnnualPortraitHTML(student, term1, term2, term3, academic_year,
 // =========================================================================
 // ANNUAL LANDSCAPE
 // =========================================================================
-function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url, annual_summary) {
+function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year, school, watermarkUrl, verify_url, annual_summary) {
   const allSubjects = getUniqueSubjects(term1, term2, term3)
   const t1Total = term1?.total_score || 0
   const t2Total = term2?.total_score || 0
@@ -360,22 +431,22 @@ function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year
         ${SHARED_CSS}
         .page-wrapper { width: 297mm; }
         .page { width: 297mm; min-height: 210mm; }
-        .content { padding: 8mm 10mm; }
+        .content { padding: 22mm 14mm 18mm 14mm; }
         .info-grid { grid-template-columns: 1fr 1fr 1fr; }
-        th { padding: 4px 5px; font-size: 8px; }
-        th.subject-col { text-align: left; padding-left: 6px; }
-        td { padding: 3px 5px; text-align: center; font-size: 10px; }
-        td.subject-col { text-align: left; font-weight: bold; padding-left: 6px; }
-        .total-row td { padding: 4px 5px; }
-        .summary-row td { padding: 3px 5px; background: rgba(240,244,255,0.8); font-weight: bold; font-size: 9px; }
-        .annual-summary { margin-top: 6px; padding: 5px 8px; border: 1px solid #1a56db; background: rgba(240,244,255,0.8); font-size: 10px; }
-        .annual-summary h4 { margin-bottom: 2px; font-size: 10px; }
-        .annual-summary p { font-size: 9px; line-height: 1.3; margin-bottom: 1px; }
-        .remarks-section { margin-top: 6px; padding: 5px 8px; font-size: 10px; min-height: 30px; }
-        .signatures { margin-top: 10px; }
-        .sig-line { height: 18px; }
-        .title { font-size: 14px; margin: 4px 0 2px; }
-        .subtitle { margin-bottom: 4px; }
+        th { padding: 3px 4px; font-size: 7px; }
+        th.subject-col { text-align: left; padding-left: 5px; }
+        td { padding: 2px 4px; text-align: center; font-size: 9px; }
+        td.subject-col { text-align: left; font-weight: bold; padding-left: 5px; }
+        .total-row td { padding: 3px 4px; }
+        .summary-row td { padding: 2px 4px; background: rgba(240,244,255,0.5); font-weight: bold; font-size: 8px; }
+        .annual-summary { margin-top: 5px; padding: 4px 6px; border: none; background: transparent; font-size: 9px; }
+        .annual-summary h4 { margin-bottom: 1px; font-size: 9px; }
+        .annual-summary p { font-size: 8px; line-height: 1.2; margin-bottom: 1px; }
+        .remarks-section { margin-top: 5px; padding: 4px 6px; font-size: 9px; min-height: 25px; background: transparent; border: none; }
+        .signatures { margin-top: 8px; }
+        .sig-line { height: 16px; }
+        .title { font-size: 13px; margin: 3px 0 2px; }
+        .subtitle { margin-bottom: 3px; font-size: 9px; }
       </style>
     </head>
     <body>
@@ -384,8 +455,7 @@ function generateAnnualLandscapeHTML(student, term1, term2, term3, academic_year
           <div class="watermark"><img src="${watermarkUrl}" alt="" /></div>
           <div class="content">
             <div class="letterhead">
-              <img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'" />
-              <div class="letterhead-fallback"><h2 style="font-size:13px;">${school?.name || 'School Name'}</h2><p style="font-size:9px;"><em>"${school?.motto || ''}"</em></p></div>
+              <div class="letterhead-fallback" style="display:block;"><h2 style="font-size:12px;">${school?.name || 'School Name'}</h2><p style="font-size:8px;"><em>"${school?.motto || ''}"</em></p></div>
             </div>
             <div class="title">ANNUAL ACADEMIC REPORT CARD ${academic_year || ''}</div>
             <div class="info-grid">
