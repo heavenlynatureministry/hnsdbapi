@@ -5,6 +5,8 @@ import { exportReceipt, printReceiptDirect, openReceiptInNewTab, downloadReceipt
 function ReceiptPrint({ receipt, onClose }) {
   if (!receipt) return null
 
+  const letterheadUrl = '/letter-head.jpg'
+
   const handleAutoPrint = () => exportReceipt(receipt)
   const handleManualPrint = () => printReceiptDirect(receipt)
   const handleOpenInNewTab = () => openReceiptInNewTab(receipt)
@@ -37,6 +39,23 @@ function ReceiptPrint({ receipt, onClose }) {
               border: '1px solid #ddd'
             }}
           >
+            {/* Letterhead at top */}
+            <div>
+              <img 
+                src={letterheadUrl} 
+                alt="School Letterhead" 
+                className="w-full h-auto block border-b border-gray-300"
+                onError={(e) => {
+                  e.target.style.display = 'none'
+                  e.target.nextElementSibling.style.display = 'block'
+                }}
+              />
+              <div className="text-center p-2 border-b border-gray-300" style={{ display: 'none' }}>
+                <h2 className="text-sm font-bold uppercase">{receipt?.school?.name || 'School Name'}</h2>
+                {receipt?.school?.motto && <p className="text-xs italic my-1">"{receipt.school.motto}"</p>}
+              </div>
+            </div>
+
             {/* Receipt Type */}
             <div className="text-center font-bold text-xs border-b-2 border-black py-2 bg-gray-100 uppercase tracking-wider">
               {receiptTitle}
