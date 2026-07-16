@@ -1,7 +1,7 @@
 /**
  * Export receipt to print/PDF
- * Uses the same proven approach as exportPDF.js
- * Optimized for small receipt printers (A5, B5, thermal)
+ * Uses receipt-templateA5.jpg as full-page A5 background
+ * All text positioned within template borders
  * Supports both Student Payments and Organization Transactions
  */
 
@@ -11,301 +11,160 @@ export const exportReceipt = (receipt) => {
     return
   }
 
-  const letterheadUrl = window.location.origin + '/letter-head.jpg'
+  const templateUrl = window.location.origin + '/receipt-templateA5.jpg'
   
-  const printWindow = window.open('', '_blank', 'width=400,height=600')
+  const printWindow = window.open('', '_blank', 'width=450,height=650')
   
   if (!printWindow) {
     printReceiptDirect(receipt)
     return
   }
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A'
-    return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-  }
-
-  const formatAmount = (amount) => {
-    return Number(amount || 0).toLocaleString('en', { minimumFractionDigits: 2 })
-  }
-
-  // Check if this is a student payment or organization transaction
-  const isStudentPayment = !!receipt?.student_name && receipt?.student_name !== 'N/A'
-  const isOrganization = !!receipt?.organization_name
-  const isTransaction = !isStudentPayment // If not a student payment, it's a transaction
-
-  // Balance info (only for student payments)
-  const balanceHTML = receipt?.balance_info ? `
-    <div style="border-top:1px dashed #000; margin-top:3mm; padding-top:2mm;">
-      <div class="info-row">
-        <span class="info-label">Total Fee:</span>
-        <span class="info-value">SSP ${formatAmount(receipt.balance_info.total_fee)}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Total Paid:</span>
-        <span class="info-value">SSP ${formatAmount(receipt.balance_info.total_paid)}</span>
-      </div>
-      <div class="info-row" style="font-weight:bold; font-size:11px;">
-        <span class="info-label">Balance:</span>
-        <span class="info-value" style="color:${receipt.balance_info.is_cleared ? '#059669' : '#dc2626'}; font-size:11px;">
-          ${receipt.balance_info.balance_display || 'N/A'}
-        </span>
-      </div>
-    </div>
-  ` : ''
-
-  // Build the details section based on record type
-  let detailsHTML = ''
-  
-  if (isStudentPayment) {
-    // Student payment details
-    detailsHTML = `
-      <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${receipt?.student_name || 'N/A'}</span></div>
-      <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${receipt?.class_name || 'N/A'}</span></div>
-      <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || 'School Fees'}</span></div>
-      ${receipt?.term ? `<div class="info-row"><span class="info-label">Term:</span><span class="info-value">${receipt.term}</span></div>` : ''}
-    `
-  } else {
-    // Organization/Transaction details
-    detailsHTML = `
-      ${receipt?.organization_name ? `<div class="info-row"><span class="info-label">Organization:</span><span class="info-value">${receipt.organization_name}</span></div>` : ''}
-      ${receipt?.representative_name ? `<div class="info-row"><span class="info-label">Representative:</span><span class="info-value">${receipt.representative_name}</span></div>` : ''}
-      <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || receipt?.description || 'Transaction'}</span></div>
-      ${receipt?.term ? `<div class="info-row"><span class="info-label">Term:</span><span class="info-value">${receipt.term}</span></div>` : ''}
-    `
-  }
-
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Receipt - ${receipt?.receipt_number || 'Payment'}</title>
-      <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style>
-        @page { size: A5; margin: 2mm; }
-        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin:0; padding:0; background:white; } .no-print { display:none !important; } }
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Courier New','Courier',monospace; font-size:10px; color:#000; background:#fff; max-width:148mm; margin:0 auto; padding:2mm; }
-        .receipt { border:1.5px solid #000; background:white; }
-        .letterhead-wrapper { width:100%; border-bottom:1px solid #000; }
-        .letterhead-wrapper img { width:100%; height:auto; display:block; }
-        .letterhead-fallback { display:none; text-align:center; padding:6mm; border-bottom:2px solid #000; background:#fff; }
-        .receipt-content { padding:4mm 5mm 5mm 5mm; background:white; }
-        .receipt-title { text-align:center; font-size:13px; font-weight:bold; margin:3mm 0; text-transform:uppercase; letter-spacing:2px; border:1.5px solid #000; padding:2mm; background:#f5f5f5; }
-        .receipt-number { text-align:right; font-size:9px; margin-bottom:3mm; padding:2mm 0; }
-        .info-row { display:flex; justify-content:space-between; margin-bottom:1.5mm; font-size:10px; padding:1mm 0; }
-        .info-label { font-weight:bold; width:40%; white-space:nowrap; }
-        .info-value { width:60%; border-bottom:1px dotted #ccc; text-align:right; }
-        .amount-section { border:2px solid #000; padding:3mm; margin:4mm 0; text-align:center; background:#fafafa; }
-        .amount-label { font-size:9px; margin-bottom:1mm; text-transform:uppercase; letter-spacing:1px; }
-        .amount-value { font-size:22px; font-weight:bold; font-family:'Arial',sans-serif; margin:2mm 0; }
-        .amount-words { font-size:9px; font-style:italic; margin-top:2mm; line-height:1.3; }
-        .signature-section { display:flex; justify-content:space-between; margin-top:8mm; padding-top:3mm; border-top:1px solid #000; }
-        .signature-box { text-align:center; width:45%; }
-        .signature-line { border-bottom:1px solid #000; margin-bottom:2mm; height:10mm; }
-        .signature-label { font-size:8px; text-transform:uppercase; letter-spacing:0.5px; }
-        .signature-name { font-size:9px; margin-top:1mm; }
-        .receipt-footer { text-align:center; font-size:8px; margin-top:4mm; padding-top:2mm; border-top:1px dashed #999; color:#666; }
-        .print-toolbar { text-align:center; padding:12px; margin-top:10px; background:#f0f0f0; border-radius:8px; }
-        .btn-print { display:inline-block; padding:10px 25px; background:#2563eb; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:bold; margin:3px; }
-        .btn-close { display:inline-block; padding:10px 25px; background:#6b7280; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px; margin:3px; }
-      </style>
-    </head>
-    <body>
-      <div class="receipt">
-        <div class="letterhead-wrapper">
-          <img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-          <div class="letterhead-fallback">
-            <div style="font-size:15px;font-weight:bold;text-transform:uppercase;">${receipt?.school?.name || 'School Name'}</div>
-            ${receipt?.school?.motto ? `<div style="font-size:9px;font-style:italic;margin:1mm 0;">"${receipt.school.motto}"</div>` : ''}
-            <div style="font-size:8px;">${typeof receipt?.school?.address === 'string' ? receipt.school.address : ''} | Tel: ${receipt?.school?.phone || ''}</div>
-          </div>
-        </div>
-        <div class="receipt-content">
-          <div class="receipt-title">${isStudentPayment ? 'Payment Receipt' : 'Official Receipt'}</div>
-          <div class="receipt-number"><strong>Receipt No:</strong> ${receipt?.receipt_number || 'N/A'}</div>
-          <div class="info-row"><span class="info-label">Date:</span><span class="info-value">${formatDate(receipt?.date)}</span></div>
-          ${detailsHTML}
-          ${receipt?.academic_year ? `<div class="info-row"><span class="info-label">Academic Year:</span><span class="info-value">${receipt.academic_year}</span></div>` : ''}
-          <div class="info-row"><span class="info-label">Method:</span><span class="info-value">${receipt?.payment_method || 'Cash'}</span></div>
-          ${receipt?.transaction_reference ? `<div class="info-row"><span class="info-label">Ref:</span><span class="info-value">${receipt.transaction_reference}</span></div>` : ''}
-          <div class="amount-section">
-            <div class="amount-label">Amount Paid</div>
-            <div class="amount-value">SSP ${formatAmount(receipt?.amount)}</div>
-            <div class="amount-words">${receipt?.amount_words || ''}</div>
-          </div>
-          ${balanceHTML}
-          <div class="signature-section">
-            <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div class="signature-name">${receipt?.received_by || 'School Bursar'}</div></div>
-            <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Paid By</div><div class="signature-name">${receipt?.paid_by || '________________'}</div></div>
-          </div>
-          <div class="receipt-footer"><p>Computer-generated receipt</p><p>Thank you! | ${receipt?.school?.name || 'School'}</p></div>
-        </div>
-      </div>
-      <div class="print-toolbar no-print">
-        <button class="btn-print" onclick="window.print()">🖨️ Print Receipt</button>
-        <button class="btn-close" onclick="window.close()">✕ Close</button>
-      </div>
-    </body></html>
-  `)
-  
-  printWindow.document.close()
-  printWindow.onload = () => { printWindow.focus(); setTimeout(() => printWindow.print(), 600) }
-  setTimeout(() => { printWindow.focus(); printWindow.print() }, 1500)
+  printWindow.document.write(buildReceiptHTML(receipt, templateUrl))
+  finishAndPrint(printWindow)
 }
 
-/**
- * DIRECT PRINT - Opens receipt in new tab as a full printable page
- */
 export const printReceiptDirect = (receipt) => {
   if (!receipt) return
-
-  const letterheadUrl = window.location.origin + '/letter-head.jpg'
-  const formatDate = (dateStr) => !dateStr ? 'N/A' : new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-  const formatAmount = (amount) => Number(amount || 0).toLocaleString('en', { minimumFractionDigits: 2 })
-
-  const isStudentPayment = !!receipt?.student_name && receipt?.student_name !== 'N/A'
-
-  const balanceHTML = receipt?.balance_info ? `
-    <div style="border-top:1px dashed #000; margin-top:3mm; padding-top:2mm;">
-      <div class="info-row"><span class="info-label">Total Fee:</span><span class="info-value">SSP ${formatAmount(receipt.balance_info.total_fee)}</span></div>
-      <div class="info-row"><span class="info-label">Total Paid:</span><span class="info-value">SSP ${formatAmount(receipt.balance_info.total_paid)}</span></div>
-      <div class="info-row" style="font-weight:bold;"><span class="info-label">Balance:</span><span class="info-value" style="color:${receipt.balance_info.is_cleared ? '#059669' : '#dc2626'};">${receipt.balance_info.balance_display}</span></div>
-    </div>` : ''
-
-  let detailsHTML = ''
-  if (isStudentPayment) {
-    detailsHTML = `
-      <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${receipt?.student_name || 'N/A'}</span></div>
-      <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${receipt?.class_name || 'N/A'}</span></div>
-    `
-  } else {
-    detailsHTML = `
-      ${receipt?.organization_name ? `<div class="info-row"><span class="info-label">Organization:</span><span class="info-value">${receipt.organization_name}</span></div>` : ''}
-      ${receipt?.representative_name ? `<div class="info-row"><span class="info-label">Representative:</span><span class="info-value">${receipt.representative_name}</span></div>` : ''}
-    `
-  }
-
-  const printPage = window.open('', '_blank')
-  if (!printPage) { alert('Please allow pop-ups.'); return }
-  
-  printPage.document.write(`
-    <!DOCTYPE html><html><head><title>Receipt - ${receipt?.receipt_number || 'Payment'}</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-      @page { size: A5; margin: 3mm; } @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin:0; padding:0; background:white; } .no-print { display:none !important; } }
-      * { margin:0; padding:0; box-sizing:border-box; }
-      body { font-family:'Courier New',monospace; font-size:10px; color:#000; background:#f0f0f0; padding:10px; }
-      .receipt-container { max-width:148mm; margin:0 auto; background:white; border:1.5px solid #000; }
-      .letterhead-wrapper { width:100%; border-bottom:1px solid #000; }
-      .letterhead-wrapper img { width:100%; height:auto; display:block; }
-      .letterhead-fallback { display:none; text-align:center; padding:6mm; border-bottom:2px solid #000; }
-      .receipt-content { padding:5mm 6mm 6mm 6mm; background:white; }
-      .receipt-title { text-align:center; font-size:14px; font-weight:bold; margin:4mm 0; text-transform:uppercase; letter-spacing:2px; border:1.5px solid #000; padding:2mm; background:#f5f5f5; }
-      .receipt-number { text-align:right; font-size:10px; margin-bottom:4mm; padding:2mm 0; border-bottom:1px dashed #ccc; }
-      .info-row { display:flex; justify-content:space-between; margin-bottom:2mm; font-size:11px; padding:1mm 0; }
-      .info-label { font-weight:bold; width:40%; white-space:nowrap; }
-      .info-value { width:60%; border-bottom:1px dotted #ccc; text-align:right; }
-      .amount-section { border:2px solid #000; padding:4mm; margin:5mm 0; text-align:center; background:#fafafa; }
-      .amount-label { font-size:10px; margin-bottom:2mm; text-transform:uppercase; }
-      .amount-value { font-size:24px; font-weight:bold; font-family:'Arial',sans-serif; margin:2mm 0; }
-      .amount-words { font-size:10px; font-style:italic; margin-top:2mm; }
-      .signature-section { display:flex; justify-content:space-between; margin-top:10mm; padding-top:4mm; border-top:1px solid #000; }
-      .signature-box { text-align:center; width:45%; }
-      .signature-line { border-bottom:1px solid #000; margin-bottom:2mm; height:12mm; }
-      .signature-label { font-size:9px; text-transform:uppercase; }
-      .signature-name { font-size:10px; margin-top:1mm; }
-      .receipt-footer { text-align:center; font-size:9px; margin-top:5mm; padding-top:3mm; border-top:1px dashed #999; color:#666; }
-      @media screen { .print-toolbar { position:fixed; bottom:0; left:0; right:0; background:white; padding:12px; box-shadow:0 -2px 10px rgba(0,0,0,0.1); z-index:1000; display:flex; gap:10px; justify-content:center; } .btn { padding:12px 24px; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:bold; } .btn-print { background:#2563eb; color:white; } .btn-close { background:#6b7280; color:white; } .btn-back { background:#059669; color:white; } body { padding-bottom:80px; } }
-    </style></head>
-    <body>
-      <div class="receipt-container">
-        <div class="letterhead-wrapper"><img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" /><div class="letterhead-fallback"><div style="font-size:15px;font-weight:bold;text-transform:uppercase;">${receipt?.school?.name || 'School Name'}</div>${receipt?.school?.motto ? `<div style="font-size:9px;font-style:italic;margin:1mm 0;">"${receipt.school.motto}"</div>` : ''}<div style="font-size:8px;">${typeof receipt?.school?.address === 'string' ? receipt.school.address : ''} | Tel: ${receipt?.school?.phone || ''}</div></div></div>
-        <div class="receipt-content">
-          <div class="receipt-title">${isStudentPayment ? 'Payment Receipt' : 'Official Receipt'}</div>
-          <div class="receipt-number"><strong>Receipt No:</strong> ${receipt?.receipt_number || 'N/A'}</div>
-          <div class="info-row"><span class="info-label">Date:</span><span class="info-value">${formatDate(receipt?.date)}</span></div>
-          ${detailsHTML}
-          <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || receipt?.description || 'Transaction'}</span></div>
-          ${receipt?.term ? `<div class="info-row"><span class="info-label">Term:</span><span class="info-value">${receipt.term}</span></div>` : ''}
-          ${receipt?.academic_year ? `<div class="info-row"><span class="info-label">Year:</span><span class="info-value">${receipt.academic_year}</span></div>` : ''}
-          <div class="info-row"><span class="info-label">Method:</span><span class="info-value">${receipt?.payment_method || 'Cash'}</span></div>
-          <div class="amount-section"><div class="amount-label">Amount Paid</div><div class="amount-value">SSP ${formatAmount(receipt?.amount)}</div><div class="amount-words">${receipt?.amount_words || ''}</div></div>
-          ${balanceHTML}
-          <div class="signature-section"><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div class="signature-name">${receipt?.received_by || 'School Bursar'}</div></div><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Paid By</div><div class="signature-name">${receipt?.paid_by || '________________'}</div></div></div>
-          <div class="receipt-footer"><p>Computer-generated receipt</p><p>Thank you! | ${receipt?.school?.name || 'School'}</p></div>
-        </div>
-      </div>
-      <div class="print-toolbar no-print"><button class="btn btn-back" onclick="window.close()">← Back</button><button class="btn btn-print" onclick="window.print()">🖨️ Print Receipt</button><button class="btn btn-close" onclick="window.close()">✕ Close</button></div>
-    </body></html>
-  `)
-  printPage.document.close()
+  const templateUrl = window.location.origin + '/receipt-templateA5.jpg'
+  const printWindow = window.open('', '_blank', 'width=450,height=650')
+  if (!printWindow) { alert('Please allow pop-ups.'); return }
+  printWindow.document.write(buildReceiptHTML(receipt, templateUrl))
+  finishAndPrint(printWindow)
 }
 
 export const downloadReceiptPDF = (receipt) => { if (!receipt) return; exportReceipt(receipt) }
 
 export const openReceiptInNewTab = (receipt) => {
   if (!receipt) return
-  const letterheadUrl = window.location.origin + '/letter-head.jpg'
-  const formatDate = (dateStr) => !dateStr ? 'N/A' : new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-  const formatAmount = (amount) => Number(amount || 0).toLocaleString('en', { minimumFractionDigits: 2 })
+  const templateUrl = window.location.origin + '/receipt-templateA5.jpg'
+  const newTab = window.open('', '_blank')
+  if (!newTab) { alert('Pop-up blocked!'); return }
+  newTab.document.write(buildReceiptHTML(receipt, templateUrl))
+  newTab.document.close()
+}
 
+// =========================================================================
+// HELPERS
+// =========================================================================
+
+function finishAndPrint(win) {
+  win.document.close()
+  const images = win.document.images
+  let loadedCount = 0
+  const totalImages = images.length
+  if (totalImages === 0) { setTimeout(() => { win.focus(); win.print() }, 400); return }
+  function checkAllLoaded() { loadedCount++; if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 300) } }
+  for (let i = 0; i < images.length; i++) { if (images[i].complete) { loadedCount++ } else { images[i].onload = checkAllLoaded; images[i].onerror = checkAllLoaded } }
+  if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 400) }
+}
+
+function esc(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+
+function formatDate(dateStr) { if (!dateStr) return 'N/A'; return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }
+
+function formatAmount(amount) { return Number(amount || 0).toLocaleString('en', { minimumFractionDigits: 2 }) }
+
+// =========================================================================
+// SHARED RECEIPT BUILDER
+// =========================================================================
+
+function buildReceiptHTML(receipt, templateUrl) {
   const isStudentPayment = !!receipt?.student_name && receipt?.student_name !== 'N/A'
+  const receiptType = isStudentPayment ? 'Payment Receipt' : 'Official Receipt'
 
+  // Balance info (only for student payments)
   const balanceHTML = receipt?.balance_info ? `
-    <div style="border-top:1px dashed #ccc; margin-top:8px; padding-top:5px;">
+    <div class="balance-section">
       <div class="info-row"><span class="info-label">Total Fee:</span><span class="info-value">SSP ${formatAmount(receipt.balance_info.total_fee)}</span></div>
       <div class="info-row"><span class="info-label">Total Paid:</span><span class="info-value">SSP ${formatAmount(receipt.balance_info.total_paid)}</span></div>
-      <div class="info-row" style="font-weight:bold;"><span class="info-label">Balance:</span><span class="info-value" style="color:${receipt.balance_info.is_cleared ? '#059669' : '#dc2626'};">${receipt.balance_info.balance_display}</span></div>
+      <div class="info-row" style="font-weight:bold"><span class="info-label">Balance:</span><span class="info-value" style="color:${receipt.balance_info.is_cleared ? '#059669' : '#dc2626'}">${receipt.balance_info.balance_display || 'N/A'}</span></div>
     </div>` : ''
 
+  // Details based on receipt type
   let detailsHTML = ''
   if (isStudentPayment) {
     detailsHTML = `
-      <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${receipt?.student_name || 'N/A'}</span></div>
-      <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${receipt?.class_name || 'N/A'}</span></div>
-    `
+      <div class="info-row"><span class="info-label">Student:</span><span class="info-value">${esc(receipt?.student_name)}</span></div>
+      <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${esc(receipt?.class_name || 'N/A')}</span></div>
+      <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${esc(receipt?.payment_for || 'School Fees')}</span></div>
+      ${receipt?.term ? `<div class="info-row"><span class="info-label">Term:</span><span class="info-value">${esc(receipt.term)}</span></div>` : ''}`
   } else {
     detailsHTML = `
-      ${receipt?.organization_name ? `<div class="info-row"><span class="info-label">Organization:</span><span class="info-value">${receipt.organization_name}</span></div>` : ''}
-      ${receipt?.representative_name ? `<div class="info-row"><span class="info-label">Representative:</span><span class="info-value">${receipt.representative_name}</span></div>` : ''}
-    `
+      ${receipt?.organization_name ? `<div class="info-row"><span class="info-label">Organization:</span><span class="info-value">${esc(receipt.organization_name)}</span></div>` : ''}
+      ${receipt?.representative_name ? `<div class="info-row"><span class="info-label">Representative:</span><span class="info-value">${esc(receipt.representative_name)}</span></div>` : ''}
+      <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${esc(receipt?.payment_for || receipt?.description || 'Transaction')}</span></div>
+      ${receipt?.term ? `<div class="info-row"><span class="info-label">Term:</span><span class="info-value">${esc(receipt.term)}</span></div>` : ''}`
   }
 
-  const newTab = window.open('', '_blank')
-  if (!newTab) { alert('Pop-up blocked!'); return }
-  newTab.document.write(`
-    <!DOCTYPE html><html><head><title>Receipt - ${receipt?.receipt_number || 'Payment'}</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-      * { margin:0; padding:0; box-sizing:border-box; } body { font-family:'Courier New',monospace; font-size:11px; color:#000; background:#e5e7eb; padding:20px; }
-      .receipt { max-width:420px; margin:0 auto; background:white; border:2px solid #000; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
-      .letterhead-wrapper img { width:100%; display:block; border-bottom:1px solid #000; }
-      .letterhead-fallback { display:none; text-align:center; padding:15px; border-bottom:2px solid #000; }
-      .receipt-content { padding:15px; } .receipt-title { text-align:center; font-size:14px; font-weight:bold; margin:10px 0; text-transform:uppercase; border:1.5px solid #000; padding:5px; background:#f5f5f5; }
-      .receipt-number { text-align:right; font-size:10px; margin-bottom:10px; } .info-row { display:flex; justify-content:space-between; margin-bottom:4px; font-size:11px; }
-      .info-label { font-weight:bold; } .info-value { text-align:right; }
-      .amount-section { border:2px solid #000; padding:10px; margin:10px 0; text-align:center; background:#fafafa; }
-      .amount-value { font-size:24px; font-weight:bold; margin:5px 0; } .amount-words { font-size:10px; font-style:italic; margin-top:5px; }
-      .signature-section { display:flex; justify-content:space-between; margin-top:30px; padding-top:10px; border-top:1px solid #000; }
-      .signature-box { text-align:center; width:45%; } .signature-line { border-bottom:1px solid #000; margin-bottom:5px; height:30px; }
-      .signature-label { font-size:9px; text-transform:uppercase; } .receipt-footer { text-align:center; font-size:9px; margin-top:10px; padding-top:5px; border-top:1px dashed #999; color:#666; }
-      .toolbar { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); display:flex; gap:10px; z-index:1000; }
-      .toolbar button { padding:12px 24px; border:none; border-radius:25px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.2); }
-      .btn-print { background:#2563eb; color:white; } .btn-close { background:#6b7280; color:white; }
-      @media print { body { background:white; padding:0; } .receipt { box-shadow:none; border:1px solid #000; } .toolbar { display:none; } }
-    </style></head>
-    <body>
-      <div class="receipt"><div class="letterhead-wrapper"><img src="${letterheadUrl}" alt="School Letterhead" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" /><div class="letterhead-fallback"><h2>${receipt?.school?.name || 'School Name'}</h2>${receipt?.school?.motto ? `<p><em>"${receipt.school.motto}"</em></p>` : ''}<p>${typeof receipt?.school?.address === 'string' ? receipt.school.address : ''} | Tel: ${receipt?.school?.phone || ''}</p></div></div>
-      <div class="receipt-content"><div class="receipt-title">${isStudentPayment ? 'Payment Receipt' : 'Official Receipt'}</div><div class="receipt-number"><strong>Receipt No:</strong> ${receipt?.receipt_number || 'N/A'}</div>
-      <div class="info-row"><span class="info-label">Date:</span><span class="info-value">${formatDate(receipt?.date)}</span></div>
-      ${detailsHTML}
-      <div class="info-row"><span class="info-label">Payment For:</span><span class="info-value">${receipt?.payment_for || receipt?.description || 'Transaction'}</span></div>
-      <div class="info-row"><span class="info-label">Method:</span><span class="info-value">${receipt?.payment_method || 'Cash'}</span></div>
-      <div class="amount-section"><div>AMOUNT PAID</div><div class="amount-value">SSP ${formatAmount(receipt?.amount)}</div><div class="amount-words">${receipt?.amount_words || ''}</div></div>
-      ${balanceHTML}
-      <div class="signature-section"><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div>${receipt?.received_by || 'School Bursar'}</div></div><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Paid By</div><div>${receipt?.paid_by || ''}</div></div></div>
-      <div class="receipt-footer"><p>Computer-generated receipt</p><p>Thank you for your payment!</p></div></div></div>
-      <div class="toolbar"><button class="btn-print" onclick="window.print()">🖨️ Print / Save PDF</button><button class="btn-close" onclick="window.close()">✕ Close</button></div>
-    </body></html>
-  `)
-  newTab.document.close()
+  return `<!DOCTYPE html><html>
+<head><title>Receipt - ${esc(receipt?.receipt_number)}</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  @page { size: A5 portrait; margin: 0; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
+    .no-print { display: none !important; }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', 'Courier', monospace; font-size: 10px; color: #000; background: #e5e7eb; padding: 8px; line-height: 1.4; }
+  .page-wrapper { width: 148mm; margin: 0 auto; }
+  .page { position: relative; width: 148mm; min-height: 210mm; background: transparent; }
+  .template { position: absolute; inset: 0; z-index: 0; }
+  .template img { width: 100%; height: 100%; object-fit: fill; opacity: 1; display: block; }
+  .content { position: absolute; inset: 0; z-index: 5; background: transparent; display: flex; flex-direction: column; padding: 14mm 12mm 12mm 12mm; }
+  .spacer { flex: 1 1 auto; min-height: 2px; }
+
+  .receipt-type { text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 2px; color: #1a3a6b; flex-shrink: 0; }
+  .receipt-number { text-align: right; font-size: 8px; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px dashed #999; flex-shrink: 0; }
+
+  .info-row { display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 10px; padding: 1px 0; flex-shrink: 0; }
+  .info-label { font-weight: bold; width: 38%; white-space: nowrap; font-size: 9px; }
+  .info-value { width: 62%; border-bottom: 1px dotted #ccc; text-align: right; font-size: 10px; }
+
+  .amount-section { border: 2px solid #000; padding: 3mm; margin: 3mm 0; text-align: center; background: rgba(250,250,250,0.6); flex-shrink: 0; }
+  .amount-label { font-size: 8px; margin-bottom: 1mm; text-transform: uppercase; letter-spacing: 1px; }
+  .amount-value { font-size: 20px; font-weight: bold; font-family: 'Arial', sans-serif; margin: 1mm 0; }
+  .amount-words { font-size: 8px; font-style: italic; margin-top: 1mm; line-height: 1.2; }
+
+  .balance-section { border-top: 1px dashed #999; margin-top: 2mm; padding-top: 2mm; flex-shrink: 0; }
+
+  .signature-section { display: flex; justify-content: space-between; margin-top: 6mm; padding-top: 2mm; border-top: 1px solid #000; flex-shrink: 0; }
+  .signature-box { text-align: center; width: 45%; }
+  .signature-line { border-bottom: 1px solid #000; margin-bottom: 1mm; height: 8mm; }
+  .signature-label { font-size: 7px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .signature-name { font-size: 8px; margin-top: 1mm; }
+
+  .receipt-footer { text-align: center; font-size: 7px; margin-top: 3mm; padding-top: 2mm; border-top: 1px dashed #999; color: #666; flex-shrink: 0; }
+
+  .print-toolbar { text-align: center; padding: 8px; margin-top: 8px; background: #f0f0f0; border-radius: 6px; }
+  .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; margin: 2px; }
+  .btn-print { background: #2563eb; color: #fff; }
+  .btn-close { background: #6b7280; color: #fff; }
+</style></head>
+<body><div class="page-wrapper"><div class="page">
+  <div class="template"><img src="${esc(templateUrl)}" alt="" onerror="this.style.display='none'"></div>
+  <div class="content">
+    <div class="receipt-type">${receiptType}</div>
+    <div class="receipt-number"><strong>Receipt No:</strong> ${esc(receipt?.receipt_number || 'N/A')}</div>
+    <div class="info-row"><span class="info-label">Date:</span><span class="info-value">${formatDate(receipt?.date)}</span></div>
+    ${detailsHTML}
+    ${receipt?.academic_year ? `<div class="info-row"><span class="info-label">Academic Year:</span><span class="info-value">${esc(receipt.academic_year)}</span></div>` : ''}
+    <div class="info-row"><span class="info-label">Method:</span><span class="info-value">${esc(receipt?.payment_method || 'Cash')}</span></div>
+    ${receipt?.transaction_reference ? `<div class="info-row"><span class="info-label">Ref:</span><span class="info-value">${esc(receipt.transaction_reference)}</span></div>` : ''}
+    <div class="amount-section">
+      <div class="amount-label">Amount Paid</div>
+      <div class="amount-value">SSP ${formatAmount(receipt?.amount)}</div>
+      <div class="amount-words">${esc(receipt?.amount_words || '')}</div>
+    </div>
+    ${balanceHTML}
+    <div class="spacer"></div>
+    <div class="signature-section">
+      <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Received By</div><div class="signature-name">${esc(receipt?.received_by || 'School Bursar')}</div></div>
+      <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Paid By</div><div class="signature-name">${esc(receipt?.paid_by || '________________')}</div></div>
+    </div>
+    <div class="receipt-footer"><p>Computer-generated receipt</p><p>Thank you! | ${esc(receipt?.school?.name || 'School')}</p></div>
+  </div>
+</div></div>
+<div class="print-toolbar no-print"><button class="btn btn-print" onclick="window.print()">🖨️ Print Receipt</button><button class="btn btn-close" onclick="window.close()">✕ Close</button></div>
+</body></html>`
 }
