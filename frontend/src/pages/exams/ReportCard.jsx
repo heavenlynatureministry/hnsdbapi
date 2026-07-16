@@ -132,6 +132,7 @@ function ReportCard() {
             term1: resultData.term1,
             term2: resultData.term2,
             term3: resultData.term3,
+            annual_summary: resultData.annual_summary || null,
             academic_year: resultData.academic_year || filters.academic_year,
             school: resultData.school || {},
             verify_url: resultData.verify_url || '',
@@ -184,7 +185,30 @@ function ReportCard() {
     }
   }
 
-  const handlePrint = () => window.print()
+  // ✅ Print (Screen) uses clean export instead of window.print()
+  const handlePrint = () => {
+    if (reportType === 'term' && reportCard) {
+      exportReportCard({
+        student: reportCard.student,
+        results: reportCard.results,
+        term: reportCard.term,
+        academic_year: reportCard.academic_year,
+        school: reportCard.school,
+        verify_url: reportCard.verify_url,
+      }, 'portrait')
+    } else if (reportType === 'annual' && annualReport) {
+      exportAnnualReportCard({
+        student: annualReport.student,
+        term1: annualReport.term1,
+        term2: annualReport.term2,
+        term3: annualReport.term3,
+        annual_summary: annualReport.annual_summary,
+        academic_year: annualReport.academic_year,
+        school: annualReport.school,
+        verify_url: annualReport.verify_url,
+      }, 'portrait')
+    }
+  }
 
   // Single-term print handlers
   const handlePrintTermPortrait = () => {
@@ -213,20 +237,18 @@ function ReportCard() {
     }
   }
 
-  const handleDownloadPDF = () => {
-    if (reportRef.current && reportCard) {
-      const name = (reportCard.student?.name || 'Student').replace(/\s+/g, '_')
-      const term = (reportCard.term || 'Term').replace(/\s+/g, '_')
-      exportToPDF(reportRef.current, `Report_Card_${name}_${term}`)
-    }
-  }
-
   // Annual print handlers
   const handlePrintAnnualPortrait = () => {
     if (annualReport) {
       exportAnnualReportCard({
-        student: annualReport.student, term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
-        academic_year: annualReport.academic_year, school: annualReport.school, verify_url: annualReport.verify_url,
+        student: annualReport.student,
+        term1: annualReport.term1,
+        term2: annualReport.term2,
+        term3: annualReport.term3,
+        annual_summary: annualReport.annual_summary,
+        academic_year: annualReport.academic_year,
+        school: annualReport.school,
+        verify_url: annualReport.verify_url,
       }, 'portrait')
     }
   }
@@ -234,8 +256,14 @@ function ReportCard() {
   const handlePrintAnnualLandscape = () => {
     if (annualReport) {
       exportAnnualReportCard({
-        student: annualReport.student, term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
-        academic_year: annualReport.academic_year, school: annualReport.school, verify_url: annualReport.verify_url,
+        student: annualReport.student,
+        term1: annualReport.term1,
+        term2: annualReport.term2,
+        term3: annualReport.term3,
+        annual_summary: annualReport.annual_summary,
+        academic_year: annualReport.academic_year,
+        school: annualReport.school,
+        verify_url: annualReport.verify_url,
       }, 'landscape')
     }
   }
@@ -363,9 +391,8 @@ function ReportCard() {
             </Card>
           )}
 
-          {/* ✅ Single Term: Print + Portrait + Landscape */}
           <div className="flex gap-3 justify-end no-print">
-            <Button variant="secondary" icon={<Printer size={18} />} onClick={handlePrint}>Print (Screen)</Button>
+            <Button variant="secondary" icon={<Printer size={18} />} onClick={handlePrint}>🖨️ Print (Screen)</Button>
             <Button variant="primary" icon={<Download size={18} />} onClick={handlePrintTermPortrait}>📄 Portrait</Button>
             <Button variant="primary" icon={<Download size={18} />} onClick={handlePrintTermLandscape} style={{ background: '#059669' }}>🖼️ Landscape</Button>
           </div>
@@ -413,6 +440,25 @@ function ReportCard() {
             })}
           </div>
 
+          {/* Annual Summary */}
+          {annualReport.annual_summary && (
+            <Card className="print:shadow-none print:border bg-blue-50/50 dark:bg-blue-900/10 border-blue-200">
+              <h4 className="font-semibold mb-2 text-sm">📋 Annual Summary</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span>Average:</span><span className="font-bold">{annualReport.annual_summary.average_percentage}%</span></div>
+                <div className="flex justify-between"><span>Grade:</span><span>{getGradeBadge(annualReport.annual_summary.grade)}</span></div>
+                <div className="flex justify-between">
+                  <span>Status:</span>
+                  <span className={annualReport.annual_summary.promotion_status === 'Promoted' ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
+                    {annualReport.annual_summary.promotion_status || 'N/A'}
+                  </span>
+                </div>
+                <div className="flex justify-between"><span>Next Class:</span><span className="font-bold">{annualReport.annual_summary.next_class || 'N/A'}</span></div>
+                <p className="text-xs italic mt-2">{annualReport.annual_summary.remarks}</p>
+              </div>
+            </Card>
+          )}
+
           <Card className="print:shadow-none print:border">
             <div className="mb-4"><h4 className="font-semibold text-sm">Director of Studies' Remarks:</h4><p className="text-sm italic">{annualReport.term3?.remarks || annualReport.term2?.remarks || annualReport.term1?.remarks || 'No remarks.'}</p></div>
             <p className="text-xs text-gray-500 mb-4"><strong>Next Academic Year:</strong> January {String(parseInt(annualReport.academic_year?.split('/')[1] || '2027'))}</p>
@@ -430,7 +476,7 @@ function ReportCard() {
           )}
 
           <div className="flex gap-3 justify-end no-print">
-            <Button variant="secondary" icon={<Printer size={18} />} onClick={handlePrint}>Print (Screen)</Button>
+            <Button variant="secondary" icon={<Printer size={18} />} onClick={handlePrint}>🖨️ Print (Screen)</Button>
             <Button variant="primary" icon={<Download size={18} />} onClick={handlePrintAnnualPortrait}>📄 Portrait</Button>
             <Button variant="primary" icon={<Download size={18} />} onClick={handlePrintAnnualLandscape} style={{ background: '#059669' }}>🖼️ Landscape</Button>
           </div>
