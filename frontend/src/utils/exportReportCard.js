@@ -44,52 +44,20 @@ export const exportAnnualReportCard = (reportData, orientation = 'portrait') => 
 
 function finishAndPrint(win) {
   win.document.close()
-  
-  // Wait for images to load before printing
   const images = win.document.images
   let loadedCount = 0
   const totalImages = images.length
-  
-  if (totalImages === 0) {
-    setTimeout(() => { win.focus(); win.print() }, 400)
-    return
-  }
-  
-  function checkAllLoaded() {
-    loadedCount++
-    if (loadedCount >= totalImages) {
-      setTimeout(() => { win.focus(); win.print() }, 300)
-    }
-  }
-  
-  for (let i = 0; i < images.length; i++) {
-    if (images[i].complete) {
-      loadedCount++
-    } else {
-      images[i].onload = checkAllLoaded
-      images[i].onerror = checkAllLoaded
-    }
-  }
-  
-  if (loadedCount >= totalImages) {
-    setTimeout(() => { win.focus(); win.print() }, 400)
-  }
+  if (totalImages === 0) { setTimeout(() => { win.focus(); win.print() }, 400); return }
+  function checkAllLoaded() { loadedCount++; if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 300) } }
+  for (let i = 0; i < images.length; i++) { if (images[i].complete) { loadedCount++ } else { images[i].onload = checkAllLoaded; images[i].onerror = checkAllLoaded } }
+  if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 400) }
 }
 
-function esc(str) {
-  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
+function esc(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
 
-function getRemark(grade) {
-  const m = { A: 'Excellent', B: 'Very Good', C: 'Good', D: 'Satisfactory', F: 'Needs Improvement' }
-  return m[grade] || ''
-}
+function getRemark(grade) { const m = { A: 'Excellent', B: 'Very Good', C: 'Good', D: 'Satisfactory', F: 'Needs Improvement' }; return m[grade] || '' }
 
-function getUniqueSubjects(t1, t2, t3) {
-  const s = new Set()
-  ;[t1, t2, t3].forEach(t => (t?.subjects || []).forEach(x => { if (x.name) s.add(x.name) }))
-  return [...s]
-}
+function getUniqueSubjects(t1, t2, t3) { const s = new Set(); [t1, t2, t3].forEach(t => (t?.subjects || []).forEach(x => { if (x.name) s.add(x.name) })); return [...s] }
 
 // =========================================================================
 // BASE CSS
@@ -101,63 +69,62 @@ const BASE_CSS = `
     .no-print { display: none !important; }
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Georgia', 'Times New Roman', serif;
-    font-size: 13px;
-    color: #1a1a1a;
-    background: #e5e7eb;
-    padding: 10px;
-    line-height: 1.5;
-  }
+  body { font-family: 'Georgia', 'Times New Roman', serif; font-size: 12px; color: #1a1a1a; background: #e5e7eb; padding: 8px; line-height: 1.4; }
   .page-wrapper { margin: 0 auto; }
-  .page { position: relative; background: #fff; }
+  .page { position: relative; background: transparent; }
   .watermark { position: absolute; inset: 0; z-index: 0; }
   .watermark img { width: 100%; height: 100%; object-fit: fill; opacity: 1; display: block; }
-  .content {
-    position: absolute; inset: 0; z-index: 5;
-    background: transparent;
-    display: flex; flex-direction: column;
-  }
+  .content { position: absolute; inset: 0; z-index: 5; background: transparent; display: flex; flex-direction: column; }
   .spacer { flex: 1 1 auto; min-height: 2px; }
-  .letterhead { text-align: center; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1.5px double #1a56db; flex-shrink: 0; }
+  .letterhead { text-align: center; margin-bottom: 3px; padding-bottom: 2px; border-bottom: 1.5px double #1a56db; flex-shrink: 0; }
   .letterhead img { width: 100%; height: auto; display: block; }
-  .letterhead-fallback { display: none; text-align: center; padding: 2mm 0; }
-  .title { text-align: center; font-size: 15px; font-weight: bold; margin: 4px 0 2px; text-transform: uppercase; letter-spacing: 3px; color: #1a3a6b; flex-shrink: 0; }
-  .subtitle { text-align: center; font-size: 11px; margin-bottom: 4px; color: #555; flex-shrink: 0; }
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 4px; font-size: 12px; padding: 4px 8px; background: transparent; flex-shrink: 0; }
+  .letterhead-fallback { display: none; text-align: center; padding: 1mm 0; }
+  .title { text-align: center; font-size: 14px; font-weight: bold; margin: 3px 0 2px; text-transform: uppercase; letter-spacing: 3px; color: #1a3a6b; flex-shrink: 0; }
+  .subtitle { text-align: center; font-size: 10px; margin-bottom: 3px; color: #555; flex-shrink: 0; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 3px; font-size: 11px; padding: 3px 6px; background: transparent; flex-shrink: 0; }
   .info-item { display: flex; align-items: center; padding: 1px 0; }
-  .info-label { font-weight: bold; width: 68px; font-size: 10px; color: #444; }
-  table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 12px; flex-shrink: 0; }
-  th { background: rgba(20,60,140,0.92); color: #fff; padding: 4px 6px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+  .info-label { font-weight: bold; width: 65px; font-size: 10px; color: #444; }
+  table { width: 100%; border-collapse: collapse; margin: 3px 0; font-size: 11px; flex-shrink: 0; }
+  th { background: rgba(20,60,140,0.92); color: #fff; padding: 3px 5px; text-align: left; font-size: 8px; text-transform: uppercase; letter-spacing: 1px; }
   th.center { text-align: center; }
-  td { padding: 3px 6px; border-bottom: 1px solid #bbb; font-size: 12px; }
+  td { padding: 3px 5px; border-bottom: 1px solid #bbb; font-size: 11px; }
   td.center { text-align: center; }
   tr:nth-child(even) { background: rgba(248,249,250,0.5); }
-  .total-row { font-weight: bold; background: rgba(26,86,219,0.12)!important; font-size: 13px; }
-  .total-row td { padding: 4px 6px; border-top: 2px solid #1a56db; }
-  .summary-section { margin-top: 3px; display: flex; gap: 8px; flex-shrink: 0; }
-  .summary-box { flex: 1; padding: 4px 8px; background: transparent; font-size: 12px; }
+  .total-row { font-weight: bold; background: rgba(26,86,219,0.12)!important; font-size: 12px; }
+  .total-row td { padding: 4px 5px; border-top: 2px solid #1a56db; }
+  .summary-section { margin-top: 2px; display: flex; gap: 6px; flex-shrink: 0; }
+  .summary-box { flex: 1; padding: 3px 6px; background: transparent; font-size: 11px; }
   .summary-item { display: flex; padding: 2px 0; border-bottom: 1px dotted #bbb; }
   .summary-item:last-child { border-bottom: none; }
-  .summary-label { font-weight: bold; width: 72px; font-size: 10px; }
-  .remarks-box { flex: 1; padding: 4px 8px; font-size: 12px; background: transparent; min-height: 32px; }
-  .remarks-box p { margin-top: 2px; line-height: 1.3; }
-  .verify-section { margin-top: 4px; padding: 3px 8px; background: transparent; text-align: center; font-size: 9px; flex-shrink: 0; }
-  .verify-link { font-family: 'Courier New',monospace; font-weight: bold; color: #1a56db; word-break: break-all; font-size: 10px; }
-  .signatures { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; padding: 0 8px; flex-shrink: 0; }
+  .summary-label { font-weight: bold; width: 70px; font-size: 9px; }
+  .remarks-box { flex: 1; padding: 3px 6px; font-size: 11px; background: transparent; min-height: 28px; }
+  .remarks-box p { margin-top: 2px; line-height: 1.2; }
+  .verify-section { margin-top: 3px; padding: 2px 6px; background: transparent; text-align: center; font-size: 8px; flex-shrink: 0; }
+  .verify-link { font-family: 'Courier New',monospace; font-weight: bold; color: #1a56db; word-break: break-all; font-size: 9px; }
+  .signatures { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; padding: 0 6px; flex-shrink: 0; }
   .sig-box { text-align: center; width: 40%; }
-  .sig-line { border-bottom: 1.5px solid #000; margin-bottom: 3px; height: 18px; }
-  .next-term { text-align: center; font-size: 9px; margin-top: 4px; color: #555; font-weight: bold; flex-shrink: 0; }
-  .footer { text-align: center; font-size: 8px; margin-top: 3px; padding-top: 2px; border-top: 1px solid #bbb; color: #666; flex-shrink: 0; }
+  .sig-line { border-bottom: 1.5px solid #000; margin-bottom: 2px; height: 16px; }
+  .next-term { text-align: center; font-size: 8px; margin-top: 3px; color: #555; font-weight: bold; flex-shrink: 0; }
+  .footer { text-align: center; font-size: 7px; margin-top: 2px; padding-top: 2px; border-top: 1px solid #bbb; color: #666; flex-shrink: 0; }
   .pass { color: #059669; font-weight: bold; }
   .fail { color: #dc2626; font-weight: bold; }
   .promoted { color: #059669; font-weight: bold; }
   .repeat { color: #dc2626; font-weight: bold; }
-  .print-toolbar { text-align: center; padding: 8px; margin-top: 10px; background: #f0f0f0; border-radius: 6px; }
-  .btn { padding: 9px 18px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; margin: 3px; }
+  .print-toolbar { text-align: center; padding: 8px; margin-top: 8px; background: #f0f0f0; border-radius: 6px; }
+  .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; margin: 2px; }
   .btn-print { background: #2563eb; color: #fff; }
   .btn-close { background: #6b7280; color: #fff; }
 `
+
+// =========================================================================
+// PORTRAIT LAYOUT CSS (shared by single-term portrait + annual portrait)
+// =========================================================================
+const PORTRAIT_PAGE = `.page-wrapper{width:210mm}.page{width:210mm;min-height:297mm}.content{padding:14mm 12mm 10mm 12mm}`
+
+// =========================================================================
+// LANDSCAPE LAYOUT CSS (shared by single-term landscape + annual landscape)
+// =========================================================================
+const LANDSCAPE_PAGE = `.page-wrapper{width:297mm}.page{width:297mm;min-height:210mm}.content{padding:10mm 12mm 8mm 12mm}`
 
 // =========================================================================
 // SINGLE-TERM REPORT
@@ -170,19 +137,16 @@ function buildSingleTerm(student, results, term, year, school, letterhead, wm, v
   const pass = (results?.result || (pct >= 50 ? 'Pass' : 'Fail'))
   const cls = pass === 'Pass' ? 'pass' : 'fail'
   const isLand = orientation === 'landscape'
-
-  const pageCSS = isLand
-    ? `.page-wrapper{width:297mm}.page{width:297mm;height:210mm;overflow:hidden}.content{padding:12mm 14mm 12mm 14mm}`
-    : `.page-wrapper{width:210mm}.page{width:210mm;height:297mm;overflow:hidden}.content{padding:14mm 14mm 12mm 14mm}`
+  const pageCSS = isLand ? LANDSCAPE_PAGE : PORTRAIT_PAGE
 
   return `<!DOCTYPE html><html>
 <head><title>Report Card - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}${pageCSS}</style></head>
 <body><div class="page-wrapper"><div class="page">
-  <div class="watermark"><img src="${esc(wm)}" alt=""></div>
+  <div class="watermark"><img src="${esc(wm)}" alt="" onerror="this.style.display='none'"></div>
   <div class="content">
     <div class="letterhead">
       <img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <div class="letterhead-fallback"><h2 style="font-size:14px;">${esc(school?.name||'School Name')}</h2><p style="font-size:9px;"><em>"${esc(school?.motto||'')}"</em></p></div>
+      <div class="letterhead-fallback"><h2 style="font-size:13px;">${esc(school?.name||'School Name')}</h2><p style="font-size:9px;"><em>"${esc(school?.motto||'')}"</em></p></div>
     </div>
     <div class="title">ACADEMIC REPORT CARD</div><div class="subtitle">${esc(term)} &bull; ${esc(year)}</div>
     <div class="info-grid">
@@ -214,10 +178,8 @@ function buildSingleTerm(student, results, term, year, school, letterhead, wm, v
     <div class="footer"><p>${esc(school?.name||'School')} | ${esc(year)} | Computer-generated Report Card</p>${verify?`<p style="color:#1a56db;">Verify: ${esc(verify)}</p>`:''}</div>
   </div>
 </div></div>
-<div class="print-toolbar no-print">
-  <button class="btn btn-print" onclick="window.print()">🖨️ Print</button>
-  <button class="btn btn-close" onclick="window.close()">✕ Close</button>
-</div></body></html>`
+<div class="print-toolbar no-print"><button class="btn btn-print" onclick="window.print()">🖨️ Print</button><button class="btn btn-close" onclick="window.close()">✕ Close</button></div>
+</body></html>`
 }
 
 // =========================================================================
@@ -234,21 +196,21 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
 
   return `<!DOCTYPE html><html>
 <head><title>Annual Report - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}
-    .page-wrapper{width:210mm}.page{width:210mm;height:297mm;overflow:hidden}.content{padding:14mm 10mm 10mm 10mm}
-    .info-grid{grid-template-columns:1fr 1fr 1fr 1fr}.info-item{flex-wrap:wrap}.info-label{width:auto;margin-right:3px;font-size:9px}
-    th{padding:4px 3px;font-size:7px}th.subject-col{text-align:left;padding-left:5px}
-    td{padding:3px 3px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:5px}
-    .total-row td{padding:4px 3px}.summary-row td{padding:3px 3px;background:rgba(240,244,255,.5);font-weight:bold;font-size:9px}
-    .annual-summary{margin-top:3px;padding:5px 8px;background:transparent;font-size:10px;border:1px solid #1a56db;flex-shrink:0}
-    .annual-summary h4{margin-bottom:2px;font-size:11px;color:#1a3a6b}.annual-summary p{font-size:10px;line-height:1.3;margin-bottom:1px}
-    .remarks-section{margin-top:3px;padding:4px 8px;font-size:10px;min-height:26px;background:transparent;line-height:1.3;flex-shrink:0}
-    .signatures{margin-top:8px}.sig-box{width:30%}.sig-line{height:16px}
-    .title{font-size:14px;margin:3px 0 2px}.subtitle{font-size:10px;margin-bottom:3px}
+    ${PORTRAIT_PAGE}
+    .info-grid{grid-template-columns:1fr 1fr 1fr 1fr}.info-item{flex-wrap:wrap}.info-label{width:auto;margin-right:2px;font-size:8px}
+    th{padding:3px 3px;font-size:7px}th.subject-col{text-align:left;padding-left:4px}
+    td{padding:2px 3px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:4px}
+    .total-row td{padding:3px 3px}.summary-row td{padding:2px 3px;background:rgba(240,244,255,.5);font-weight:bold;font-size:8px}
+    .annual-summary{margin-top:3px;padding:4px 6px;background:transparent;font-size:9px;border:1px solid #1a56db;flex-shrink:0}
+    .annual-summary h4{margin-bottom:1px;font-size:10px;color:#1a3a6b}.annual-summary p{font-size:9px;line-height:1.2;margin-bottom:1px}
+    .remarks-section{margin-top:3px;padding:3px 6px;font-size:9px;min-height:24px;background:transparent;line-height:1.2;flex-shrink:0}
+    .signatures{margin-top:6px}.sig-box{width:30%}.sig-line{height:14px}
+    .title{font-size:13px;margin:2px 0 1px}.subtitle{font-size:9px;margin-bottom:2px}
   </style></head>
 <body><div class="page-wrapper"><div class="page">
-  <div class="watermark"><img src="${esc(wm)}" alt=""></div>
+  <div class="watermark"><img src="${esc(wm)}" alt="" onerror="this.style.display='none'"></div>
   <div class="content">
-    <div class="letterhead"><img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div class="letterhead-fallback"><h2 style="font-size:13px;">${esc(school?.name||'School Name')}</h2><p style="font-size:8px;"><em>"${esc(school?.motto||'')}"</em></p></div></div>
+    <div class="letterhead"><img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div class="letterhead-fallback"><h2 style="font-size:12px;">${esc(school?.name||'School Name')}</h2><p style="font-size:8px;"><em>"${esc(school?.motto||'')}"</em></p></div></div>
     <div class="title">ANNUAL ACADEMIC REPORT CARD</div><div class="subtitle">${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
@@ -299,21 +261,21 @@ function buildAnnualLandscape(student, t1, t2, t3, year, school, letterhead, wm,
 
   return `<!DOCTYPE html><html>
 <head><title>Annual Report - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}
-    .page-wrapper{width:297mm}.page{width:297mm;height:210mm;overflow:hidden}.content{padding:12mm 12mm 10mm 12mm}
+    ${LANDSCAPE_PAGE}
     .info-grid{grid-template-columns:1fr 1fr 1fr}
-    th{padding:4px 4px;font-size:7px}th.subject-col{text-align:left;padding-left:5px}
-    td{padding:3px 4px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:5px}
-    .total-row td{padding:4px 4px}.summary-row td{padding:3px 4px;background:rgba(240,244,255,.5);font-weight:bold;font-size:9px}
-    .annual-summary{margin-top:3px;padding:4px 6px;background:transparent;font-size:9px;border:1px solid #1a56db;flex-shrink:0}
-    .annual-summary h4{margin-bottom:1px;font-size:10px;color:#1a3a6b}.annual-summary p{font-size:9px;line-height:1.2;margin-bottom:1px}
-    .remarks-section{margin-top:3px;padding:3px 6px;font-size:9px;min-height:22px;background:transparent;line-height:1.2;flex-shrink:0}
-    .signatures{margin-top:6px}.sig-box{width:30%}.sig-line{height:14px}
-    .title{font-size:13px;margin:2px 0 1px}.subtitle{font-size:9px;margin-bottom:2px}
+    th{padding:3px 3px;font-size:7px}th.subject-col{text-align:left;padding-left:4px}
+    td{padding:2px 3px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:4px}
+    .total-row td{padding:3px 3px}.summary-row td{padding:2px 3px;background:rgba(240,244,255,.5);font-weight:bold;font-size:8px}
+    .annual-summary{margin-top:2px;padding:3px 5px;background:transparent;font-size:8px;border:1px solid #1a56db;flex-shrink:0}
+    .annual-summary h4{margin-bottom:1px;font-size:9px;color:#1a3a6b}.annual-summary p{font-size:8px;line-height:1.2;margin-bottom:1px}
+    .remarks-section{margin-top:2px;padding:2px 5px;font-size:8px;min-height:20px;background:transparent;line-height:1.2;flex-shrink:0}
+    .signatures{margin-top:5px}.sig-box{width:30%}.sig-line{height:12px}
+    .title{font-size:12px;margin:2px 0 1px}.subtitle{font-size:8px;margin-bottom:2px}
   </style></head>
 <body><div class="page-wrapper"><div class="page">
-  <div class="watermark"><img src="${esc(wm)}" alt=""></div>
+  <div class="watermark"><img src="${esc(wm)}" alt="" onerror="this.style.display='none'"></div>
   <div class="content">
-    <div class="letterhead"><img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div class="letterhead-fallback"><h2 style="font-size:12px;">${esc(school?.name||'School Name')}</h2><p style="font-size:7px;"><em>"${esc(school?.motto||'')}"</em></p></div></div>
+    <div class="letterhead"><img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div class="letterhead-fallback"><h2 style="font-size:11px;">${esc(school?.name||'School Name')}</h2><p style="font-size:7px;"><em>"${esc(school?.motto||'')}"</em></p></div></div>
     <div class="title">ANNUAL ACADEMIC REPORT CARD ${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
