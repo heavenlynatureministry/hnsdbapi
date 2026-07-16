@@ -20,7 +20,7 @@ export const exportReportCard = (reportData, orientation = 'portrait') => {
   if (!printWindow) { alert('Please allow pop-ups to print report card'); return }
   const { student, results, term, academic_year, school, verify_url } = reportData
   printWindow.document.write(buildSingleTerm(student, results, term, academic_year, school, letterheadUrl, watermarkUrl, verify_url, orientation))
-  finishAndPrint(printWindow)
+  finishAndPrint(printWindow, isLandscape)
 }
 
 export const exportAnnualReportCard = (reportData, orientation = 'portrait') => {
@@ -35,17 +35,64 @@ export const exportAnnualReportCard = (reportData, orientation = 'portrait') => 
     ? buildAnnualLandscape(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url, annual_summary)
     : buildAnnualPortrait(student, term1, term2, term3, academic_year, school, letterheadUrl, watermarkUrl, verify_url, annual_summary)
   printWindow.document.write(html)
-  finishAndPrint(printWindow)
+  finishAndPrint(printWindow, isLandscape)
 }
 
 // =========================================================================
 // HELPERS
 // =========================================================================
 
-function finishAndPrint(win) {
+function finishAndPrint(win, isLandscape) {
   win.document.close()
-  win.onload = () => { win.focus(); setTimeout(() => win.print(), 600) }
-  setTimeout(() => { win.focus(); win.print() }, 1500)
+  
+  // ✅ Wait for images to load before printing
+  const images = win.document.images
+  let loadedCount = 0
+  const totalImages = images.length
+  
+  if (totalImages === 0) {
+    // No images, print immediately
+    setTimeout(() => {
+      win.focus()
+      win.print()
+      // Don't auto-close - let user close manually
+    }, 400)
+    return
+  }
+  
+  // Track image loading
+  for (let i = 0; i < images.length; i++) {
+    if (images[i].complete) {
+      loadedCount++
+    } else {
+      images[i].onload = () => {
+        loadedCount++
+        if (loadedCount >= totalImages) {
+          setTimeout(() => {
+            win.focus()
+            win.print()
+          }, 300)
+        }
+      }
+      images[i].onerror = () => {
+        loadedCount++
+        if (loadedCount >= totalImages) {
+          setTimeout(() => {
+            win.focus()
+            win.print()
+          }, 300)
+        }
+      }
+    }
+  }
+  
+  // If all already loaded
+  if (loadedCount >= totalImages) {
+    setTimeout(() => {
+      win.focus()
+      win.print()
+    }, 400)
+  }
 }
 
 function esc(str) {
@@ -64,14 +111,13 @@ function getUniqueSubjects(t1, t2, t3) {
 }
 
 // =========================================================================
-// BASE CSS – Single page, letterhead inside template + watermark
+// BASE CSS
 // =========================================================================
 const BASE_CSS = `
   @page { size: A4; margin: 0; }
   @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
     .no-print { display: none !important; }
-    .page { page-break-after: avoid; page-break-inside: avoid; }
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -79,99 +125,36 @@ const BASE_CSS = `
     font-size: 13px;
     color: #1a1a1a;
     background: #e5e7eb;
-    padding: 8px;
+    padding: 10px;
     line-height: 1.55;
   }
-  
-  /* Full-page watermark template */
-  .watermark {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-  }
-  .watermark img {
-    width: 100%;
-    height: 100%;
-    object-fit: fill;
-    opacity: 1;
-    display: block;
-  }
-  
-  /* Content flexbox fills page exactly, spacer pushes footer down */
+  .page-wrapper { margin: 0 auto; }
+  .page { position: relative; overflow: hidden; background: #fff; }
+  .watermark { position: absolute; inset: 0; z-index: 0; }
+  .watermark img { width: 100%; height: 100%; object-fit: fill; opacity: 1; display: block; }
   .content {
-    position: absolute;
-    inset: 0;
-    z-index: 5;
+    position: absolute; inset: 0; z-index: 5;
     background: transparent;
-    display: flex;
-    flex-direction: column;
+    display: flex; flex-direction: column;
     overflow: hidden;
   }
   .spacer { flex: 1 1 auto; min-height: 2px; }
-
-  /* Letterhead inside content area */
-  .letterhead {
-    text-align: center;
-    margin-bottom: 6px;
-    padding-bottom: 3px;
-    border-bottom: 1.5px double #1a56db;
-    flex-shrink: 0;
-  }
+  .letterhead { text-align: center; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 1.5px double #1a56db; flex-shrink: 0; }
   .letterhead img { width: 100%; height: auto; display: block; }
   .letterhead-fallback { display: none; text-align: center; padding: 3mm 0; }
-
-  .title {
-    text-align: center;
-    font-size: 17px;
-    font-weight: bold;
-    margin: 6px 0 3px;
-    text-transform: uppercase;
-    letter-spacing: 3px;
-    color: #1a3a6b;
-    flex-shrink: 0;
-  }
-  .subtitle {
-    text-align: center;
-    font-size: 13px;
-    margin-bottom: 6px;
-    color: #555;
-    flex-shrink: 0;
-  }
-  
-  .info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 3px;
-    margin-bottom: 6px;
-    font-size: 13px;
-    padding: 5px 10px;
-    background: transparent;
-    flex-shrink: 0;
-  }
+  .title { text-align: center; font-size: 17px; font-weight: bold; margin: 6px 0 3px; text-transform: uppercase; letter-spacing: 3px; color: #1a3a6b; flex-shrink: 0; }
+  .subtitle { text-align: center; font-size: 13px; margin-bottom: 6px; color: #555; flex-shrink: 0; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom: 6px; font-size: 13px; padding: 5px 10px; background: transparent; flex-shrink: 0; }
   .info-item { display: flex; align-items: center; padding: 2px 0; }
   .info-label { font-weight: bold; width: 75px; font-size: 12px; color: #444; }
-
   table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 13px; flex-shrink: 0; }
-  th {
-    background: rgba(20, 60, 140, 0.92);
-    color: #fff;
-    padding: 6px 8px;
-    text-align: left;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
+  th { background: rgba(20,60,140,0.92); color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
   th.center { text-align: center; }
   td { padding: 5px 8px; border-bottom: 1px solid #bbb; font-size: 13px; }
   td.center { text-align: center; }
-  tr:nth-child(even) { background: rgba(248, 249, 250, 0.5); }
-  .total-row {
-    font-weight: bold;
-    background: rgba(26, 86, 219, 0.12) !important;
-    font-size: 14px;
-  }
+  tr:nth-child(even) { background: rgba(248,249,250,0.5); }
+  .total-row { font-weight: bold; background: rgba(26,86,219,0.12)!important; font-size: 14px; }
   .total-row td { padding: 6px 8px; border-top: 2px solid #1a56db; }
-
   .summary-section { margin-top: 4px; display: flex; gap: 10px; flex-shrink: 0; }
   .summary-box { flex: 1; padding: 5px 10px; background: transparent; font-size: 13px; }
   .summary-item { display: flex; padding: 3px 0; border-bottom: 1px dotted #bbb; }
@@ -179,22 +162,17 @@ const BASE_CSS = `
   .summary-label { font-weight: bold; width: 80px; font-size: 11px; }
   .remarks-box { flex: 1; padding: 5px 10px; font-size: 13px; background: transparent; min-height: 38px; }
   .remarks-box p { margin-top: 4px; line-height: 1.4; }
-
   .verify-section { margin-top: 6px; padding: 4px 10px; background: transparent; text-align: center; font-size: 10px; flex-shrink: 0; }
-  .verify-link { font-family: 'Courier New', monospace; font-weight: bold; color: #1a56db; word-break: break-all; font-size: 11px; }
-
+  .verify-link { font-family: 'Courier New',monospace; font-weight: bold; color: #1a56db; word-break: break-all; font-size: 11px; }
   .signatures { display: flex; justify-content: space-between; margin-top: 12px; font-size: 12px; padding: 0 10px; flex-shrink: 0; }
   .sig-box { text-align: center; width: 40%; }
   .sig-line { border-bottom: 1.5px solid #000; margin-bottom: 4px; height: 22px; }
-
   .next-term { text-align: center; font-size: 10px; margin-top: 6px; color: #555; font-weight: bold; flex-shrink: 0; }
   .footer { text-align: center; font-size: 9px; margin-top: 4px; padding-top: 3px; border-top: 1px solid #bbb; color: #666; flex-shrink: 0; }
-
   .pass { color: #059669; font-weight: bold; }
   .fail { color: #dc2626; font-weight: bold; }
   .promoted { color: #059669; font-weight: bold; }
   .repeat { color: #dc2626; font-weight: bold; }
-
   .print-toolbar { text-align: center; padding: 10px; margin-top: 12px; background: #f0f0f0; border-radius: 8px; }
   .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; margin: 4px; }
   .btn-print { background: #2563eb; color: #fff; }
@@ -214,22 +192,19 @@ function buildSingleTerm(student, results, term, year, school, letterhead, wm, v
   const isLand = orientation === 'landscape'
 
   const pageCSS = isLand
-    ? `.page-wrapper{width:297mm;margin:0 auto}.page{width:297mm;min-height:210mm;max-height:210mm;overflow:hidden}.content{padding:14mm 16mm 14mm 16mm}`
-    : `.page-wrapper{width:210mm;margin:0 auto}.page{width:210mm;min-height:297mm;max-height:297mm;overflow:hidden}.content{padding:16mm 16mm 16mm 16mm}`
+    ? `.page-wrapper{width:297mm}.page{width:297mm;height:210mm}.content{padding:14mm 16mm 14mm 16mm}`
+    : `.page-wrapper{width:210mm}.page{width:210mm;height:297mm}.content{padding:16mm 16mm 16mm 16mm}`
 
-  return `<!DOCTYPE html>
-<html>
+  return `<!DOCTYPE html><html>
 <head><title>Report Card - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}${pageCSS}</style></head>
-<body>
-<div class="page-wrapper"><div class="page">
+<body><div class="page-wrapper"><div class="page">
   <div class="watermark"><img src="${esc(wm)}" alt=""></div>
   <div class="content">
     <div class="letterhead">
       <img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
       <div class="letterhead-fallback"><h2 style="font-size:15px;">${esc(school?.name||'School Name')}</h2><p style="font-size:10px;"><em>"${esc(school?.motto||'')}"</em></p></div>
     </div>
-    <div class="title">ACADEMIC REPORT CARD</div>
-    <div class="subtitle">${esc(term)} &bull; ${esc(year)}</div>
+    <div class="title">ACADEMIC REPORT CARD</div><div class="subtitle">${esc(term)} &bull; ${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
       <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
@@ -259,8 +234,10 @@ function buildSingleTerm(student, results, term, year, school, letterhead, wm, v
     <div class="footer"><p>${esc(school?.name||'School')} | ${esc(year)} | Computer-generated Report Card</p>${verify?`<p style="color:#1a56db;">Verify: ${esc(verify)}</p>`:''}</div>
   </div>
 </div></div>
-<div class="print-toolbar no-print"><button class="btn btn-print" onclick="window.print()">🖨️ Print (A4 ${isLand?'Landscape':'Portrait'})</button><button class="btn btn-close" onclick="window.close()">✕ Close</button></div>
-</body></html>`
+<div class="print-toolbar no-print">
+  <button class="btn btn-print" onclick="window.print()">🖨️ Print</button>
+  <button class="btn btn-close" onclick="window.close()">✕ Close</button>
+</div></body></html>`
 }
 
 // =========================================================================
@@ -275,10 +252,9 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
     return `<tr><td class="subject-col">${esc(subj)}</td><td>${a.score||'-'}</td><td>${b.score||'-'}</td><td>${c.score||'-'}</td></tr>`
   }).join('')
 
-  return `<!DOCTYPE html>
-<html>
+  return `<!DOCTYPE html><html>
 <head><title>Annual Report - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}
-    .page-wrapper{width:210mm;margin:0 auto}.page{width:210mm;min-height:297mm;max-height:297mm;overflow:hidden}.content{padding:16mm 12mm 16mm 12mm}
+    .page-wrapper{width:210mm}.page{width:210mm;height:297mm}.content{padding:16mm 12mm 16mm 12mm}
     .info-grid{grid-template-columns:1fr 1fr 1fr 1fr}.info-item{flex-wrap:wrap}.info-label{width:auto;margin-right:3px;font-size:10px}
     th{padding:5px 4px;font-size:8px}th.subject-col{text-align:left;padding-left:6px}
     td{padding:4px 4px;text-align:center;font-size:11px}td.subject-col{text-align:left;font-weight:bold;padding-left:6px}
@@ -289,16 +265,11 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
     .signatures{margin-top:10px}.sig-box{width:30%}.sig-line{height:20px}
     .title{font-size:15px;margin:4px 0 2px}.subtitle{font-size:11px;margin-bottom:4px}
   </style></head>
-<body>
-<div class="page-wrapper"><div class="page">
+<body><div class="page-wrapper"><div class="page">
   <div class="watermark"><img src="${esc(wm)}" alt=""></div>
   <div class="content">
-    <div class="letterhead">
-      <img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <div class="letterhead-fallback"><h2 style="font-size:14px;">${esc(school?.name||'School Name')}</h2><p style="font-size:9px;"><em>"${esc(school?.motto||'')}"</em></p></div>
-    </div>
-    <div class="title">ANNUAL ACADEMIC REPORT CARD</div>
-    <div class="subtitle">${esc(year)}</div>
+    <div class="letterhead"><img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div class="letterhead-fallback"><h2 style="font-size:14px;">${esc(school?.name||'School Name')}</h2><p style="font-size:9px;"><em>"${esc(school?.motto||'')}"</em></p></div></div>
+    <div class="title">ANNUAL ACADEMIC REPORT CARD</div><div class="subtitle">${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
       <div class="info-item"><span class="info-label">ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
@@ -330,7 +301,7 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
     <div class="footer"><p>${esc(school?.name||'School')} | Annual Report ${esc(year)} | Computer-generated</p>${verify?`<p style="color:#1a56db;">Verify: ${esc(verify)}</p>`:''}</div>
   </div>
 </div></div>
-<div class="print-toolbar no-print"><button class="btn btn-print" onclick="window.print()">🖨️ Print (A4 Portrait)</button><button class="btn btn-close" onclick="window.close()">✕ Close</button></div>
+<div class="print-toolbar no-print"><button class="btn btn-print" onclick="window.print()">🖨️ Print</button><button class="btn btn-close" onclick="window.close()">✕ Close</button></div>
 </body></html>`
 }
 
@@ -346,10 +317,9 @@ function buildAnnualLandscape(student, t1, t2, t3, year, school, letterhead, wm,
     return `<tr><td class="subject-col">${esc(subj)}</td><td>${a.score||'-'}</td><td>${b.score||'-'}</td><td>${c.score||'-'}</td></tr>`
   }).join('')
 
-  return `<!DOCTYPE html>
-<html>
+  return `<!DOCTYPE html><html>
 <head><title>Annual Report - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}
-    .page-wrapper{width:297mm;margin:0 auto}.page{width:297mm;min-height:210mm;max-height:210mm;overflow:hidden}.content{padding:14mm 14mm 14mm 14mm}
+    .page-wrapper{width:297mm}.page{width:297mm;height:210mm}.content{padding:14mm 14mm 14mm 14mm}
     .info-grid{grid-template-columns:1fr 1fr 1fr}
     th{padding:5px 5px;font-size:8px}th.subject-col{text-align:left;padding-left:6px}
     td{padding:4px 5px;text-align:center;font-size:11px}td.subject-col{text-align:left;font-weight:bold;padding-left:6px}
@@ -360,14 +330,10 @@ function buildAnnualLandscape(student, t1, t2, t3, year, school, letterhead, wm,
     .signatures{margin-top:8px}.sig-box{width:30%}.sig-line{height:18px}
     .title{font-size:14px;margin:3px 0 2px}.subtitle{font-size:10px;margin-bottom:3px}
   </style></head>
-<body>
-<div class="page-wrapper"><div class="page">
+<body><div class="page-wrapper"><div class="page">
   <div class="watermark"><img src="${esc(wm)}" alt=""></div>
   <div class="content">
-    <div class="letterhead">
-      <img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <div class="letterhead-fallback"><h2 style="font-size:13px;">${esc(school?.name||'School Name')}</h2><p style="font-size:8px;"><em>"${esc(school?.motto||'')}"</em></p></div>
-    </div>
+    <div class="letterhead"><img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div class="letterhead-fallback"><h2 style="font-size:13px;">${esc(school?.name||'School Name')}</h2><p style="font-size:8px;"><em>"${esc(school?.motto||'')}"</em></p></div></div>
     <div class="title">ANNUAL ACADEMIC REPORT CARD ${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
@@ -399,6 +365,6 @@ function buildAnnualLandscape(student, t1, t2, t3, year, school, letterhead, wm,
     <div class="footer"><p>${esc(school?.name||'School')} | Annual Report ${esc(year)} | Computer-generated</p>${verify?`<p style="color:#1a56db;">Verify: ${esc(verify)}</p>`:''}</div>
   </div>
 </div></div>
-<div class="print-toolbar no-print"><button class="btn btn-print" onclick="window.print()">🖨️ Print (A4 Landscape)</button><button class="btn btn-close" onclick="window.close()">✕ Close</button></div>
+<div class="print-toolbar no-print"><button class="btn btn-print" onclick="window.print()">🖨️ Print</button><button class="btn btn-close" onclick="window.close()">✕ Close</button></div>
 </body></html>`
 }
