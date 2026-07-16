@@ -2,44 +2,16 @@ import { Printer, Download, Share2, X, FileText, ExternalLink } from 'lucide-rea
 import Button from '../common/Button'
 import { exportReceipt, printReceiptDirect, openReceiptInNewTab, downloadReceiptPDF } from '../../utils/exportReceipt'
 
-// Helper to safely render address (handles both string and object formats)
-function formatAddress(address) {
-  if (!address) return ''
-  if (typeof address === 'string') return address
-  if (typeof address === 'object') {
-    const parts = [address.city, address.state, address.country, address.street, address.zip].filter(Boolean)
-    return parts.join(', ')
-  }
-  return String(address)
-}
-
 function ReceiptPrint({ receipt, onClose }) {
   if (!receipt) return null
 
-  const letterheadUrl = '/letter-head.jpg'
+  const handleAutoPrint = () => exportReceipt(receipt)
+  const handleManualPrint = () => printReceiptDirect(receipt)
+  const handleOpenInNewTab = () => openReceiptInNewTab(receipt)
+  const handleDownloadPDF = () => downloadReceiptPDF(receipt)
 
-  const handleAutoPrint = () => {
-    exportReceipt(receipt)
-  }
-
-  const handleManualPrint = () => {
-    printReceiptDirect(receipt)
-  }
-
-  const handleOpenInNewTab = () => {
-    openReceiptInNewTab(receipt)
-  }
-
-  const handleDownloadPDF = () => {
-    downloadReceiptPDF(receipt)
-  }
-
-  const schoolAddress = formatAddress(receipt?.school?.address)
-
-  // ✅ Detect receipt type
   const isStudentPayment = !!receipt?.student_name && receipt?.student_name !== 'N/A'
   const receiptTitle = isStudentPayment ? 'Payment Receipt' : 'Official Receipt'
-  const receiptHeader = isStudentPayment ? 'PAYMENT RECEIPT' : 'OFFICIAL RECEIPT'
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -48,9 +20,7 @@ function ReceiptPrint({ receipt, onClose }) {
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
           <div>
             <h3 className="font-semibold text-lg">{receiptTitle}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {receipt?.receipt_number}
-            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{receipt?.receipt_number}</p>
           </div>
           <Button onClick={onClose} variant="ghost" size="sm" icon={<X size={16} />} />
         </div>
@@ -58,109 +28,63 @@ function ReceiptPrint({ receipt, onClose }) {
         {/* Receipt Preview */}
         <div className="p-4 bg-gray-100 dark:bg-gray-900">
           <div 
-            className="bg-white text-black"
+            className="bg-white text-black mx-auto"
             style={{ 
               fontFamily: "'Courier New', monospace",
               fontSize: '10px',
-              maxWidth: '400px',
-              margin: '0 auto',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+              maxWidth: '360px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+              border: '1px solid #ddd'
             }}
           >
-            {/* Letterhead */}
-            <div>
-              <img 
-                src={letterheadUrl} 
-                alt="School Letterhead" 
-                className="w-full h-auto block border-b border-gray-300"
-                onError={(e) => {
-                  e.target.style.display = 'none'
-                  e.target.nextElementSibling.style.display = 'block'
-                }}
-              />
-              <div className="text-center p-3 border-b-2 border-black" style={{ display: 'none' }}>
-                <h2 className="text-sm font-bold uppercase">{receipt?.school?.name || 'School Name'}</h2>
-                {receipt?.school?.motto && <p className="text-xs italic my-1">"{receipt.school.motto}"</p>}
-                <p className="text-xs">
-                  {schoolAddress}
-                  {receipt?.school?.phone ? ` | Tel: ${receipt.school.phone}` : ''}
-                </p>
-              </div>
+            {/* Receipt Type */}
+            <div className="text-center font-bold text-xs border-b-2 border-black py-2 bg-gray-100 uppercase tracking-wider">
+              {receiptTitle}
             </div>
 
             {/* Content */}
             <div className="p-3">
-              <div className="text-center font-bold text-xs border border-black py-1 mb-2 bg-gray-100">
-                {receiptHeader}
-              </div>
-              <div className="text-right text-xs mb-2">
+              <div className="text-right text-xs mb-3">
                 <strong>Receipt No:</strong> {receipt?.receipt_number}
               </div>
               
-              <div className="space-y-1 mb-2 text-xs">
+              <div className="space-y-1.5 mb-3 text-xs">
                 <div className="flex justify-between">
                   <span className="font-bold">Date:</span>
                   <span>{receipt?.date ? new Date(receipt.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}</span>
                 </div>
 
-                {/* ✅ Student Payment Details */}
                 {isStudentPayment && (
                   <>
-                    <div className="flex justify-between">
-                      <span className="font-bold">Student:</span>
-                      <span>{receipt?.student_name || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-bold">Class:</span>
-                      <span>{receipt?.class_name || 'N/A'}</span>
-                    </div>
+                    <div className="flex justify-between"><span className="font-bold">Student:</span><span>{receipt?.student_name || 'N/A'}</span></div>
+                    <div className="flex justify-between"><span className="font-bold">Class:</span><span>{receipt?.class_name || 'N/A'}</span></div>
                   </>
                 )}
 
-                {/* ✅ Organization/Transaction Details */}
                 {!isStudentPayment && (
                   <>
-                    {receipt?.organization_name && (
-                      <div className="flex justify-between">
-                        <span className="font-bold">Organization:</span>
-                        <span>{receipt.organization_name}</span>
-                      </div>
-                    )}
-                    {receipt?.representative_name && (
-                      <div className="flex justify-between">
-                        <span className="font-bold">Representative:</span>
-                        <span>{receipt.representative_name}</span>
-                      </div>
-                    )}
+                    {receipt?.organization_name && <div className="flex justify-between"><span className="font-bold">Organization:</span><span>{receipt.organization_name}</span></div>}
+                    {receipt?.representative_name && <div className="flex justify-between"><span className="font-bold">Representative:</span><span>{receipt.representative_name}</span></div>}
                   </>
                 )}
 
-                <div className="flex justify-between">
-                  <span className="font-bold">Payment For:</span>
-                  <span>{receipt?.payment_for || receipt?.description || 'N/A'}</span>
-                </div>
-                {receipt?.term && (
-                  <div className="flex justify-between">
-                    <span className="font-bold">Term:</span>
-                    <span>{receipt.term}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="font-bold">Method:</span>
-                  <span>{receipt?.payment_method || 'N/A'}</span>
-                </div>
+                <div className="flex justify-between"><span className="font-bold">Payment For:</span><span>{receipt?.payment_for || receipt?.description || 'N/A'}</span></div>
+                {receipt?.term && <div className="flex justify-between"><span className="font-bold">Term:</span><span>{receipt.term}</span></div>}
+                {receipt?.academic_year && <div className="flex justify-between"><span className="font-bold">Year:</span><span>{receipt.academic_year}</span></div>}
+                <div className="flex justify-between"><span className="font-bold">Method:</span><span className="capitalize">{(receipt?.payment_method || 'Cash').replace(/_/g, ' ')}</span></div>
+                {receipt?.transaction_reference && <div className="flex justify-between"><span className="font-bold">Ref:</span><span>{receipt.transaction_reference}</span></div>}
               </div>
 
-              {/* Amount Paid */}
-              <div className="border-2 border-black p-2 text-center my-2 bg-gray-50">
-                <div className="text-xs mb-1">AMOUNT PAID</div>
-                <div className="text-lg font-bold font-sans">
+              {/* Amount */}
+              <div className="border-2 border-black p-2 text-center my-3 bg-gray-50">
+                <div className="text-xs mb-1 uppercase tracking-wide">Amount Paid</div>
+                <div className="text-xl font-bold" style={{ fontFamily: 'Arial, sans-serif' }}>
                   SSP {Number(receipt?.amount || 0).toLocaleString('en', { minimumFractionDigits: 2 })}
                 </div>
-                <div className="text-xs italic mt-1">{receipt?.amount_words || ''}</div>
+                {receipt?.amount_words && <div className="text-xs italic mt-1">{receipt.amount_words}</div>}
               </div>
 
-              {/* Balance Info - only for student payments */}
+              {/* Balance */}
               {receipt?.balance_info && (
                 <div className="border-t border-dashed border-gray-400 mt-2 pt-2 space-y-1">
                   <div className="flex justify-between text-xs">
@@ -178,34 +102,30 @@ function ReceiptPrint({ receipt, onClose }) {
                     </span>
                   </div>
                   {receipt.balance_info.is_cleared && (
-                    <div className="text-center text-xs text-green-600 font-bold">
-                      ✅ FULLY PAID
-                    </div>
+                    <div className="text-center text-xs text-green-600 font-bold">✅ FULLY PAID</div>
                   )}
                   {!receipt.balance_info.is_cleared && receipt.balance_info.total_fee > 0 && (
-                    <div className="text-center text-xs text-red-500">
-                      ⚠️ Outstanding: {receipt.balance_info.balance_display}
-                    </div>
+                    <div className="text-center text-xs text-red-500">⚠️ Outstanding: {receipt.balance_info.balance_display}</div>
                   )}
                 </div>
               )}
 
               {/* Signatures */}
-              <div className="flex justify-between mt-6 pt-2 border-t border-black">
+              <div className="flex justify-between mt-4 pt-2 border-t border-black">
                 <div className="text-center w-2/5">
-                  <div className="border-b border-black mb-1 h-6">&nbsp;</div>
+                  <div className="border-b border-black mb-1" style={{ height: '22px' }}>&nbsp;</div>
                   <div className="text-xs">Received By</div>
-                  <div className="text-xs">{receipt?.received_by || 'School Bursar'}</div>
+                  <div className="text-xs font-medium">{receipt?.received_by || 'School Bursar'}</div>
                 </div>
                 <div className="text-center w-2/5">
-                  <div className="border-b border-black mb-1 h-6">&nbsp;</div>
+                  <div className="border-b border-black mb-1" style={{ height: '22px' }}>&nbsp;</div>
                   <div className="text-xs">Paid By</div>
                   <div className="text-xs">{receipt?.paid_by || ''}</div>
                 </div>
               </div>
 
               {/* Footer */}
-              <div className="text-center text-xs mt-3 pt-2 border-t border-dashed border-gray-400">
+              <div className="text-center text-xs mt-3 pt-2 border-t border-dashed border-gray-400 text-gray-500">
                 <p>Computer-generated receipt</p>
                 <p>Thank you for your payment!</p>
               </div>
@@ -214,46 +134,16 @@ function ReceiptPrint({ receipt, onClose }) {
 
           {/* Action Buttons */}
           <div className="mt-4 space-y-2">
-            <Button 
-              onClick={handleAutoPrint} 
-              variant="primary" 
-              className="w-full"
-              size="lg"
-              icon={<Printer size={18} />}
-            >
+            <Button onClick={handleAutoPrint} variant="primary" className="w-full" size="lg" icon={<Printer size={18} />}>
               🖨️ Auto Print (Popup)
             </Button>
-            
-            <Button 
-              onClick={handleManualPrint} 
-              variant="primary" 
-              className="w-full"
-              size="lg"
-              icon={<ExternalLink size={18} />}
-              style={{ background: '#059669' }}
-            >
+            <Button onClick={handleManualPrint} variant="primary" className="w-full" size="lg" icon={<ExternalLink size={18} />} style={{ background: '#059669' }}>
               📄 Manual Print (New Tab)
             </Button>
-            
             <div className="grid grid-cols-2 gap-2">
-              <Button 
-                onClick={handleDownloadPDF} 
-                variant="secondary" 
-                size="lg"
-                icon={<FileText size={16} />}
-              >
-                💾 Save PDF
-              </Button>
-              <Button 
-                onClick={handleOpenInNewTab} 
-                variant="secondary" 
-                size="lg"
-                icon={<Share2 size={16} />}
-              >
-                🔗 Open Tab
-              </Button>
+              <Button onClick={handleDownloadPDF} variant="secondary" size="lg" icon={<FileText size={16} />}>💾 Save PDF</Button>
+              <Button onClick={handleOpenInNewTab} variant="secondary" size="lg" icon={<Share2 size={16} />}>🔗 Open Tab</Button>
             </div>
-            
             <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-1">
               <strong>Auto Print:</strong> Opens popup + auto-print<br/>
               <strong>Manual Print:</strong> Opens new tab with Print button (best for mobile)
