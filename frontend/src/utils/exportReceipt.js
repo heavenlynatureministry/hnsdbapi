@@ -1,7 +1,7 @@
 /**
  * Export receipt to print/PDF
  * Uses receipt-templateA5.jpg as full-page A5 background
- * All text positioned within template borders
+ * Letterhead at top, all text positioned within template borders
  * Supports both Student Payments and Organization Transactions
  */
 
@@ -11,6 +11,7 @@ export const exportReceipt = (receipt) => {
     return
   }
 
+  const letterheadUrl = window.location.origin + '/letter-head.jpg'
   const templateUrl = window.location.origin + '/receipt-templateA5.jpg'
   
   const printWindow = window.open('', '_blank', 'width=450,height=650')
@@ -20,16 +21,17 @@ export const exportReceipt = (receipt) => {
     return
   }
 
-  printWindow.document.write(buildReceiptHTML(receipt, templateUrl))
+  printWindow.document.write(buildReceiptHTML(receipt, letterheadUrl, templateUrl))
   finishAndPrint(printWindow)
 }
 
 export const printReceiptDirect = (receipt) => {
   if (!receipt) return
+  const letterheadUrl = window.location.origin + '/letter-head.jpg'
   const templateUrl = window.location.origin + '/receipt-templateA5.jpg'
   const printWindow = window.open('', '_blank', 'width=450,height=650')
   if (!printWindow) { alert('Please allow pop-ups.'); return }
-  printWindow.document.write(buildReceiptHTML(receipt, templateUrl))
+  printWindow.document.write(buildReceiptHTML(receipt, letterheadUrl, templateUrl))
   finishAndPrint(printWindow)
 }
 
@@ -37,10 +39,11 @@ export const downloadReceiptPDF = (receipt) => { if (!receipt) return; exportRec
 
 export const openReceiptInNewTab = (receipt) => {
   if (!receipt) return
+  const letterheadUrl = window.location.origin + '/letter-head.jpg'
   const templateUrl = window.location.origin + '/receipt-templateA5.jpg'
   const newTab = window.open('', '_blank')
   if (!newTab) { alert('Pop-up blocked!'); return }
-  newTab.document.write(buildReceiptHTML(receipt, templateUrl))
+  newTab.document.write(buildReceiptHTML(receipt, letterheadUrl, templateUrl))
   newTab.document.close()
 }
 
@@ -69,7 +72,7 @@ function formatAmount(amount) { return Number(amount || 0).toLocaleString('en', 
 // SHARED RECEIPT BUILDER
 // =========================================================================
 
-function buildReceiptHTML(receipt, templateUrl) {
+function buildReceiptHTML(receipt, letterheadUrl, templateUrl) {
   const isStudentPayment = !!receipt?.student_name && receipt?.student_name !== 'N/A'
   const receiptType = isStudentPayment ? 'Payment Receipt' : 'Official Receipt'
 
@@ -114,8 +117,12 @@ function buildReceiptHTML(receipt, templateUrl) {
   .content { position: absolute; inset: 0; z-index: 5; background: transparent; display: flex; flex-direction: column; padding: 14mm 12mm 12mm 12mm; }
   .spacer { flex: 1 1 auto; min-height: 2px; }
 
-  .receipt-type { text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 2px; color: #1a3a6b; flex-shrink: 0; }
-  .receipt-number { text-align: right; font-size: 8px; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px dashed #999; flex-shrink: 0; }
+  .letterhead { text-align: center; margin-bottom: 3px; padding-bottom: 2px; border-bottom: 1px dashed #999; flex-shrink: 0; }
+  .letterhead img { width: 100%; height: auto; display: block; }
+  .letterhead-fallback { display: none; text-align: center; padding: 1mm 0; }
+
+  .receipt-type { text-align: center; font-size: 12px; font-weight: bold; margin: 3px 0; text-transform: uppercase; letter-spacing: 2px; color: #1a3a6b; flex-shrink: 0; }
+  .receipt-number { text-align: right; font-size: 8px; margin-bottom: 3px; padding-bottom: 2px; border-bottom: 1px dashed #999; flex-shrink: 0; }
 
   .info-row { display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 10px; padding: 1px 0; flex-shrink: 0; }
   .info-label { font-weight: bold; width: 38%; white-space: nowrap; font-size: 9px; }
@@ -144,6 +151,10 @@ function buildReceiptHTML(receipt, templateUrl) {
 <body><div class="page-wrapper"><div class="page">
   <div class="template"><img src="${esc(templateUrl)}" alt="" onerror="this.style.display='none'"></div>
   <div class="content">
+    <div class="letterhead">
+      <img src="${esc(letterheadUrl)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+      <div class="letterhead-fallback"><h2 style="font-size:12px;">${esc(receipt?.school?.name || 'School Name')}</h2><p style="font-size:8px;"><em>"${esc(receipt?.school?.motto || '')}"</em></p></div>
+    </div>
     <div class="receipt-type">${receiptType}</div>
     <div class="receipt-number"><strong>Receipt No:</strong> ${esc(receipt?.receipt_number || 'N/A')}</div>
     <div class="info-row"><span class="info-label">Date:</span><span class="info-value">${formatDate(receipt?.date)}</span></div>
