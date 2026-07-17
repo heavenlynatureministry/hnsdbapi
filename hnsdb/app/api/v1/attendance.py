@@ -25,6 +25,30 @@ def _safe_objectid(value) -> Optional[ObjectId]:
         return None
 
 
+def _get_current_academic_year() -> str:
+    """Calculate current academic year dynamically."""
+    now = datetime.utcnow()
+    year = now.year
+    month = now.month
+    start_year = year - 1 if month == 1 else year
+    return f"{start_year}/{start_year + 1}"
+
+
+def _get_current_term() -> str:
+    """Calculate current term dynamically."""
+    month = datetime.utcnow().month
+    if 2 <= month <= 4:
+        return "Term 1"
+    elif 5 <= month <= 7:
+        return "Term 2"
+    elif 9 <= month <= 11:
+        return "Term 3"
+    elif month == 8:
+        return "Term 2 Break"
+    else:
+        return "Annual Break"
+
+
 @router.get("")
 @router.get("/")
 async def list_attendance(
@@ -273,6 +297,8 @@ async def mark_attendance(
     class_id = body.get("class_id", "")
     attendance_date = body.get("date", "")
     records = body.get("records", body.get("attendance_data", []))
+    academic_year = body.get("academic_year", "")
+    term = body.get("term", "")
     
     if not class_id or not attendance_date or not records:
         raise HTTPException(status_code=400, detail="class_id, date, and records are required")
@@ -280,6 +306,13 @@ async def mark_attendance(
     cid = _safe_objectid(class_id)
     if not cid:
         raise HTTPException(status_code=400, detail="Invalid class ID")
+    
+    # ✅ Auto-calculate academic year and term if not provided
+    if not academic_year:
+        academic_year = _get_current_academic_year()
+    
+    if not term:
+        term = _get_current_term()
     
     successful = 0
     for record in records:
@@ -293,6 +326,8 @@ async def mark_attendance(
                 {"$set": {
                     "status": record.get("status", "present"),
                     "notes": record.get("notes", ""),
+                    "academic_year": academic_year,  # ✅ Save academic year
+                    "term": term,                     # ✅ Save term
                     "recorded_by": current_user.get("_id"),
                     "updated_at": datetime.utcnow()
                 }},
