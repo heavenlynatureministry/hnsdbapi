@@ -2,7 +2,7 @@
  * Export receipt to print/PDF
  * Uses receipt-templateA5.jpg as full-page A5 background
  * Letterhead at top, all text positioned within template borders
- * Guaranteed single-page A5 print
+ * Guaranteed single-page A5 print - All browsers supported
  * Supports both Student Payments and Organization Transactions
  */
 
@@ -46,10 +46,10 @@ function finishAndPrint(win) {
   win.document.close()
   const images = win.document.images
   let loadedCount = 0; const totalImages = images.length
-  if (totalImages === 0) { setTimeout(() => { win.focus(); win.print() }, 500); return }
-  function checkAllLoaded() { loadedCount++; if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 400) } }
+  if (totalImages === 0) { setTimeout(() => { win.focus(); win.print() }, 600); return }
+  function checkAllLoaded() { loadedCount++; if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 500) } }
   for (let i = 0; i < images.length; i++) { if (images[i].complete) { loadedCount++ } else { images[i].onload = checkAllLoaded; images[i].onerror = checkAllLoaded } }
-  if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 500) }
+  if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 600) }
 }
 
 function esc(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
@@ -91,13 +91,51 @@ function buildReceiptHTML(receipt, letterheadUrl, templateUrl) {
 <style>
   @page { size: A5 portrait; margin: 0; }
   @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; width: 100%; height: 100%; }
+    html, body { 
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+      margin: 0 !important; 
+      padding: 0 !important; 
+      background: white !important;
+      width: 100% !important;
+      height: 100% !important;
+      overflow: hidden !important;
+      -webkit-transform: none !important;
+      transform: none !important;
+    }
     .no-print { display: none !important; }
-    .page-wrapper { page-break-after: avoid; page-break-inside: avoid; }
-    .page { page-break-after: avoid; page-break-inside: avoid; }
+    .page-wrapper, .page, .content { 
+      page-break-after: avoid !important; 
+      page-break-inside: avoid !important;
+      page-break-before: avoid !important;
+      break-after: avoid !important;
+      break-inside: avoid !important;
+      break-before: avoid !important;
+    }
+    .content > * { 
+      page-break-inside: avoid !important; 
+      break-inside: avoid !important; 
+    }
+    .letterhead, .receipt-type, .receipt-number, .info-row,
+    .amount-section, .balance-section, .signature-section,
+    .receipt-footer, .section-break {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Courier New', 'Courier', monospace; font-size: 11px; color: #000; background: #e5e7eb; padding: 8px; line-height: 1.45; }
+  body { 
+    font-family: 'Courier New', 'Courier', monospace; 
+    font-size: 11px; 
+    color: #000; 
+    background: #e5e7eb; 
+    padding: 8px; 
+    line-height: 1.45; 
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   .page-wrapper { width: 148mm; margin: 0 auto; }
   .page { position: relative; width: 148mm; height: 210mm; max-height: 210mm; overflow: hidden; background: transparent; }
   .template { position: absolute; inset: 0; z-index: 0; }
