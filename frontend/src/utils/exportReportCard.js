@@ -119,13 +119,13 @@ const BASE_CSS = `
 // =========================================================================
 // PORTRAIT LAYOUT CSS (shared by single-term portrait + annual portrait)
 // =========================================================================
-const PORTRAIT_PAGE = `.page-wrapper{width:210mm}.page{width:210mm;min-height:297mm}.content{padding:14mm 12mm 10mm 12mm}`
+const PORTRAIT_PAGE = `.page-wrapper{width:210mm}.page{width:210mm;height:297mm;max-height:297mm;overflow:hidden}.content{padding:14mm 12mm 10mm 12mm;height:100%}`
 
 // =========================================================================
 // LANDSCAPE LAYOUT CSS (shared by single-term landscape + annual landscape)
 // =========================================================================
-const LANDSCAPE_PAGE = `.page-wrapper{width:297mm}.page{width:297mm;min-height:210mm}.content{padding:10mm 12mm 8mm 12mm}`
-
+const LANDSCAPE_PAGE = `.page-wrapper{width:297mm}.page{width:297mm;height:210mm;max-height:210mm;overflow:hidden}.content{padding:10mm 12mm 8mm 12mm;height:100%}`
+  
 // =========================================================================
 // SINGLE-TERM REPORT
 // =========================================================================
