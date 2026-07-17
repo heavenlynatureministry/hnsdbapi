@@ -1,236 +1,145 @@
 /**
  * Sync Manager - Handles data synchronization between frontend and backend
+ * Uses the same IndexedDB sync queue as offlineManager
  */
 
-import api from '../api/axios';
-import { getOfflineManager } from './offlineManager';
+import api from '../../api/axios'
+import { getOfflineManager } from './offlineManager'
 import { 
   cacheApiResponse, 
   getCachedApiResponse,
+  addToSyncQueue,
+  getPendingSyncItems,
+  markSynced,
   storeOfflineData,
   getOfflineData,
   getAllOfflineData 
-} from './offlineDB';
+} from './offlineDB'
 
 class SyncManager {
   constructor() {
-    this.offlineManager = getOfflineManager();
-    this.syncInProgress = false;
+    this.offlineManager = getOfflineManager()
+    this.syncInProgress = false
   }
 
-  // Sync specific entity type (students, teachers, etc.)
-  async syncEntity(entityType) {
-    if (!this.offlineManager.isOnline) {
-      console.log(`[SyncManager] Offline, cannot sync ${entityType}`);
-      return false;
+  // Check if online
+  get isOnline() {
+    return this.offlineManager.isOnline
+  }
+
+  // Force sync all pending items
+  async syncAll() {
+    if (!this.isOnline) {
+      console.log('[SyncManager] Offline, cannot sync')
+      return false
     }
 
     if (this.syncInProgress) {
-      console.log('[SyncManager] Sync already in progress');
-      return false;
+      console.log('[SyncManager] Sync already in progress')
+      return false
     }
 
-    this.syncInProgress = true;
-    console.log(`[SyncManager] 🔄 Syncing ${entityType}...`);
+    this.syncInProgress = true
+    console.log('[SyncManager] 🔄 Syncing all pending changes...')
 
     try {
-      // First push any pending changes
-      await this.pushChanges(entityType);
-      
-      // Then pull latest data
-      await this.pullData(entityType);
-      
-      console.log(`[SyncManager] ✅ ${entityType} sync complete`);
-      return true;
+      // ✅ Use the offlineManager's sync mechanism
+      await this.offlineManager.checkAndSync()
+      console.log('[SyncManager] ✅ Sync complete')
+      return true
     } catch (error) {
-      console.error(`[SyncManager] ❌ ${entityType} sync failed:`, error);
-      return false;
+      console.error('[SyncManager] ❌ Sync failed:', error)
+      return false
     } finally {
-      this.syncInProgress = false;
+      this.syncInProgress = false
     }
-  }
-
-  // Push local changes to server
-  async pushChanges(entityType) {
-    const pendingItems = await this.getPendingChanges(entityType);
-    
-    if (pendingItems.length === 0) return;
-    
-    console.log(`[SyncManager] Pushing ${pendingItems.length} ${entityType} changes...`);
-    
-    for (const item of pendingItems) {
-      try {
-        const response = await api.post('/sync/push', {
-          entityType,
-          action: item.action,
-          data: item.data,
-          clientTimestamp: item.timestamp,
-        });
-        
-        if (response?.data?.success) {
-          await this.markChangeSynced(item.id);
-        }
-      } catch (error) {
-        console.error(`[SyncManager] Failed to push ${entityType} change:`, error);
-        throw error;
-      }
-    }
-  }
-
-  // Pull latest data from server
-  async pullData(entityType) {
-    const lastSync = await this.getLastSyncTime(entityType);
-    
-    try {
-      const response = await api.get('/sync/pull', {
-        params: {
-          entityType,
-          since: lastSync || undefined,
-        }
-      });
-      
-      if (response?.data?.success) {
-        // Update local cache
-        await this.updateLocalCache(entityType, response.data.data);
-        
-        // Update last sync time
-        await this.setLastSyncTime(entityType, Date.now());
-      }
-    } catch (error) {
-      console.error(`[SyncManager] Failed to pull ${entityType} data:`, error);
-      throw error;
-    }
-  }
-
-  // Get pending changes for entity type
-  async getPendingChanges(entityType) {
-    // This would come from your sync queue in IndexedDB
-    // Filtered by entity type
-    const allPending = await getOfflineData('syncQueue', 'all') || [];
-    return allPending.filter(item => item.entityType === entityType && !item.synced);
-  }
-
-  // Mark a change as synced
-  async markChangeSynced(changeId) {
-    const allPending = await getOfflineData('syncQueue', 'all') || [];
-    const updated = allPending.map(item => 
-      item.id === changeId ? { ...item, synced: true } : item
-    );
-    await storeOfflineData('syncQueue', 'all', updated);
-  }
-
-  // Get last sync time
-  async getLastSyncTime(entityType) {
-    return await getOfflineData('syncTimes', entityType);
-  }
-
-  // Set last sync time
-  async setLastSyncTime(entityType, timestamp) {
-    await storeOfflineData('syncTimes', entityType, timestamp);
-  }
-
-  // Update local cache with server data
-  async updateLocalCache(entityType, data) {
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        const id = item._id || item.id;
-        await storeOfflineData(entityType, id, item);
-      }
-    }
-    
-    // Also cache the list endpoint
-    await cacheApiResponse(`/api/v1/${entityType}`, { success: true, data });
   }
 
   // Get data with offline support
   async getData(endpoint, entityType, params = {}) {
-    // Try to get from network first
-    if (this.offlineManager.isOnline) {
+    // Try network first
+    if (this.isOnline) {
       try {
-        const response = await api.get(endpoint, { params });
-        if (response?.data) {
-          // Cache the response
-          await cacheApiResponse(endpoint, response.data);
-          return response.data;
+        const response = await api.get(endpoint, { params })
+        if (response?.success && response.data) {
+          // Cache successful response
+          await cacheApiResponse(endpoint, { success: true, data: response.data })
+          return response.data
         }
       } catch (error) {
-        console.warn(`[SyncManager] Network request failed for ${endpoint}, using cache`);
+        console.warn(`[SyncManager] Network failed for ${endpoint}, using cache`)
       }
     }
     
-    // Fall back to cached data
-    const cached = await getCachedApiResponse(endpoint);
-    if (cached) {
-      return cached.data;
+    // Fall back to cache
+    const cached = await getCachedApiResponse(endpoint)
+    if (cached?.data) {
+      console.log(`[SyncManager] 📦 Using cached data for ${endpoint}`)
+      return cached.data
     }
     
-    // Fall back to offline stored data
-    const offlineData = await getAllOfflineData(entityType);
+    // Fall back to offline store
+    const offlineData = await getAllOfflineData(entityType)
     if (offlineData.length > 0) {
-      return { success: true, data: offlineData };
+      console.log(`[SyncManager] 📦 Using offline data for ${entityType}`)
+      return Array.isArray(offlineData) ? offlineData : [offlineData]
     }
     
-    return { success: false, message: 'No data available offline' };
+    return null
   }
 
   // Save data with offline support
-  async saveData(method, endpoint, entityType, data, entityId = null) {
-    if (this.offlineManager.isOnline) {
+  async saveData(method, endpoint, entityType, data) {
+    // Try online first
+    if (this.isOnline) {
       try {
-        let response;
-        if (method === 'POST') {
-          response = await api.post(endpoint, data);
-        } else if (method === 'PUT') {
-          response = await api.put(endpoint, data);
-        } else if (method === 'DELETE') {
-          response = await api.delete(endpoint);
-        }
+        let response
+        if (method === 'POST') response = await api.post(endpoint, data)
+        else if (method === 'PUT') response = await api.put(endpoint, data)
+        else if (method === 'DELETE') response = await api.delete(endpoint)
         
-        if (response?.data) {
-          // Update cache
-          if (entityId) {
-            await storeOfflineData(entityType, entityId, data);
-          }
-          return response.data;
+        if (response?.success) {
+          return response.data || { success: true }
         }
       } catch (error) {
-        console.warn(`[SyncManager] Online save failed, saving offline`);
+        // If online save fails with network error, queue for sync
+        if (error?.status === 0 || error?.offline) {
+          console.warn('[SyncManager] Network error, queuing for sync')
+        } else {
+          // Server returned an error, don't queue
+          throw error
+        }
       }
     }
     
-    // Save offline
-    if (entityId) {
-      await storeOfflineData(entityType, entityId, data);
-    }
+    // ✅ Queue the operation in IndexedDB for later sync
+    await addToSyncQueue({
+      url: `${api.defaults.baseURL}${endpoint}`,
+      method: method.toUpperCase(),
+      headers: { 'Content-Type': 'application/json' },
+      body: data,
+      entityType: entityType,
+    })
     
-    // Add to sync queue
-    const syncData = {
-      action: method === 'POST' ? 'create' : method === 'PUT' ? 'update' : 'delete',
-      entityType,
-      data,
-      entityId,
-      timestamp: Date.now(),
-    };
+    console.log(`[SyncManager] 📝 Queued ${method} ${endpoint} for sync`)
     
-    const allPending = await getOfflineData('syncQueue', 'all') || [];
-    allPending.push({
-      id: Date.now().toString(),
-      ...syncData,
-      synced: false,
-    });
-    await storeOfflineData('syncQueue', 'all', allPending);
-    
-    return { success: true, queued: true, message: 'Saved offline' };
+    return { success: true, queued: true, message: 'Saved offline. Will sync when connection is restored.' }
+  }
+
+  // Get pending sync count
+  async getPendingCount() {
+    const items = await getPendingSyncItems()
+    return items.length
   }
 }
 
-let instance = null;
+let instance = null
 
 export const getSyncManager = () => {
   if (!instance) {
-    instance = new SyncManager();
+    instance = new SyncManager()
   }
-  return instance;
-};
+  return instance
+}
 
-export default getSyncManager;
+export default getSyncManager
