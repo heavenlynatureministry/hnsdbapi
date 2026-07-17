@@ -307,7 +307,7 @@ async def mark_attendance(
     if not cid:
         raise HTTPException(status_code=400, detail="Invalid class ID")
     
-    # ✅ Auto-calculate academic year and term if not provided
+    # Auto-calculate academic year and term if not provided
     if not academic_year:
         academic_year = _get_current_academic_year()
     
@@ -326,8 +326,8 @@ async def mark_attendance(
                 {"$set": {
                     "status": record.get("status", "present"),
                     "notes": record.get("notes", ""),
-                    "academic_year": academic_year,  # ✅ Save academic year
-                    "term": term,                     # ✅ Save term
+                    "academic_year": academic_year,
+                    "term": term,
                     "recorded_by": current_user.get("_id"),
                     "updated_at": datetime.utcnow()
                 }},
@@ -349,7 +349,7 @@ async def generate_attendance_report(
     request: Request,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Generate attendance report"""
+    """Generate attendance report - supports academic_year/term and month filtering"""
     db = get_database()
     
     try:
@@ -358,6 +358,8 @@ async def generate_attendance_report(
         body = {}
     
     class_id = body.get("class_id")
+    academic_year = body.get("academic_year", "")
+    term = body.get("term", "")
     month = body.get("month", datetime.utcnow().strftime("%Y-%m"))
     
     filter_query = {}
@@ -365,15 +367,32 @@ async def generate_attendance_report(
         cid = _safe_objectid(class_id)
         if cid:
             filter_query["class_id"] = cid
-        else:
-            raise HTTPException(status_code=400, detail="Invalid class ID")
     
-    # Filter by month (date starts with YYYY-MM)
-    filter_query["date"] = {"$regex": f"^{month}"}
+    # Filter by academic_year and term if provided
+    if academic_year:
+        filter_query["academic_year"] = academic_year
+    if term:
+        filter_query["term"] = term
+    
+    # Fall back to month-based filtering if no academic_year/term
+    if not academic_year and not term:
+        filter_query["date"] = {"$regex": f"^{month}"}
     
     records = await db.attendance.find(filter_query).to_list(length=None)
     records = [parse_mongo_document(r) for r in records]
     
+    # Calculate overall stats
+    total = len(records)
+    status_summary = {"present": 0, "absent": 0, "excused": 0, "late": 0}
+    for r in records:
+        s = r.get("status", "unmarked")
+        if s in status_summary:
+            status_summary[s] += 1
+    
+    present_count = status_summary["present"] + status_summary["late"]
+    attendance_rate = round((present_count / total * 100), 1) if total > 0 else 0
+    
+    # Daily breakdown
     daily_stats = {}
     for record in records:
         rec_date = record.get("date", "")
@@ -383,10 +402,10 @@ async def generate_attendance_report(
         daily_stats[rec_date][status] = daily_stats[rec_date].get(status, 0) + 1
         daily_stats[rec_date]["total"] += 1
     
-    report = []
+    daily_report = []
     for rec_date, stats in sorted(daily_stats.items()):
         rate = round((stats["present"] + stats["late"]) / stats["total"] * 100, 1) if stats["total"] > 0 else 0
-        report.append({
+        daily_report.append({
             "date": rec_date,
             "present": stats["present"],
             "absent": stats["absent"],
@@ -400,8 +419,14 @@ async def generate_attendance_report(
         "success": True, "message": "Report generated",
         "data": {
             "month": month,
-            "total_records": len(records),
-            "daily_report": report
+            "academic_year": academic_year,
+            "term": term,
+            "total_records": total,
+            "status_summary": status_summary,
+            "attendance_rate": attendance_rate,
+            "present_count": present_count,
+            "absent_count": status_summary["absent"],
+            "daily_report": daily_report
         }
     }
 
@@ -508,7 +533,6 @@ async def attendance_heatmap(
         "current_class_id": cid, "status": "active"
     }).to_list(length=None)
     
-    # Build heatmap data: { student_name: { date: status } }
     heatmap = {}
     for student in students:
         sid = str(student["_id"])
