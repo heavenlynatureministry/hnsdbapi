@@ -2,7 +2,7 @@
  * Export Academic Report Card to Print/PDF
  * Supports Portrait & Landscape for both Single Term & Annual Report Cards
  * Uses letter-head.jpg inside template border + ReportCardWM.jpg as full-page background
- * All content fits on ONE A4 page - Guaranteed single-page print
+ * All content fits on ONE A4 page - Guaranteed single-page print (all browsers)
  *
  * Replace the existing file at: frontend/src/utils/exportReportCard.js
  */
@@ -46,10 +46,10 @@ function finishAndPrint(win) {
   win.document.close()
   const images = win.document.images
   let loadedCount = 0; const totalImages = images.length
-  if (totalImages === 0) { setTimeout(() => { win.focus(); win.print() }, 500); return }
-  function checkAllLoaded() { loadedCount++; if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 400) } }
+  if (totalImages === 0) { setTimeout(() => { win.focus(); win.print() }, 600); return }
+  function checkAllLoaded() { loadedCount++; if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 500) } }
   for (let i = 0; i < images.length; i++) { if (images[i].complete) { loadedCount++ } else { images[i].onload = checkAllLoaded; images[i].onerror = checkAllLoaded } }
-  if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 500) }
+  if (loadedCount >= totalImages) { setTimeout(() => { win.focus(); win.print() }, 600) }
 }
 
 function esc(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
@@ -57,18 +57,64 @@ function getRemark(grade) { const m = { A: 'Excellent', B: 'Very Good', C: 'Good
 function getUniqueSubjects(t1, t2, t3) { const s = new Set(); [t1, t2, t3].forEach(t => (t?.subjects || []).forEach(x => { if (x.name) s.add(x.name) })); return [...s] }
 
 // =========================================================================
-// BASE CSS
+// BASE CSS - Cross-browser single page print
 // =========================================================================
 const BASE_CSS = `
-  @page { size: A4; margin: 0; }
+  @page { size: A4 portrait; margin: 0; }
   @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; width: 100%; height: 100%; }
+    html, body { 
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+      margin: 0 !important; 
+      padding: 0 !important; 
+      background: white !important;
+      width: 100% !important;
+      height: 100% !important;
+      overflow: hidden !important;
+      -webkit-transform: none !important;
+      transform: none !important;
+    }
     .no-print { display: none !important; }
-    .page-wrapper { page-break-after: avoid; page-break-inside: avoid; }
-    .page { page-break-after: avoid; page-break-inside: avoid; }
+    
+    /* Prevent everything from breaking across pages */
+    .page-wrapper, .page, .content { 
+      page-break-after: avoid !important; 
+      page-break-inside: avoid !important;
+      page-break-before: avoid !important;
+      break-after: avoid !important;
+      break-inside: avoid !important;
+      break-before: avoid !important;
+    }
+    .content > * { 
+      page-break-inside: avoid !important; 
+      break-inside: avoid !important; 
+    }
+    .letterhead, .title, .subtitle, .info-grid, .info-item,
+    table, table thead, table tbody, table tr, table td, table th,
+    .summary-table, .summary-table tr, .summary-table td,
+    .summary-section, .remarks-section, .verify-section,
+    .signatures, .sig-box, .next-term, .footer,
+    .section-divider, .annual-summary, .balance-section, .amount-section {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+    
+    /* Force background colors to print */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   }
+  
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Georgia', 'Times New Roman', serif; font-size: 12px; color: #1a1a1a; background: #e5e7eb; padding: 8px; line-height: 1.45; }
+  body { 
+    font-family: 'Georgia', 'Times New Roman', serif; 
+    font-size: 12px; 
+    color: #1a1a1a; 
+    background: #e5e7eb; 
+    padding: 8px; 
+    line-height: 1.45; 
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   .page-wrapper { margin: 0 auto; }
   .page { position: relative; background: transparent; }
   .watermark { position: absolute; inset: 0; z-index: 0; }
@@ -153,8 +199,7 @@ function buildSingleTerm(student, results, term, year, school, letterhead, wm, v
       <img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
       <div class="letterhead-fallback"><h2 style="font-size:14px;">${esc(school?.name||'School Name')}</h2><p style="font-size:9px;"><em>"${esc(school?.motto||'')}"</em></p></div>
     </div>
-    <div class="title">ACADEMIC REPORT CARD</div>
-    <div class="subtitle">${esc(term)} &bull; ${esc(year)}</div>
+    <div class="title">ACADEMIC REPORT CARD</div><div class="subtitle">${esc(term)} &bull; ${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
       <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
