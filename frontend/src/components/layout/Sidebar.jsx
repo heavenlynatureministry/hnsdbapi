@@ -41,6 +41,7 @@ const menuItems = [
     items: [
       { path: '/reports', label: 'Reports', icon: FileSpreadsheet, roles: ['admin', 'teacher', 'accountant'] },
       { path: '/school/events', label: 'Events', icon: Calendar, roles: ['admin'] },
+      { path: '/school/board', label: 'Board Members', icon: Users, roles: ['admin'] },
       { path: '/school/info', label: 'School Info', icon: BookOpen, roles: ['admin'] },
     ],
   },
