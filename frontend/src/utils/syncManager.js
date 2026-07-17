@@ -3,7 +3,7 @@
  * Uses the same IndexedDB sync queue as offlineManager
  */
 
-import api from '../../api/axios'
+import api from '../api/axios'
 import { getOfflineManager } from './offlineManager'
 import { 
   cacheApiResponse, 
