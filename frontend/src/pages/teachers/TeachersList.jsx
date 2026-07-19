@@ -85,7 +85,7 @@ function TeachersList() {
     try {
       let allTeachers = []
       let currentPage = 1
-      const batchLimit = 200
+      const batchLimit = 100
       let hasMore = true
       
       // Fetch all pages
