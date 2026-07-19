@@ -79,29 +79,43 @@ function TeachersList() {
     fetchTeachers()
   }, [fetchTeachers])
 
-  // ✅ Export teachers to CSV
+  // ✅ Export teachers to CSV - fetch in batches to respect API limit (max 200)
   const handleExportCSV = async () => {
     setExporting(true)
     try {
-      // Fetch all teachers (no pagination limit)
-      const response = await teachersAPI.getAll({
-        search: search || undefined,
-        status: statusFilter || undefined,
-        limit: 5000,
-      })
+      let allTeachers = []
+      let currentPage = 1
+      const batchLimit = 200
+      let hasMore = true
       
-      const data = response?.data || response
-      const allTeachers = data?.teachers || data || []
-      const safeTeachers = Array.isArray(allTeachers) ? allTeachers : []
+      // Fetch all pages
+      while (hasMore) {
+        const response = await teachersAPI.getAll({
+          search: search || undefined,
+          status: statusFilter || undefined,
+          page: currentPage,
+          limit: batchLimit,
+        })
+        
+        const data = response?.data || response
+        const batch = data?.teachers || data || []
+        const safeBatch = Array.isArray(batch) ? batch : []
+        
+        allTeachers = [...allTeachers, ...safeBatch]
+        
+        const totalPages = data?.total_pages || Math.ceil((data?.total || 0) / batchLimit)
+        hasMore = currentPage < totalPages
+        currentPage++
+      }
       
-      if (safeTeachers.length === 0) {
+      if (allTeachers.length === 0) {
         toast.error('No teachers to export')
         return
       }
       
       // Build CSV
       const headers = ['First Name', 'Last Name', 'Employee ID', 'Email', 'Phone', 'Qualification', 'Specialization', 'Subjects', 'Status', 'Hire Date', 'Experience (Years)']
-      const rows = safeTeachers.map(t => [
+      const rows = allTeachers.map(t => [
         `"${(t.first_name || '').replace(/"/g, '""')}"`,
         `"${(t.last_name || '').replace(/"/g, '""')}"`,
         `"${t.employee_id || ''}"`,
@@ -126,7 +140,7 @@ function TeachersList() {
       link.click()
       URL.revokeObjectURL(url)
       
-      toast.success(`Exported ${safeTeachers.length} teachers`)
+      toast.success(`Exported ${allTeachers.length} teachers`)
     } catch (error) {
       console.error('Export failed:', error)
       toast.error('Failed to export teachers')
