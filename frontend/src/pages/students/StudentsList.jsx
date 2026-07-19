@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import studentsAPI from '../../api/students'
+import api from '../../api/axios'
 import PageHeader from '../../components/common/PageHeader'
 import SearchBar from '../../components/common/SearchBar'
 import Pagination from '../../components/common/Pagination'
@@ -12,7 +13,7 @@ import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { 
   GraduationCap, UserPlus, Upload, Search, 
   MoreVertical, Eye, Edit, UserCheck, ArrowUpRight,
-  Users, School, BookOpen, Trash2
+  Users, School, BookOpen, Trash2, Download
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -30,6 +31,7 @@ function StudentsList() {
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [openDropdown, setOpenDropdown] = useState(null)
+  const [exporting, setExporting] = useState(false)
   const limit = 20
 
   // Delete confirmation
@@ -81,11 +83,65 @@ function StudentsList() {
     fetchStudents()
   }, [fetchStudents])
 
+  // ✅ Export students to CSV
+  const handleExportCSV = async () => {
+    setExporting(true)
+    try {
+      // Fetch all students (no pagination limit)
+      const response = await studentsAPI.getAll({
+        search: search || undefined,
+        class_id: classFilter || undefined,
+        status: statusFilter || 'active',
+        limit: 5000,
+      })
+      
+      const data = response?.data || response
+      const allStudents = data?.students || data?.items || data || []
+      const safeStudents = Array.isArray(allStudents) ? allStudents : []
+      
+      if (safeStudents.length === 0) {
+        toast.error('No students to export')
+        return
+      }
+      
+      // Build CSV
+      const headers = ['First Name', 'Last Name', 'ID Number', 'Gender', 'Age', 'Class', 'Type', 'Status', 'Enrollment Date']
+      const rows = safeStudents.map(s => [
+        `"${(s.first_name || '').replace(/"/g, '""')}"`,
+        `"${(s.last_name || '').replace(/"/g, '""')}"`,
+        `"${s.student_id_number || s.student_id || ''}"`,
+        s.gender || '',
+        s.age || '',
+        `"${(s.class_name || '').replace(/"/g, '""')}"`,
+        s.student_type || '',
+        s.status || '',
+        s.enrollment_date ? new Date(s.enrollment_date).toLocaleDateString() : '',
+      ])
+      
+      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+      
+      // Download
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `students_export_${new Date().toISOString().split('T')[0]}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+      
+      toast.success(`Exported ${safeStudents.length} students`)
+    } catch (error) {
+      console.error('Export failed:', error)
+      toast.error('Failed to export students')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handlePermanentDelete = async () => {
     if (!deleteStudent) return
     try {
-      const response = await studentsAPI.delete(deleteStudent._id, 'Permanently deleted by admin')
-      // Also try permanent delete
+      await studentsAPI.delete(deleteStudent._id, 'Permanently deleted by admin')
       try {
         await api.delete(`/students/${deleteStudent._id}/permanent`)
       } catch (e) {
@@ -133,6 +189,9 @@ function StudentsList() {
         subtitle={`${total} total students`}
         actions={
           <div className="flex gap-2">
+            <button onClick={handleExportCSV} disabled={exporting} className="btn btn-secondary">
+              <Download size={18} /> {exporting ? 'Exporting...' : 'Export CSV'}
+            </button>
             <Link to="/students/import" className="btn btn-secondary">
               <Upload size={18} /> Import
             </Link>
