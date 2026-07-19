@@ -19,9 +19,8 @@ function VerifyReport() {
     setLoading(true)
     setError('')
     try {
-      // ✅ Use the PUBLIC verification endpoint (no auth required)
-      const API_URL = import.meta.env.VITE_API_URL || 'https://hns-api.onrender.com'
-      const response = await fetch(`${API_URL}/verify-report/${id}`)
+      // ✅ Use the PUBLIC verification endpoint at root level (no /api/v1 prefix)
+      const response = await fetch(`https://hns-api.onrender.com/verify-report/${id}`)
       const data = await response.json()
       
       if (data?.success && data?.data) {
