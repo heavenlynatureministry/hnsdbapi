@@ -1,5 +1,5 @@
 // Service Worker for HNS School Management System
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `hns-cache-${CACHE_VERSION}`;
 const STATIC_CACHE = `hns-static-${CACHE_VERSION}`;
 const API_CACHE = `hns-api-${CACHE_VERSION}`;
@@ -28,17 +28,21 @@ const API_ROUTES = [
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing Service Worker...');
+  console.log('[SW] Installing Service Worker v2...');
   event.waitUntil(
     Promise.all([
       caches.open(STATIC_CACHE).then((cache) => {
-        return cache.addAll(STATIC_ASSETS);
+        return cache.addAll(STATIC_ASSETS).catch(err => {
+          console.warn('[SW] Some assets failed to cache:', err);
+        });
       }),
       caches.open(IMAGE_CACHE).then((cache) => {
         return cache.addAll([
           '/watermark-A4.jpg',
           '/letter-head.jpg',
-        ]);
+        ]).catch(err => {
+          console.warn('[SW] Some images failed to cache:', err);
+        });
       }),
     ]).then(() => {
       console.log('[SW] Static assets cached');
@@ -49,7 +53,7 @@ self.addEventListener('install', (event) => {
 
 // Activate event - clean old caches
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating Service Worker...');
+  console.log('[SW] Activating Service Worker v2...');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -75,9 +79,8 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
+  // Skip non-GET requests (let them pass through to network)
   if (request.method !== 'GET') {
-    // For POST/PUT/DELETE, try network first
     if (!navigator.onLine) {
       // Queue the request for later sync
       event.respondWith(
@@ -93,28 +96,50 @@ self.addEventListener('fetch', (event) => {
         })
       );
     }
+    // If online, let the request go through normally
     return;
   }
 
-  // Handle API requests
+  // ✅ Don't cache API requests - let them pass through for fresh data
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(handleApiRequest(request));
+    // Network-only for API requests (no caching to avoid stale data)
+    event.respondWith(
+      fetch(request).catch(() => {
+        // Only serve from cache if offline
+        return caches.match(request).then(cached => {
+          if (cached) return cached;
+          return new Response(JSON.stringify({ 
+            success: false, 
+            message: 'You are offline. This data is not available offline.' 
+          }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        });
+      })
+    );
     return;
   }
 
-  // Handle static assets
+  // Handle static assets (cache-first)
   if (STATIC_ASSETS.includes(url.pathname)) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
     return;
   }
 
-  // Handle images
+  // Handle images (cache-first)
   if (url.pathname.match(/\.(jpg|jpeg|png|gif|svg|ico)$/)) {
     event.respondWith(cacheFirst(request, IMAGE_CACHE));
     return;
   }
 
-  // Handle other requests (React app)
+  // ✅ For JS/CSS assets (the React app), use network-first with fresh fetch
+  if (url.pathname.match(/\.(js|css)$/)) {
+    event.respondWith(networkFirst(request, CACHE_NAME));
+    return;
+  }
+
+  // Handle navigation requests (React app) - network first
   event.respondWith(networkFirst(request, CACHE_NAME));
 });
 
@@ -132,7 +157,6 @@ async function cacheFirst(request, cacheName) {
     }
     return networkResponse;
   } catch (error) {
-    // Return offline page for navigation requests
     if (request.mode === 'navigate') {
       return caches.match('/offline.html');
     }
@@ -144,6 +168,7 @@ async function cacheFirst(request, cacheName) {
 async function networkFirst(request, cacheName) {
   try {
     const networkResponse = await fetch(request);
+    // ✅ Only cache successful responses
     if (networkResponse.ok) {
       const cache = await caches.open(cacheName);
       cache.put(request, networkResponse.clone());
@@ -161,50 +186,10 @@ async function networkFirst(request, cacheName) {
   }
 }
 
-// Handle API requests with caching
-async function handleApiRequest(request) {
-  const url = new URL(request.url);
-  
-  // Cache API responses
-  try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      const cache = await caches.open(API_CACHE);
-      cache.put(request, networkResponse.clone());
-      
-      // Store in IndexedDB for offline access
-      storeApiResponse(url.pathname, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch (error) {
-    // Try cache first
-    const cachedResponse = await caches.match(request);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-    
-    // Try IndexedDB
-    const dbResponse = await getStoredApiResponse(url.pathname);
-    if (dbResponse) {
-      return new Response(JSON.stringify(dbResponse), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    
-    return new Response(JSON.stringify({ 
-      success: false, 
-      message: 'You are offline. This data is not available offline.' 
-    }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-}
-
-// Store API response in IndexedDB
+// Store API response in IndexedDB (for offline reference only)
 async function storeApiResponse(path, response) {
   try {
-    const data = await response.json();
+    const data = await response.clone().json();
     const db = await openOfflineDB();
     const tx = db.transaction('apiCache', 'readwrite');
     const store = tx.objectStore('apiCache');
@@ -216,7 +201,7 @@ async function storeApiResponse(path, response) {
     });
     await tx.complete;
   } catch (error) {
-    console.error('[SW] Error storing API response:', error);
+    // Silently fail - API caching is optional
   }
 }
 
@@ -229,7 +214,6 @@ async function getStoredApiResponse(path) {
     const result = await store.get(path);
     return result?.data || null;
   } catch (error) {
-    console.error('[SW] Error getting stored response:', error);
     return null;
   }
 }
@@ -253,7 +237,6 @@ async function queueOfflineRequest(request) {
     });
     await tx.complete;
     
-    // Register background sync if supported
     if ('sync' in self.registration) {
       await self.registration.sync.register('sync-pending');
     }
@@ -265,7 +248,7 @@ async function queueOfflineRequest(request) {
 // Open IndexedDB
 function openOfflineDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('HNSOfflineDB', 1);
+    const request = indexedDB.open('HNSOfflineDB', 3);
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
       if (!db.objectStoreNames.contains('apiCache')) {
@@ -280,6 +263,9 @@ function openOfflineDB() {
       }
       if (!db.objectStoreNames.contains('offlineData')) {
         db.createObjectStore('offlineData', { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains('userData')) {
+        db.createObjectStore('userData', { keyPath: 'key' });
       }
     };
     request.onsuccess = (event) => resolve(event.target.result);
@@ -300,8 +286,12 @@ async function syncPendingRequests() {
   const db = await openOfflineDB();
   const tx = db.transaction('syncQueue', 'readwrite');
   const store = tx.objectStore('syncQueue');
-  const index = store.index('synced');
-  const pendingRequests = await index.getAll(false);
+  const allItems = await new Promise((resolve, reject) => {
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  const pendingRequests = allItems.filter(item => !item.synced);
   
   for (const request of pendingRequests) {
     try {
@@ -313,19 +303,43 @@ async function syncPendingRequests() {
       
       if (response.ok) {
         request.synced = true;
-        await store.put(request);
+        await new Promise((resolve, reject) => {
+          const req = store.put(request);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
         console.log('[SW] Synced:', request.url);
       } else {
-        request.retryCount++;
-        await store.put(request);
+        request.retryCount = (request.retryCount || 0) + 1;
+        if (request.retryCount > 5) {
+          await new Promise((resolve, reject) => {
+            const req = store.delete(request.id);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+          });
+        } else {
+          await new Promise((resolve, reject) => {
+            const req = store.put(request);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+          });
+        }
       }
     } catch (error) {
-      console.error('[SW] Sync failed for:', request.url, error);
-      request.retryCount++;
+      console.error('[SW] Sync failed for:', request.url);
+      request.retryCount = (request.retryCount || 0) + 1;
       if (request.retryCount > 5) {
-        await store.delete(request.id);
+        await new Promise((resolve, reject) => {
+          const req = store.delete(request.id);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
       } else {
-        await store.put(request);
+        await new Promise((resolve, reject) => {
+          const req = store.put(request);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
       }
     }
   }
@@ -334,9 +348,12 @@ async function syncPendingRequests() {
   console.log('[SW] Background sync complete');
 }
 
-// Listen for online/offline events
+// Listen for messages from the main thread
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SYNC_NOW') {
     syncPendingRequests();
+  }
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
   }
 });
