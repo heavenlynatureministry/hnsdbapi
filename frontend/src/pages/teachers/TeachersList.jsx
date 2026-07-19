@@ -13,7 +13,7 @@ import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { 
   Users, UserPlus, Search, Mail, Phone, BookOpen, 
   MoreVertical, Edit, Eye, BarChart3, GraduationCap,
-  UserCheck, Clock, Trash2
+  UserCheck, Clock, Trash2, Download
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -29,6 +29,7 @@ function TeachersList() {
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [openDropdown, setOpenDropdown] = useState(null)
+  const [exporting, setExporting] = useState(false)
   const limit = 20
 
   // Delete confirmation
@@ -78,6 +79,62 @@ function TeachersList() {
     fetchTeachers()
   }, [fetchTeachers])
 
+  // ✅ Export teachers to CSV
+  const handleExportCSV = async () => {
+    setExporting(true)
+    try {
+      // Fetch all teachers (no pagination limit)
+      const response = await teachersAPI.getAll({
+        search: search || undefined,
+        status: statusFilter || undefined,
+        limit: 5000,
+      })
+      
+      const data = response?.data || response
+      const allTeachers = data?.teachers || data || []
+      const safeTeachers = Array.isArray(allTeachers) ? allTeachers : []
+      
+      if (safeTeachers.length === 0) {
+        toast.error('No teachers to export')
+        return
+      }
+      
+      // Build CSV
+      const headers = ['First Name', 'Last Name', 'Employee ID', 'Email', 'Phone', 'Qualification', 'Specialization', 'Subjects', 'Status', 'Hire Date', 'Experience (Years)']
+      const rows = safeTeachers.map(t => [
+        `"${(t.first_name || '').replace(/"/g, '""')}"`,
+        `"${(t.last_name || '').replace(/"/g, '""')}"`,
+        `"${t.employee_id || ''}"`,
+        `"${(t.email || '').replace(/"/g, '""')}"`,
+        `"${t.phone_number || t.phone || ''}"`,
+        `"${(t.qualification || '').replace(/"/g, '""')}"`,
+        `"${(t.specialization || '').replace(/"/g, '""')}"`,
+        `"${Array.isArray(t.subjects) ? t.subjects.join('; ') : ''}"`,
+        t.status || '',
+        t.hire_date ? new Date(t.hire_date).toLocaleDateString() : '',
+        t.years_of_experience || '',
+      ])
+      
+      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+      
+      // Download
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `teachers_export_${new Date().toISOString().split('T')[0]}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+      
+      toast.success(`Exported ${safeTeachers.length} teachers`)
+    } catch (error) {
+      console.error('Export failed:', error)
+      toast.error('Failed to export teachers')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handlePermanentDelete = async () => {
     if (!deleteTeacher) return
     try {
@@ -120,10 +177,15 @@ function TeachersList() {
         title="Teachers Management"
         subtitle={`${total} total teachers`}
         actions={
-          <Link to="/teachers/new" className="btn btn-primary">
-            <UserPlus size={18} />
-            Add Teacher
-          </Link>
+          <div className="flex gap-2">
+            <button onClick={handleExportCSV} disabled={exporting} className="btn btn-secondary">
+              <Download size={18} /> {exporting ? 'Exporting...' : 'Export CSV'}
+            </button>
+            <Link to="/teachers/new" className="btn btn-primary">
+              <UserPlus size={18} />
+              Add Teacher
+            </Link>
+          </div>
         }
       />
 
