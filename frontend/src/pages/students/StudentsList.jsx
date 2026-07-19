@@ -83,30 +83,44 @@ function StudentsList() {
     fetchStudents()
   }, [fetchStudents])
 
-  // ✅ Export students to CSV
+  // ✅ Export students to CSV - fetch in batches to respect API limit (max 200)
   const handleExportCSV = async () => {
     setExporting(true)
     try {
-      // Fetch all students (no pagination limit)
-      const response = await studentsAPI.getAll({
-        search: search || undefined,
-        class_id: classFilter || undefined,
-        status: statusFilter || 'active',
-        limit: 5000,
-      })
+      let allStudents = []
+      let currentPage = 1
+      const batchLimit = 200
+      let hasMore = true
       
-      const data = response?.data || response
-      const allStudents = data?.students || data?.items || data || []
-      const safeStudents = Array.isArray(allStudents) ? allStudents : []
+      // Fetch all pages
+      while (hasMore) {
+        const response = await studentsAPI.getAll({
+          search: search || undefined,
+          class_id: classFilter || undefined,
+          status: statusFilter || 'active',
+          page: currentPage,
+          limit: batchLimit,
+        })
+        
+        const data = response?.data || response
+        const batch = data?.students || data?.items || data || []
+        const safeBatch = Array.isArray(batch) ? batch : []
+        
+        allStudents = [...allStudents, ...safeBatch]
+        
+        const totalPages = data?.total_pages || Math.ceil((data?.total || 0) / batchLimit)
+        hasMore = currentPage < totalPages
+        currentPage++
+      }
       
-      if (safeStudents.length === 0) {
+      if (allStudents.length === 0) {
         toast.error('No students to export')
         return
       }
       
       // Build CSV
       const headers = ['First Name', 'Last Name', 'ID Number', 'Gender', 'Age', 'Class', 'Type', 'Status', 'Enrollment Date']
-      const rows = safeStudents.map(s => [
+      const rows = allStudents.map(s => [
         `"${(s.first_name || '').replace(/"/g, '""')}"`,
         `"${(s.last_name || '').replace(/"/g, '""')}"`,
         `"${s.student_id_number || s.student_id || ''}"`,
@@ -129,7 +143,7 @@ function StudentsList() {
       link.click()
       URL.revokeObjectURL(url)
       
-      toast.success(`Exported ${safeStudents.length} students`)
+      toast.success(`Exported ${allStudents.length} students`)
     } catch (error) {
       console.error('Export failed:', error)
       toast.error('Failed to export students')
