@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Shield, CheckCircle, XCircle, ArrowLeft, Home } from 'lucide-react'
 
+// ✅ Graduating classes that receive Certificates (not Report Cards)
+const GRADUATING_CLASSES = ['N3', 'P7', 'P8', 'S4']
+
 function VerifyReport() {
   const { studentId } = useParams()
   const [loading, setLoading] = useState(true)
@@ -9,6 +12,7 @@ function VerifyReport() {
   const [student, setStudent] = useState(null)
   const [results, setResults] = useState(null)
   const [error, setError] = useState('')
+  const [isCertificate, setIsCertificate] = useState(false)
 
   useEffect(() => {
     if (studentId) {
@@ -20,16 +24,20 @@ function VerifyReport() {
     setLoading(true)
     setError('')
     try {
-      // ✅ Use the PUBLIC verification endpoint at root level (no /api/v1 prefix)
       const response = await fetch(`https://hns-api.onrender.com/verify-report/${id}`)
       const data = await response.json()
       
       if (data?.success && data?.data) {
         setValid(true)
+        const className = data.data.student?.class_name || ''
+        // ✅ Check if this is a graduating class → Certificate, otherwise Report Card
+        const isGrad = GRADUATING_CLASSES.some(c => className.toUpperCase().includes(c))
+        setIsCertificate(isGrad)
+        
         setStudent({
           student_name: data.data.student?.name || 'N/A',
           student_id: data.data.student?.student_id || id,
-          class_name: data.data.student?.class_name || 'N/A',
+          class_name: className,
           status: data.data.student?.status || 'active',
           school_name: data.data.school?.name || 'Heavenly Nature Nursery & Primary School',
           verified_at: data.data.verified_at || new Date().toISOString(),
@@ -43,7 +51,7 @@ function VerifyReport() {
         setError('Student not found in our system.')
       } else {
         setValid(false)
-        setError(data?.message || 'Could not verify report card.')
+        setError(data?.message || 'Could not verify.')
       }
     } catch (error) {
       console.error('Verification error:', error)
@@ -59,25 +67,27 @@ function VerifyReport() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Verifying report card...</p>
+          <p className="text-gray-600 dark:text-gray-400">Verifying...</p>
         </div>
       </div>
     )
   }
 
-  const getGradeBadge = (grade) => {
-    const colors = {
-      A: 'bg-green-100 text-green-700', B: 'bg-blue-100 text-blue-700',
-      C: 'bg-yellow-100 text-yellow-700', D: 'bg-orange-100 text-orange-700',
-      F: 'bg-red-100 text-red-700'
-    }
-    return colors[grade] || 'bg-gray-100 text-gray-700'
-  }
+  // ✅ Dynamic labels based on certificate vs report card
+  const verificationTitle = isCertificate ? 'Certificate Verification' : 'Report Card Verification'
+  const verifiedTitle = isCertificate ? '✅ Certificate Verified' : '✅ Report Card Verified'
+  const invalidTitle = isCertificate ? '❌ Invalid Certificate' : '❌ Invalid Report Card'
+  const validMessage = isCertificate 
+    ? `This is a valid certificate issued by ${student?.school_name || 'Heavenly Nature Nursery & Primary School'}.`
+    : `This is a valid report card issued by ${student?.school_name || 'Heavenly Nature Nursery & Primary School'}.`
+  const invalidMessage = isCertificate
+    ? 'This certificate could not be verified. The ID may be invalid or the record may not exist.'
+    : 'This report card could not be verified. The student ID may be invalid or the record may not exist.'
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
       <div className="max-w-lg w-full">
-        {/* School Header - Logo only, no subtitle */}
+        {/* School Header - Logo only */}
         <div className="text-center mb-6">
           <img 
             src="/letter-head.jpg" 
@@ -87,7 +97,7 @@ function VerifyReport() {
             onError={(e) => { e.target.style.display = 'none' }}
           />
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-            Certificate Verification
+            {verificationTitle}
           </h1>
         </div>
 
@@ -107,7 +117,7 @@ function VerifyReport() {
             )}
             
             <h2 className={`text-lg font-bold ${valid ? 'text-green-700' : 'text-red-700'}`}>
-              {valid ? '✅ Certificate Verified' : '❌ Invalid Certificate'}
+              {valid ? verifiedTitle : invalidTitle}
             </h2>
           </div>
 
@@ -128,8 +138,14 @@ function VerifyReport() {
                   <span className="font-medium">{student.class_name}</span>
                 </div>
               )}
+              {isCertificate && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Award:</span>
+                  <span className="font-medium text-green-600">Certificate of Nursery Education</span>
+                </div>
+              )}
 
-              {/* Results Section */}
+              {/* Academic Results Section */}
               {results?.academic_summary && Object.keys(results.academic_summary).length > 0 && (
                 <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
                   <p className="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Academic Results</p>
@@ -173,9 +189,9 @@ function VerifyReport() {
 
           <div className="text-center text-sm text-gray-500 dark:text-gray-400 mb-4">
             {valid ? (
-              <p>This is a valid certificate issued by {student?.school_name || 'Heavenly Nature Nursery & Primary School'}.</p>
+              <p>{validMessage}</p>
             ) : (
-              <p>{error || 'This certificate could not be verified. The ID may be invalid or the record may not exist.'}</p>
+              <p>{error || invalidMessage}</p>
             )}
           </div>
 
