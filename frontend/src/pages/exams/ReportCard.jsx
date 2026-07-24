@@ -13,6 +13,7 @@ import EmptyState from '../../components/common/EmptyState'
 import { ArrowLeft, Download, Printer, GraduationCap, CheckCircle, XCircle, Calendar, FileText, Shield, ExternalLink } from 'lucide-react'
 import { exportToPDF } from '../../utils/exportPDF'
 import { exportReportCard, exportAnnualReportCard } from '../../utils/exportReportCard'
+import { exportNurseryCertificate } from '../../utils/exportNurseryCertificate'
 import toast from 'react-hot-toast'
 
 function getCurrentAcademicYear() {
@@ -186,25 +187,32 @@ function ReportCard() {
     }
   }
 
+  // ✅ Print handlers with Nursery Certificate support
   const handlePrint = () => {
     if (reportType === 'term' && reportCard) {
       exportReportCard({
-        student: reportCard.student,
-        results: reportCard.results,
-        term: reportCard.term,
-        academic_year: reportCard.academic_year,
-        school: reportCard.school,
-        verify_url: reportCard.verify_url,
+        student: reportCard.student, results: reportCard.results,
+        term: reportCard.term, academic_year: reportCard.academic_year,
+        school: reportCard.school, verify_url: reportCard.verify_url,
       }, 'portrait')
     } else if (reportType === 'annual' && annualReport) {
-      exportAnnualReportCard({
-        student: annualReport.student,
-        term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
-        annual_summary: annualReport.annual_summary,
-        academic_year: annualReport.academic_year,
-        school: annualReport.school,
-        verify_url: annualReport.verify_url,
-      }, 'portrait')
+      if (isNursery) {
+        exportNurseryCertificate({
+          student: annualReport.student,
+          term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
+          annual_summary: annualReport.annual_summary,
+          academic_year: annualReport.academic_year,
+          school: annualReport.school, verify_url: annualReport.verify_url,
+        })
+      } else {
+        exportAnnualReportCard({
+          student: annualReport.student,
+          term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
+          annual_summary: annualReport.annual_summary,
+          academic_year: annualReport.academic_year,
+          school: annualReport.school, verify_url: annualReport.verify_url,
+        }, 'portrait')
+      }
     }
   }
 
@@ -230,23 +238,45 @@ function ReportCard() {
 
   const handlePrintAnnualPortrait = () => {
     if (annualReport) {
-      exportAnnualReportCard({
-        student: annualReport.student, term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
-        annual_summary: annualReport.annual_summary,
-        academic_year: annualReport.academic_year,
-        school: annualReport.school, verify_url: annualReport.verify_url,
-      }, 'portrait')
+      if (isNursery) {
+        exportNurseryCertificate({
+          student: annualReport.student,
+          term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
+          annual_summary: annualReport.annual_summary,
+          academic_year: annualReport.academic_year,
+          school: annualReport.school, verify_url: annualReport.verify_url,
+        })
+      } else {
+        exportAnnualReportCard({
+          student: annualReport.student,
+          term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
+          annual_summary: annualReport.annual_summary,
+          academic_year: annualReport.academic_year,
+          school: annualReport.school, verify_url: annualReport.verify_url,
+        }, 'portrait')
+      }
     }
   }
 
   const handlePrintAnnualLandscape = () => {
     if (annualReport) {
-      exportAnnualReportCard({
-        student: annualReport.student, term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
-        annual_summary: annualReport.annual_summary,
-        academic_year: annualReport.academic_year,
-        school: annualReport.school, verify_url: annualReport.verify_url,
-      }, 'landscape')
+      if (isNursery) {
+        exportNurseryCertificate({
+          student: annualReport.student,
+          term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
+          annual_summary: annualReport.annual_summary,
+          academic_year: annualReport.academic_year,
+          school: annualReport.school, verify_url: annualReport.verify_url,
+        })
+      } else {
+        exportAnnualReportCard({
+          student: annualReport.student,
+          term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
+          annual_summary: annualReport.annual_summary,
+          academic_year: annualReport.academic_year,
+          school: annualReport.school, verify_url: annualReport.verify_url,
+        }, 'landscape')
+      }
     }
   }
 
