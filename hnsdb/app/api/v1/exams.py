@@ -97,6 +97,14 @@ def _get_next_class_name(class_name: str) -> str:
     return f"Next Level after {class_name}"
 
 
+def _is_nursery_class(class_name: str) -> bool:
+    """Check if class is a nursery/graduating class (N3, P7, S4)."""
+    if not class_name:
+        return False
+    graduating = ["N3", "P7", "P8", "S4"]
+    return class_name.upper() in graduating
+
+
 async def _calculate_position(db, student_oid, class_id, overall_percentage, term, academic_year) -> tuple:
     """Calculate student's position in class. Returns (position, out_of)."""
     try:
@@ -144,29 +152,21 @@ async def _get_student_attendance(db, student_oid, term, academic_year) -> dict:
     attendance_total = 0
     attendance_present = 0
     
-    # Try with exact term/academic_year match
     records = await db.attendance.find({
-        "student_id": student_oid,
-        "term": term,
-        "academic_year": academic_year
+        "student_id": student_oid, "term": term, "academic_year": academic_year
     }).to_list(length=None)
     
-    # If no records, try without term filter
     if not records:
         records = await db.attendance.find({
-            "student_id": student_oid,
-            "academic_year": academic_year
+            "student_id": student_oid, "academic_year": academic_year
         }).to_list(length=None)
     
-    # If still no records, try date-based matching
     if not records:
         year_start = academic_year.split('/')[0] if '/' in academic_year else academic_year
         records = await db.attendance.find({
-            "student_id": student_oid,
-            "date": {"$regex": f"^{year_start}"}
+            "student_id": student_oid, "date": {"$regex": f"^{year_start}"}
         }).to_list(length=None)
     
-    # Final fallback: all records
     if not records:
         records = await db.attendance.find({
             "student_id": student_oid
@@ -244,26 +244,19 @@ async def get_grading_systems(current_user: Dict[str, Any] = Depends(get_current
 
 
 @router.get("/{exam_id}")
-async def get_exam(
-    exam_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def get_exam(exam_id: str = Path(...), current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get exam details"""
     db = get_database()
     obj_id = _safe_objectid(exam_id)
     if not obj_id: raise HTTPException(status_code=400, detail="Invalid exam ID")
     exam = await db.exams.find_one({"_id": obj_id})
     if not exam: raise HTTPException(status_code=404, detail="Exam not found")
-    exam = parse_mongo_document(exam)
-    return {"success": True, "message": "Exam retrieved", "data": exam}
+    return {"success": True, "message": "Exam retrieved", "data": parse_mongo_document(exam)}
 
 
 @router.post("")
 @router.post("/")
-async def create_exam(
-    request: Request,
-    current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))
-):
+async def create_exam(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))):
     """Create an exam"""
     db = get_database()
     try: body = await request.json()
@@ -315,11 +308,7 @@ async def create_exam(
 
 
 @router.put("/{exam_id}")
-async def update_exam(
-    exam_id: str = Path(...),
-    request: Request = None,
-    current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))
-):
+async def update_exam(exam_id: str = Path(...), request: Request = None, current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))):
     """Update exam"""
     db = get_database()
     obj_id = _safe_objectid(exam_id)
@@ -327,17 +316,12 @@ async def update_exam(
     try: body = await request.json()
     except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
     if not body: raise HTTPException(status_code=400, detail="No fields to update")
-    
     for key in ["_id", "id", "created_at", "created_by"]: body.pop(key, None)
     if body.get("class_id"):
-        cid = _safe_objectid(body["class_id"])
-        if cid: body["class_id"] = cid
-        else: body.pop("class_id")
+        cid = _safe_objectid(body["class_id"]); body["class_id"] = cid if cid else body.pop("class_id")
     if body.get("subject_id"):
-        sid = _safe_objectid(body["subject_id"])
-        if sid: body["subject_id"] = sid
+        sid = _safe_objectid(body["subject_id"]); body["subject_id"] = sid if sid else None
     body["updated_at"] = datetime.utcnow()
-    
     try:
         result = await db.exams.find_one_and_update({"_id": obj_id}, {"$set": body}, return_document=True)
         if not result: raise HTTPException(status_code=404, detail="Exam not found")
@@ -347,10 +331,7 @@ async def update_exam(
 
 
 @router.delete("/{exam_id}")
-async def cancel_exam(
-    exam_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(require_role("admin"))
-):
+async def cancel_exam(exam_id: str = Path(...), current_user: Dict[str, Any] = Depends(require_role("admin"))):
     """Cancel an exam (soft delete)"""
     db = get_database()
     obj_id = _safe_objectid(exam_id)
@@ -361,10 +342,7 @@ async def cancel_exam(
 
 
 @router.delete("/{exam_id}/permanent")
-async def permanently_delete_exam(
-    exam_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(require_role("admin"))
-):
+async def permanently_delete_exam(exam_id: str = Path(...), current_user: Dict[str, Any] = Depends(require_role("admin"))):
     """Permanently delete an exam and all its results"""
     db = get_database()
     obj_id = _safe_objectid(exam_id)
@@ -391,10 +369,7 @@ async def permanently_delete_exam(
 # =========================================================================
 
 @router.post("/report-cards/generate")
-async def generate_report_card(
-    request: Request,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def generate_report_card(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Generate student report card for a single term"""
     db = get_database()
     try: body = await request.json()
@@ -403,11 +378,9 @@ async def generate_report_card(
     student_id = body.get("student_id")
     term = body.get("term", "Term 1")
     academic_year = body.get("academic_year") or _get_current_academic_year()
-    
     if not student_id: raise HTTPException(status_code=400, detail="Student ID is required")
     
-    sid = _safe_objectid(student_id)
-    student = None
+    sid = _safe_objectid(student_id); student = None
     if sid: student = await db.students.find_one({"_id": sid})
     if not student:
         student = await db.students.find_one({
@@ -449,32 +422,27 @@ async def generate_report_card(
     subjects_list = []; total_score = 0; total_max = 0
     for name, data in subject_results.items():
         percentage = (data["score"] / data["max_score"] * 100) if data["max_score"] > 0 else 0
-        data["percentage"] = round(percentage, 1)
-        data["grade"] = _calculate_grade(percentage)
+        data["percentage"] = round(percentage, 1); data["grade"] = _calculate_grade(percentage)
         data["score"] = round(data["score"], 1)
-        subjects_list.append(data)
-        total_score += data["score"]; total_max += data["max_score"]
+        subjects_list.append(data); total_score += data["score"]; total_max += data["max_score"]
     
     overall_percentage = round((total_score / total_max * 100), 1) if total_max > 0 else 0
     overall_grade = _calculate_grade(overall_percentage)
     
     school = await db.school_info.find_one({}) or {}
-    
-    # ✅ Fixed: Flexible attendance query with fallbacks
     attendance_data = await _get_student_attendance(db, student_oid, term, academic_year)
     
-    # Auto-calculate position
     position = body.get("position"); out_of = body.get("out_of")
     if not position and class_id:
         position, out_of = await _calculate_position(db, student_oid, class_id, overall_percentage, term, academic_year)
     if not position: position = "N/A"
     if not out_of: out_of = "N/A"
     
-    # Auto-generate remarks
     remarks = body.get("remarks", "")
     if not remarks: remarks = _generate_remarks(overall_percentage, is_annual=False)
     
     verify_url = f"https://hnsdbapi.vercel.app/verify-report/{student_id_number}"
+    is_nursery = _is_nursery_class(class_name)
     
     return {
         "success": True, "message": "Report card generated",
@@ -488,7 +456,7 @@ async def generate_report_card(
                 "remarks": remarks, "conduct": body.get("conduct", "Good")
             },
             "term": term, "academic_year": academic_year, "verify_url": verify_url,
-            "attendance": attendance_data,
+            "attendance": attendance_data, "is_nursery": is_nursery,
             "school": {
                 "name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
                 "address": school.get("address", ""), "phone": school.get("phone", ""),
@@ -500,10 +468,7 @@ async def generate_report_card(
 
 
 @router.post("/report-cards/annual")
-async def generate_annual_report_card(
-    request: Request,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def generate_annual_report_card(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Generate annual report card with all 3 terms"""
     db = get_database()
     try: body = await request.json()
@@ -513,8 +478,7 @@ async def generate_annual_report_card(
     academic_year = body.get("academic_year") or _get_current_academic_year()
     if not student_id: raise HTTPException(status_code=400, detail="Student ID is required")
     
-    sid = _safe_objectid(student_id)
-    student = None
+    sid = _safe_objectid(student_id); student = None
     if sid: student = await db.students.find_one({"_id": sid})
     if not student:
         student = await db.students.find_one({
@@ -534,6 +498,8 @@ async def generate_annual_report_card(
             if cls: class_name = cls.get("class_name", "")
         except Exception: pass
     
+    is_nursery = _is_nursery_class(class_name)
+    
     all_results = await db.exam_results.find({"student_id": student_oid}).to_list(length=None)
     exam_ids = list(set([r["exam_id"] for r in all_results if r.get("exam_id")]))
     exams = await db.exams.find({"_id": {"$in": exam_ids}}).to_list(length=None) if exam_ids else []
@@ -544,7 +510,6 @@ async def generate_annual_report_card(
     async def build_term_results(term_name):
         term_results = [r for r in all_results if r.get("term") == term_name or exam_map.get(str(r.get("exam_id", "")), {}).get("term") == term_name]
         if not term_results: return None
-        
         subject_results = {}
         for r in term_results:
             exam = exam_map.get(str(r.get("exam_id", "")), {})
@@ -553,25 +518,19 @@ async def generate_annual_report_card(
                 subject_results[subject_name] = {"name": subject_name, "score": 0, "max_score": 0}
             subject_results[subject_name]["score"] += float(r.get("score", 0))
             subject_results[subject_name]["max_score"] += float(exam.get("max_score", 100))
-        
         subjects_list = []; total_score = 0; total_max = 0
         for name, data in subject_results.items():
             percentage = (data["score"] / data["max_score"] * 100) if data["max_score"] > 0 else 0
             data["percentage"] = round(percentage, 1); data["grade"] = _calculate_grade(percentage)
             data["score"] = round(data["score"], 1)
-            subjects_list.append(data)
-            total_score += data["score"]; total_max += data["max_score"]
-        
+            subjects_list.append(data); total_score += data["score"]; total_max += data["max_score"]
         overall_percentage = round((total_score / total_max * 100), 1) if total_max > 0 else 0
-        
         term_position = get_body_value(f"position_{term_name.lower().replace(' ', '_')}")
         term_out_of = get_body_value(f"out_of_{term_name.lower().replace(' ', '_')}")
         if not term_position and class_id:
             term_position, term_out_of = await _calculate_position(db, student_oid, class_id, overall_percentage, term_name, academic_year)
-        
         term_remarks = get_body_value(f"remarks_{term_name.lower().replace(' ', '_')}", "")
         if not term_remarks: term_remarks = _generate_remarks(overall_percentage, is_annual=False)
-        
         return {
             "subjects": subjects_list, "total_score": total_score, "total_max": total_max,
             "percentage": overall_percentage, "grade": _calculate_grade(overall_percentage),
@@ -589,7 +548,6 @@ async def generate_annual_report_card(
     if term1_data: all_term_percentages.append(term1_data["percentage"])
     if term2_data: all_term_percentages.append(term2_data["percentage"])
     if term3_data: all_term_percentages.append(term3_data["percentage"])
-    
     annual_average = round(sum(all_term_percentages) / len(all_term_percentages), 1) if all_term_percentages else 0
     
     annual_remarks = body.get("annual_remarks", "")
@@ -616,6 +574,7 @@ async def generate_annual_report_card(
                 "promotion_status": "Promoted" if annual_average >= 50 else "Repeat"
             },
             "academic_year": academic_year, "verify_url": verify_url,
+            "is_nursery": is_nursery,
             "school": {
                 "name": school.get("school_name", "Heavenly Nature Nursery & Primary School"),
                 "address": school.get("address", ""), "phone": school.get("phone", ""),
@@ -631,10 +590,7 @@ async def generate_annual_report_card(
 # =========================================================================
 
 @router.get("/results/{exam_id}")
-async def get_results(
-    exam_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def get_results(exam_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get exam results with student list for results entry"""
     db = get_database()
     obj_id = _safe_objectid(exam_id)
@@ -645,8 +601,7 @@ async def get_results(
     existing_results = await db.exam_results.find({"exam_id": obj_id}).to_list(length=None)
     existing_results = [parse_mongo_document(r) for r in existing_results]
     
-    class_id = exam.get("class_id")
-    students = []
+    class_id = exam.get("class_id"); students = []
     if class_id:
         students = await db.students.find({"current_class_id": class_id, "status": "active"}).to_list(length=None)
         students = [parse_mongo_document(s) for s in students]
@@ -682,10 +637,7 @@ async def get_results(
 
 
 @router.delete("/results/{exam_id}")
-async def delete_exam_results(
-    exam_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(require_role("admin"))
-):
+async def delete_exam_results(exam_id: str = Path(...), current_user: Dict[str, Any] = Depends(require_role("admin"))):
     """Delete all results for an exam"""
     db = get_database()
     obj_id = _safe_objectid(exam_id)
@@ -696,35 +648,25 @@ async def delete_exam_results(
 
 
 @router.post("/results/bulk")
-async def bulk_record_results(
-    request: Request,
-    current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))
-):
+async def bulk_record_results(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))):
     """Bulk record exam results"""
     return await record_results(request, current_user)
 
 
 @router.post("/results")
-async def record_results(
-    request: Request,
-    current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))
-):
+async def record_results(request: Request, current_user: Dict[str, Any] = Depends(require_role("admin", "teacher"))):
     """Record exam results"""
     db = get_database()
     try: body = await request.json()
     except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
-    
     exam_id = body.get("exam_id", ""); results = body.get("results", [])
     if not exam_id or not results: raise HTTPException(status_code=400, detail="exam_id and results are required")
-    
     eid = _safe_objectid(exam_id)
     if not eid: raise HTTPException(status_code=400, detail="Invalid exam ID")
     exam = await db.exams.find_one({"_id": eid})
     if not exam: raise HTTPException(status_code=404, detail="Exam not found")
-    
     max_score = exam.get("max_score", 100); pass_mark = exam.get("pass_mark", 50)
     term = exam.get("term", ""); academic_year = exam.get("academic_year", "")
-    
     successful = 0
     for r in results:
         try:
@@ -735,34 +677,24 @@ async def record_results(
             if not student_id: continue
             await db.exam_results.update_one(
                 {"exam_id": eid, "student_id": student_id},
-                {"$set": {
-                    "score": score, "grade": grade, "percentage": round(percentage, 2),
+                {"$set": {"score": score, "grade": grade, "percentage": round(percentage, 2),
                     "is_passed": score >= pass_mark, "remarks": r.get("remarks", ""),
                     "term": term, "academic_year": academic_year,
-                    "recorded_by": _safe_objectid(current_user.get("_id")),
-                    "updated_at": datetime.utcnow()
-                }}, upsert=True
-            )
+                    "recorded_by": _safe_objectid(current_user.get("_id")), "updated_at": datetime.utcnow()}
+                }, upsert=True)
             successful += 1
         except Exception as e: print(f"Error recording result: {e}")
-    
     total_results = await db.exam_results.count_documents({"exam_id": eid})
     await db.exams.update_one({"_id": eid}, {"$set": {"results_entered": total_results, "status": "completed", "updated_at": datetime.utcnow()}})
     return {"success": True, "message": f"Recorded {successful} results"}
 
 
 @router.get("/student/{student_id}")
-async def get_student_results(
-    student_id: str,
-    academic_year: Optional[str] = Query(None),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def get_student_results(student_id: str, academic_year: Optional[str] = Query(None), current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get exam results for a student"""
     db = get_database()
-    sid = _safe_objectid(student_id)
-    student = None; student_oid = None
-    if sid:
-        student = await db.students.find_one({"_id": sid}); student_oid = sid
+    sid = _safe_objectid(student_id); student = None; student_oid = None
+    if sid: student = await db.students.find_one({"_id": sid}); student_oid = sid
     if not student:
         student = await db.students.find_one({
             "$or": [{"student_id": student_id}, {"student_id_number": student_id},
@@ -770,7 +702,6 @@ async def get_student_results(
         })
         if student: student_oid = student.get("_id")
     if not student_oid: raise HTTPException(status_code=404, detail="Student not found")
-    
     filter_query = {"student_id": student_oid}
     if academic_year: filter_query["academic_year"] = academic_year
     results = await db.exam_results.find(filter_query).to_list(length=None)
