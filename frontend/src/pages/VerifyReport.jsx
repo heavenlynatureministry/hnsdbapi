@@ -7,6 +7,7 @@ function VerifyReport() {
   const [loading, setLoading] = useState(true)
   const [valid, setValid] = useState(false)
   const [student, setStudent] = useState(null)
+  const [results, setResults] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -27,11 +28,15 @@ function VerifyReport() {
         setValid(true)
         setStudent({
           student_name: data.data.student?.name || 'N/A',
+          student_id: data.data.student?.student_id || id,
           class_name: data.data.student?.class_name || 'N/A',
+          status: data.data.student?.status || 'active',
+          school_name: data.data.school?.name || 'Heavenly Nature Nursery & Primary School',
+          verified_at: data.data.verified_at || new Date().toISOString(),
+        })
+        setResults({
           academic_summary: data.data.academic_summary || {},
           total_exams: data.data.total_exams || 0,
-          school_name: data.data.school?.name || '',
-          verified_at: data.data.verified_at || new Date().toISOString(),
         })
       } else if (response.status === 404) {
         setValid(false)
@@ -60,22 +65,30 @@ function VerifyReport() {
     )
   }
 
+  const getGradeBadge = (grade) => {
+    const colors = {
+      A: 'bg-green-100 text-green-700', B: 'bg-blue-100 text-blue-700',
+      C: 'bg-yellow-100 text-yellow-700', D: 'bg-orange-100 text-orange-700',
+      F: 'bg-red-100 text-red-700'
+    }
+    return colors[grade] || 'bg-gray-100 text-gray-700'
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
-      <div className="max-w-md w-full">
-        {/* School Header */}
+      <div className="max-w-lg w-full">
+        {/* School Header - Logo only, no subtitle */}
         <div className="text-center mb-6">
           <img 
             src="/letter-head.jpg" 
             alt="School Letterhead" 
-            className="max-w-full h-auto mx-auto mb-4"
+            className="max-w-full h-auto mx-auto mb-2"
             style={{ maxHeight: '80px' }}
             onError={(e) => { e.target.style.display = 'none' }}
           />
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            Heavenly Nature Nursery & Primary School
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+            Certificate Verification
           </h1>
-          <p className="text-sm text-gray-500">Report Card Verification</p>
         </div>
 
         {/* Verification Result */}
@@ -94,19 +107,20 @@ function VerifyReport() {
             )}
             
             <h2 className={`text-lg font-bold ${valid ? 'text-green-700' : 'text-red-700'}`}>
-              {valid ? '✅ Report Card Verified' : '❌ Invalid Report Card'}
+              {valid ? '✅ Certificate Verified' : '❌ Invalid Certificate'}
             </h2>
           </div>
 
           {valid && student && (
             <div className="space-y-3 mb-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              {/* Student Details */}
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Student Name:</span>
+                <span className="text-gray-500">Name:</span>
                 <span className="font-medium">{student.student_name}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Student ID:</span>
-                <span className="font-medium font-mono">{studentId}</span>
+                <span className="text-gray-500">Pupil's ID:</span>
+                <span className="font-medium font-mono">{student.student_id}</span>
               </div>
               {student.class_name && (
                 <div className="flex justify-between text-sm">
@@ -114,21 +128,44 @@ function VerifyReport() {
                   <span className="font-medium">{student.class_name}</span>
                 </div>
               )}
-              {student.total_exams > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Exams Taken:</span>
-                  <span className="font-medium">{student.total_exams}</span>
-                </div>
-              )}
-              {student.academic_summary && Object.keys(student.academic_summary).length > 0 && (
-                <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-                  <p className="text-xs text-gray-500 mb-1 font-medium">Term Summary:</p>
-                  {Object.entries(student.academic_summary).map(([term, data]) => (
-                    <div key={term} className="flex justify-between text-xs text-gray-500">
-                      <span>{term}:</span>
-                      <span>{data.subjects} subjects | {data.passed} passed</span>
-                    </div>
-                  ))}
+
+              {/* Results Section */}
+              {results?.academic_summary && Object.keys(results.academic_summary).length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                  <p className="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Academic Results</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100 dark:bg-gray-600">
+                          <th className="p-2 text-left border-b">Term</th>
+                          <th className="p-2 text-center border-b">Subjects</th>
+                          <th className="p-2 text-center border-b">Passed</th>
+                          <th className="p-2 text-center border-b">Failed</th>
+                          <th className="p-2 text-center border-b">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(results.academic_summary).map(([term, data]) => (
+                          <tr key={term} className="border-b border-gray-200 dark:border-gray-600">
+                            <td className="p-2 font-medium">{term}</td>
+                            <td className="p-2 text-center">{data.subjects || 0}</td>
+                            <td className="p-2 text-center text-green-600 font-medium">{data.passed || 0}</td>
+                            <td className="p-2 text-center text-red-600 font-medium">{data.failed || 0}</td>
+                            <td className="p-2 text-center">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                (data.failed || 0) === 0 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {(data.failed || 0) === 0 ? 'Pass' : 'Partial'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {results.total_exams > 0 && (
+                    <p className="text-xs text-gray-400 mt-2">Total Exams: {results.total_exams}</p>
+                  )}
                 </div>
               )}
             </div>
@@ -136,15 +173,15 @@ function VerifyReport() {
 
           <div className="text-center text-sm text-gray-500 dark:text-gray-400 mb-4">
             {valid ? (
-              <p>This is a valid report card issued by {student?.school_name || 'Heavenly Nature Nursery & Primary School'}.</p>
+              <p>This is a valid certificate issued by {student?.school_name || 'Heavenly Nature Nursery & Primary School'}.</p>
             ) : (
-              <p>{error || 'This report card could not be verified. The student ID may be invalid or the record may not exist.'}</p>
+              <p>{error || 'This certificate could not be verified. The ID may be invalid or the record may not exist.'}</p>
             )}
           </div>
 
           <div className="text-center text-xs text-gray-400">
             <p>Verified at: {student?.verified_at ? new Date(student.verified_at).toLocaleString() : new Date().toLocaleString()}</p>
-            <p>Verification ID: {studentId}</p>
+            <p className="font-mono">Verification ID: {studentId}</p>
           </div>
         </div>
 
