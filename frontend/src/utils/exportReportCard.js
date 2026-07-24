@@ -1,10 +1,8 @@
 /**
  * Export Academic Report Card to Print/PDF
- * Supports Portrait & Landscape for both Single Term & Annual Report Cards
+ * Supports Portrait & Landscape for Single Term, Annual, and Nursery Certificate
  * Uses letter-head.jpg inside template border + ReportCardWM.jpg as full-page background
  * All content fits on ONE A4 page - Guaranteed single-page print (all browsers)
- *
- * Replace the existing file at: frontend/src/utils/exportReportCard.js
  */
 
 // =========================================================================
@@ -57,7 +55,7 @@ function getRemark(grade) { const m = { A: 'Excellent', B: 'Very Good', C: 'Good
 function getUniqueSubjects(t1, t2, t3) { const s = new Set(); [t1, t2, t3].forEach(t => (t?.subjects || []).forEach(x => { if (x.name) s.add(x.name) })); return [...s] }
 
 // =========================================================================
-// BASE CSS - Cross-browser single page print
+// BASE CSS
 // =========================================================================
 const BASE_CSS = `
   @page { size: A4 portrait; margin: 0; }
@@ -66,54 +64,27 @@ const BASE_CSS = `
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-adjust: exact !important;
-      margin: 0 !important; 
-      padding: 0 !important; 
+      margin: 0 !important; padding: 0 !important; 
       background: white !important;
-      width: 100% !important;
-      height: 100% !important;
+      width: 100% !important; height: 100% !important;
       overflow: hidden !important;
-      -webkit-transform: none !important;
-      transform: none !important;
+      -webkit-transform: none !important; transform: none !important;
     }
     .no-print { display: none !important; }
-    
-    /* Prevent everything from breaking across pages */
     .page-wrapper, .page, .content { 
-      page-break-after: avoid !important; 
-      page-break-inside: avoid !important;
-      page-break-before: avoid !important;
-      break-after: avoid !important;
-      break-inside: avoid !important;
-      break-before: avoid !important;
+      page-break-after: avoid !important; page-break-inside: avoid !important; page-break-before: avoid !important;
+      break-after: avoid !important; break-inside: avoid !important; break-before: avoid !important;
     }
-    .content > * { 
-      page-break-inside: avoid !important; 
-      break-inside: avoid !important; 
-    }
-    .letterhead, .title, .subtitle, .info-grid, .info-item,
-    table, table thead, table tbody, table tr, table td, table th,
-    .summary-table, .summary-table tr, .summary-table td,
-    .summary-section, .remarks-section, .verify-section,
-    .signatures, .sig-box, .next-term, .footer,
-    .section-divider, .annual-summary, .balance-section, .amount-section {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    
-    /* Force background colors to print */
+    .content > * { page-break-inside: avoid !important; break-inside: avoid !important; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   }
   
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { 
     font-family: 'Georgia', 'Times New Roman', serif; 
-    font-size: 12px; 
-    color: #1a1a1a; 
-    background: #e5e7eb; 
-    padding: 8px; 
-    line-height: 1.45; 
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    font-size: 13px; color: #1a1a1a; background: #e5e7eb; 
+    padding: 8px; line-height: 1.5; 
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .page-wrapper { margin: 0 auto; }
   .page { position: relative; background: transparent; }
@@ -122,60 +93,58 @@ const BASE_CSS = `
   .content { position: absolute; inset: 0; z-index: 5; background: transparent; display: flex; flex-direction: column; }
   .spacer { flex: 1 1 auto; min-height: 4px; }
   
-  .letterhead { text-align: center; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px double #1a56db; flex-shrink: 0; }
+  .letterhead { text-align: center; margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px double #1a56db; flex-shrink: 0; }
   .letterhead img { width: 100%; height: auto; display: block; }
   .letterhead-fallback { display: none; text-align: center; padding: 1mm 0; }
   
-  .title { text-align: center; font-size: 15px; font-weight: bold; margin: 6px 0 3px; text-transform: uppercase; letter-spacing: 3px; color: #1a3a6b; flex-shrink: 0; }
-  .subtitle { text-align: center; font-size: 11px; margin-bottom: 6px; color: #555; flex-shrink: 0; }
+  .title { text-align: center; font-size: 16px; font-weight: bold; margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 4px; color: #1a3a6b; flex-shrink: 0; }
+  .subtitle { text-align: center; font-size: 12px; margin-bottom: 8px; color: #555; flex-shrink: 0; }
   
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 6px; font-size: 12px; padding: 4px 8px; background: transparent; flex-shrink: 0; }
-  .info-item { display: flex; align-items: center; padding: 1px 0; }
-  .info-label { font-weight: bold; width: 68px; font-size: 10px; color: #444; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom: 8px; font-size: 13px; padding: 5px 10px; background: transparent; flex-shrink: 0; }
+  .info-item { display: flex; align-items: center; padding: 2px 0; }
+  .info-label { font-weight: bold; width: 72px; font-size: 11px; color: #444; }
   
-  .section-divider { height: 12px; flex-shrink: 0; border-bottom: 1px solid #ddd; margin-bottom: 6px; }
+  .section-spacer { height: 4mm; flex-shrink: 0; }
+  .section-divider { height: 4mm; flex-shrink: 0; border-bottom: 1px solid #ddd; margin-bottom: 3mm; }
 
-  table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 12px; flex-shrink: 0; }
-  th { background: rgba(20,60,140,0.92); color: #fff; padding: 4px 6px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+  table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 13px; flex-shrink: 0; }
+  th { background: rgba(20,60,140,0.92); color: #fff; padding: 5px 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
   th.center { text-align: center; }
-  td { padding: 3px 6px; border-bottom: 1px solid #bbb; font-size: 12px; }
+  td { padding: 4px 8px; border-bottom: 1px solid #bbb; font-size: 13px; }
   td.center { text-align: center; }
   tr:nth-child(even) { background: rgba(248,249,250,0.5); }
-  .total-row { font-weight: bold; background: rgba(26,86,219,0.12)!important; font-size: 13px; }
-  .total-row td { padding: 4px 6px; border-top: 2px solid #1a56db; }
+  .total-row { font-weight: bold; background: rgba(26,86,219,0.12)!important; font-size: 14px; }
+  .total-row td { padding: 5px 8px; border-top: 2px solid #1a56db; }
   
-  .summary-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 11px; flex-shrink: 0; }
+  .summary-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 12px; flex-shrink: 0; }
   .summary-table td { padding: 3px 8px; border-bottom: 1px dotted #ccc; }
-  .summary-table td.label { font-weight: bold; width: 35%; color: #444; font-size: 10px; }
-  .summary-table td.value { text-align: right; font-weight: bold; font-size: 11px; }
+  .summary-table td.label { font-weight: bold; width: 35%; color: #444; font-size: 11px; }
+  .summary-table td.value { text-align: right; font-weight: bold; font-size: 12px; }
   .summary-table tr:last-child td { border-bottom: none; }
   
-  .remarks-section { margin-top: 6px; padding: 4px 8px; font-size: 11px; background: transparent; min-height: 28px; flex-shrink: 0; }
-  .remarks-section p { margin-top: 3px; line-height: 1.3; }
+  .remarks-section { margin-top: 5px; padding: 6px 10px; font-size: 12px; background: transparent; min-height: 32px; flex-shrink: 0; line-height: 1.5; }
+  .remarks-section p { margin-top: 4px; line-height: 1.5; }
   
-  .verify-section { margin-top: 4px; padding: 3px 8px; background: transparent; text-align: center; font-size: 9px; flex-shrink: 0; }
-  .verify-link { font-family: 'Courier New',monospace; font-weight: bold; color: #1a56db; word-break: break-all; font-size: 10px; }
-  
-  .signatures { display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; padding: 0 8px; flex-shrink: 0; }
+  .signatures { display: flex; justify-content: space-between; margin-top: 12px; font-size: 12px; padding: 0 10px; flex-shrink: 0; }
   .sig-box { text-align: center; width: 40%; }
-  .sig-line { border-bottom: 1.5px solid #000; margin-bottom: 3px; height: 18px; }
+  .sig-line { border-bottom: 1.5px solid #000; margin-bottom: 4px; height: 20px; }
   
-  .next-term { text-align: center; font-size: 9px; margin-top: 4px; color: #555; font-weight: bold; flex-shrink: 0; }
-  .footer { text-align: center; font-size: 8px; margin-top: 3px; padding-top: 3px; border-top: 1px solid #bbb; color: #666; flex-shrink: 0; }
+  .next-term { text-align: center; font-size: 10px; margin-top: 6px; color: #555; font-weight: bold; flex-shrink: 0; }
+  .footer { text-align: center; font-size: 9px; margin-top: 4px; padding-top: 4px; border-top: 1px solid #bbb; color: #666; flex-shrink: 0; line-height: 1.4; }
   
   .pass { color: #059669; font-weight: bold; }
   .fail { color: #dc2626; font-weight: bold; }
   .promoted { color: #059669; font-weight: bold; }
   .repeat { color: #dc2626; font-weight: bold; }
   
-  .print-toolbar { text-align: center; padding: 8px; margin-top: 10px; background: #f0f0f0; border-radius: 6px; }
-  .btn { padding: 9px 18px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; margin: 2px; }
+  .print-toolbar { text-align: center; padding: 10px; margin-top: 12px; background: #f0f0f0; border-radius: 8px; }
+  .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; margin: 3px; }
   .btn-print { background: #2563eb; color: #fff; }
   .btn-close { background: #6b7280; color: #fff; }
 `
 
-const PORTRAIT_PAGE = `.page-wrapper{width:210mm}.page{width:210mm;height:297mm;max-height:297mm;overflow:hidden}.content{padding:14mm 12mm 10mm 12mm;height:100%;overflow:hidden}`
-const LANDSCAPE_PAGE = `.page-wrapper{width:297mm}.page{width:297mm;height:210mm;max-height:210mm;overflow:hidden}.content{padding:10mm 12mm 8mm 12mm;height:100%;overflow:hidden}`
+const PORTRAIT_PAGE = `.page-wrapper{width:210mm}.page{width:210mm;height:297mm;max-height:297mm;overflow:hidden}.content{padding:16mm 14mm 14mm 14mm;height:100%;overflow:hidden}`
+const LANDSCAPE_PAGE = `.page-wrapper{width:297mm}.page{width:297mm;height:210mm;max-height:210mm;overflow:hidden}.content{padding:12mm 14mm 10mm 14mm;height:100%;overflow:hidden}`
 
 // =========================================================================
 // SINGLE-TERM REPORT
@@ -197,9 +166,10 @@ function buildSingleTerm(student, results, term, year, school, letterhead, wm, v
   <div class="content">
     <div class="letterhead">
       <img src="${esc(letterhead)}" alt="School Letterhead" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <div class="letterhead-fallback"><h2 style="font-size:14px;">${esc(school?.name||'School Name')}</h2><p style="font-size:9px;"><em>"${esc(school?.motto||'')}"</em></p></div>
+      <div class="letterhead-fallback"><h2 style="font-size:15px;">${esc(school?.name||'School Name')}</h2><p style="font-size:10px;"><em>"${esc(school?.motto||'')}"</em></p></div>
     </div>
-    <div class="title">ACADEMIC REPORT CARD</div><div class="subtitle">${esc(term)} &bull; ${esc(year)}</div>
+    <div class="title">ACADEMIC REPORT CARD</div>
+    <div class="subtitle">${esc(term)} &bull; ${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
       <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
@@ -211,23 +181,22 @@ function buildSingleTerm(student, results, term, year, school, letterhead, wm, v
       ${subjects.map(s=>`<tr><td><strong>${esc(s.name||s.subject)}</strong></td><td class="center">${s.score||0}</td><td>${getRemark(s.grade)}</td></tr>`).join('')}
       <tr class="total-row"><td><strong>TOTAL</strong></td><td class="center"><strong>${total}</strong></td><td class="${cls}"><strong>${pass.toUpperCase()}</strong></td></tr>
     </tbody></table>
-    <div class="section-divider"></div>
+    <div class="section-spacer"></div>
     <table class="summary-table">
       <tr><td class="label">Percentage:</td><td class="value">${pct}%</td></tr>
       <tr><td class="label">Position:</td><td class="value">${esc(results?.position||'N/A')}</td></tr>
       <tr><td class="label">Out of:</td><td class="value">${esc(results?.out_of||'N/A')}</td></tr>
       <tr><td class="label">Result:</td><td class="value ${cls}">${pass}</td></tr>
     </table>
-    <div class="section-divider"></div>
+    <div class="section-spacer"></div>
     <div class="remarks-section"><strong>Director of Studies' Remarks:</strong><p>${esc(results?.remarks)||'________________________________'}</p></div>
     <div class="spacer"></div>
     <div class="section-divider"></div>
-    ${verify?`<div class="verify-section"><strong>🔒 Verify:</strong> <span class="verify-link">${esc(verify)}</span></div>`:''}
     <div class="signatures">
       <div class="sig-box"><div class="sig-line"></div><strong>Director of Studies</strong></div>
       <div class="sig-box"><div class="sig-line"></div><strong>Head Teacher</strong></div>
     </div>
-    <div class="section-divider"></div>
+    <div class="section-spacer"></div>
     <div class="next-term"><strong>Next Academic Year:</strong> January ${parseInt(year?.split('/')[1]||new Date().getFullYear()+1)}</div>
     <div class="footer"><p>${esc(school?.name||'School')} | ${esc(year)} | Computer-generated Report Card</p>${verify?`<p style="color:#1a56db;">Verify: ${esc(verify)}</p>`:''}</div>
   </div>
@@ -251,7 +220,7 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
   return `<!DOCTYPE html><html>
 <head><title>Annual Report - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}
     ${PORTRAIT_PAGE}
-    .info-grid{grid-template-columns:1fr 1fr 1fr 1fr}.info-item{flex-wrap:wrap}.info-label{width:auto;margin-right:2px;font-size:9px}
+    .info-grid{grid-template-columns:1fr 1fr 1fr 1fr}.info-item{flex-wrap:wrap}.info-label{width:auto;margin-right:3px;font-size:10px}
     th{padding:3px 3px;font-size:7px}th.subject-col{text-align:left;padding-left:4px}
     td{padding:2px 3px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:4px}
     .total-row td{padding:3px 3px}.summary-row td{padding:2px 3px;background:rgba(240,244,255,.5);font-weight:bold;font-size:9px}
@@ -285,19 +254,18 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
         <td><strong style="color:${t3?.result==='Pass'?'#059669':'#dc2626'}">${esc(t3?.result||'N/A')}</strong></td>
       </tr>
     </tbody></table>
-    <div class="section-divider"></div>
+    <div class="section-spacer"></div>
     ${annual?`<div class="annual-summary"><h4>📋 Annual Summary</h4><p><strong>Avg:</strong> ${annual.average_percentage||'N/A'}% | <strong>Grade:</strong> ${annual.grade||'N/A'} | <strong>Status:</strong> <span class="${annual.promotion_status==='Promoted'?'promoted':'repeat'}">${annual.promotion_status||'N/A'}</span> | <strong>Next:</strong> ${esc(annual.next_class||'N/A')}</p><p>${esc(annual.remarks||'')}</p></div>`:''}
-    <div class="section-divider"></div>
+    <div class="section-spacer"></div>
     <div class="remarks-section"><strong>Remarks:</strong> ${esc(t3?.remarks||t2?.remarks||t1?.remarks)||'________________________________'}</div>
     <div class="spacer"></div>
     <div class="section-divider"></div>
-    ${verify?`<div class="verify-section"><strong>🔒 Verify:</strong> <span class="verify-link">${esc(verify)}</span></div>`:''}
     <div class="signatures">
       <div class="sig-box"><div class="sig-line"></div><strong>Dir. of Studies</strong></div>
       <div class="sig-box"><div class="sig-line"></div><strong>Head Teacher</strong></div>
       <div class="sig-box"><div class="sig-line"></div><strong>Parent/Guardian</strong></div>
     </div>
-    <div class="section-divider"></div>
+    <div class="section-spacer"></div>
     <div class="next-term"><strong>Next Academic Year:</strong> January ${parseInt(year?.split('/')[1]||new Date().getFullYear()+1)}</div>
     <div class="footer"><p>${esc(school?.name||'School')} | Annual Report ${esc(year)} | Computer-generated</p>${verify?`<p style="color:#1a56db;">Verify: ${esc(verify)}</p>`:''}</div>
   </div>
@@ -354,19 +322,18 @@ function buildAnnualLandscape(student, t1, t2, t3, year, school, letterhead, wm,
         <td><strong style="color:${t3?.result==='Pass'?'#059669':'#dc2626'}">${esc(t3?.result||'N/A')}</strong></td>
       </tr>
     </tbody></table>
-    <div class="section-divider"></div>
+    <div class="section-spacer"></div>
     ${annual?`<div class="annual-summary"><h4>📋 Annual Summary</h4><p><strong>Avg:</strong> ${annual.average_percentage||'N/A'}% | <strong>Grade:</strong> ${annual.grade||'N/A'} | <strong>Status:</strong> <span class="${annual.promotion_status==='Promoted'?'promoted':'repeat'}">${annual.promotion_status||'N/A'}</span> | <strong>Next:</strong> ${esc(annual.next_class||'N/A')}</p><p>${esc(annual.remarks||'')}</p></div>`:''}
-    <div class="section-divider"></div>
+    <div class="section-spacer"></div>
     <div class="remarks-section"><strong>Remarks:</strong> ${esc(t3?.remarks||t2?.remarks||t1?.remarks)||'________________________________'}</div>
     <div class="spacer"></div>
     <div class="section-divider"></div>
-    ${verify?`<div class="verify-section"><strong>🔒 Verify:</strong> <span class="verify-link">${esc(verify)}</span></div>`:''}
     <div class="signatures">
       <div class="sig-box"><div class="sig-line"></div><strong>Dir. of Studies</strong></div>
       <div class="sig-box"><div class="sig-line"></div><strong>Head Teacher</strong></div>
       <div class="sig-box"><div class="sig-line"></div><strong>Parent/Guardian</strong></div>
     </div>
-    <div class="section-divider"></div>
+    <div class="section-spacer"></div>
     <div class="next-term"><strong>Next Academic Year:</strong> January ${parseInt(year?.split('/')[1]||new Date().getFullYear()+1)}</div>
     <div class="footer"><p>${esc(school?.name||'School')} | Annual Report ${esc(year)} | Computer-generated</p>${verify?`<p style="color:#1a56db;">Verify: ${esc(verify)}</p>`:''}</div>
   </div>
