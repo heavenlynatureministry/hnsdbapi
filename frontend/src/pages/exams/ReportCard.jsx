@@ -63,6 +63,7 @@ function ReportCard() {
   
   const [reportCard, setReportCard] = useState(null)
   const [annualReport, setAnnualReport] = useState(null)
+  const [isNursery, setIsNursery] = useState(false)
 
   useEffect(() => {
     updatePageTitle('Report Cards')
@@ -112,6 +113,7 @@ function ReportCard() {
     setReportCard(null)
     setAnnualReport(null)
     setGenerated(false)
+    setIsNursery(false)
 
     try {
       if (reportType === 'annual') {
@@ -129,18 +131,17 @@ function ReportCard() {
         if (resultData && resultData.student) {
           setAnnualReport({
             student: resultData.student,
-            term1: resultData.term1,
-            term2: resultData.term2,
-            term3: resultData.term3,
+            term1: resultData.term1, term2: resultData.term2, term3: resultData.term3,
             annual_summary: resultData.annual_summary || null,
             academic_year: resultData.academic_year || filters.academic_year,
             school: resultData.school || {},
             verify_url: resultData.verify_url || '',
           })
+          setIsNursery(resultData.is_nursery || false)
           setGenerated(true)
-          toast.success('Annual report generated successfully!')
+          toast.success(resultData.is_nursery ? 'Nursery Certificate generated!' : 'Annual report generated successfully!')
         } else {
-          toast.error('No data returned from server. The student may not have exam results yet.')
+          toast.error('No data returned from server.')
         }
       } else {
         const response = await examsAPI.generateReportCard({
@@ -185,7 +186,6 @@ function ReportCard() {
     }
   }
 
-  // ✅ Print (Screen) uses clean export instead of window.print()
   const handlePrint = () => {
     if (reportType === 'term' && reportCard) {
       exportReportCard({
@@ -199,9 +199,7 @@ function ReportCard() {
     } else if (reportType === 'annual' && annualReport) {
       exportAnnualReportCard({
         student: annualReport.student,
-        term1: annualReport.term1,
-        term2: annualReport.term2,
-        term3: annualReport.term3,
+        term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
         annual_summary: annualReport.annual_summary,
         academic_year: annualReport.academic_year,
         school: annualReport.school,
@@ -210,16 +208,12 @@ function ReportCard() {
     }
   }
 
-  // Single-term print handlers
   const handlePrintTermPortrait = () => {
     if (reportCard) {
       exportReportCard({
-        student: reportCard.student,
-        results: reportCard.results,
-        term: reportCard.term,
-        academic_year: reportCard.academic_year,
-        school: reportCard.school,
-        verify_url: reportCard.verify_url,
+        student: reportCard.student, results: reportCard.results,
+        term: reportCard.term, academic_year: reportCard.academic_year,
+        school: reportCard.school, verify_url: reportCard.verify_url,
       }, 'portrait')
     }
   }
@@ -227,28 +221,20 @@ function ReportCard() {
   const handlePrintTermLandscape = () => {
     if (reportCard) {
       exportReportCard({
-        student: reportCard.student,
-        results: reportCard.results,
-        term: reportCard.term,
-        academic_year: reportCard.academic_year,
-        school: reportCard.school,
-        verify_url: reportCard.verify_url,
+        student: reportCard.student, results: reportCard.results,
+        term: reportCard.term, academic_year: reportCard.academic_year,
+        school: reportCard.school, verify_url: reportCard.verify_url,
       }, 'landscape')
     }
   }
 
-  // Annual print handlers
   const handlePrintAnnualPortrait = () => {
     if (annualReport) {
       exportAnnualReportCard({
-        student: annualReport.student,
-        term1: annualReport.term1,
-        term2: annualReport.term2,
-        term3: annualReport.term3,
+        student: annualReport.student, term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
         annual_summary: annualReport.annual_summary,
         academic_year: annualReport.academic_year,
-        school: annualReport.school,
-        verify_url: annualReport.verify_url,
+        school: annualReport.school, verify_url: annualReport.verify_url,
       }, 'portrait')
     }
   }
@@ -256,14 +242,10 @@ function ReportCard() {
   const handlePrintAnnualLandscape = () => {
     if (annualReport) {
       exportAnnualReportCard({
-        student: annualReport.student,
-        term1: annualReport.term1,
-        term2: annualReport.term2,
-        term3: annualReport.term3,
+        student: annualReport.student, term1: annualReport.term1, term2: annualReport.term2, term3: annualReport.term3,
         annual_summary: annualReport.annual_summary,
         academic_year: annualReport.academic_year,
-        school: annualReport.school,
-        verify_url: annualReport.verify_url,
+        school: annualReport.school, verify_url: annualReport.verify_url,
       }, 'landscape')
     }
   }
@@ -399,13 +381,15 @@ function ReportCard() {
         </div>
       )}
 
-      {/* ANNUAL REPORT CARD */}
+      {/* ANNUAL REPORT / NURSERY CERTIFICATE */}
       {generated && annualReport && reportType === 'annual' && (
         <div ref={reportRef} className="space-y-6 print:space-y-4">
           <Card className="print:shadow-none print:border">
             <div className="text-center border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
               <img src="/letter-head.jpg" alt="School Letterhead" className="max-w-full h-auto mx-auto mb-2" style={{ maxHeight: '80px' }} onError={(e) => { e.target.style.display = 'none' }} />
-              <h3 className="text-xl font-bold mt-2">ANNUAL ACADEMIC REPORT CARD</h3>
+              <h3 className="text-xl font-bold mt-2">
+                {isNursery ? 'THE CERTIFICATE OF NURSERY EDUCATION' : 'ANNUAL ACADEMIC REPORT CARD'}
+              </h3>
               <p className="text-sm text-gray-500">{annualReport.academic_year}</p>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
@@ -440,7 +424,6 @@ function ReportCard() {
             })}
           </div>
 
-          {/* Annual Summary */}
           {annualReport.annual_summary && (
             <Card className="print:shadow-none print:border bg-blue-50/50 dark:bg-blue-900/10 border-blue-200">
               <h4 className="font-semibold mb-2 text-sm">📋 Annual Summary</h4>
