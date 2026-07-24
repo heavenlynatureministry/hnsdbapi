@@ -2,8 +2,12 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Shield, CheckCircle, XCircle, ArrowLeft, Home } from 'lucide-react'
 
-// ✅ Graduating classes that receive Certificates (not Report Cards)
-const GRADUATING_CLASSES = ['N3', 'P7', 'P8', 'S4']
+// ✅ Graduating classes:
+// N3 = Nursery Certificate
+// P8 = Primary Testimonial
+// S4 = Secondary Testimonial
+const CERTIFICATE_CLASSES = ['N3']
+const TESTIMONIAL_CLASSES = ['P8', 'S4']
 
 function VerifyReport() {
   const { studentId } = useParams()
@@ -12,7 +16,7 @@ function VerifyReport() {
   const [student, setStudent] = useState(null)
   const [results, setResults] = useState(null)
   const [error, setError] = useState('')
-  const [isCertificate, setIsCertificate] = useState(false)
+  const [verificationType, setVerificationType] = useState('report') // 'report', 'certificate', 'testimonial'
 
   useEffect(() => {
     if (studentId) {
@@ -30,9 +34,16 @@ function VerifyReport() {
       if (data?.success && data?.data) {
         setValid(true)
         const className = data.data.student?.class_name || ''
-        // ✅ Check if this is a graduating class → Certificate, otherwise Report Card
-        const isGrad = GRADUATING_CLASSES.some(c => className.toUpperCase().includes(c))
-        setIsCertificate(isGrad)
+        const upperClass = className.toUpperCase()
+        
+        // ✅ Determine verification type
+        if (CERTIFICATE_CLASSES.some(c => upperClass.includes(c))) {
+          setVerificationType('certificate')
+        } else if (TESTIMONIAL_CLASSES.some(c => upperClass.includes(c))) {
+          setVerificationType('testimonial')
+        } else {
+          setVerificationType('report')
+        }
         
         setStudent({
           student_name: data.data.student?.name || 'N/A',
@@ -73,16 +84,35 @@ function VerifyReport() {
     )
   }
 
-  // ✅ Dynamic labels based on certificate vs report card
-  const verificationTitle = isCertificate ? 'Certificate Verification' : 'Report Card Verification'
-  const verifiedTitle = isCertificate ? '✅ Certificate Verified' : '✅ Report Card Verified'
-  const invalidTitle = isCertificate ? '❌ Invalid Certificate' : '❌ Invalid Report Card'
-  const validMessage = isCertificate 
-    ? `This is a valid certificate issued by ${student?.school_name || 'Heavenly Nature Nursery & Primary School'}.`
-    : `This is a valid report card issued by ${student?.school_name || 'Heavenly Nature Nursery & Primary School'}.`
-  const invalidMessage = isCertificate
-    ? 'This certificate could not be verified. The ID may be invalid or the record may not exist.'
-    : 'This report card could not be verified. The student ID may be invalid or the record may not exist.'
+  // ✅ Dynamic labels based on verification type
+  const labels = {
+    certificate: {
+      title: 'Certificate Verification',
+      verified: '✅ Certificate Verified',
+      invalid: '❌ Invalid Certificate',
+      validMsg: `This is a valid certificate issued by ${student?.school_name || 'Heavenly Nature Nursery & Primary School'}.`,
+      invalidMsg: 'This certificate could not be verified. The ID may be invalid or the record may not exist.',
+      award: 'Certificate of Nursery Education',
+    },
+    testimonial: {
+      title: 'Testimonial Verification',
+      verified: '✅ Testimonial Verified',
+      invalid: '❌ Invalid Testimonial',
+      validMsg: `This is a valid testimonial issued by ${student?.school_name || 'Heavenly Nature Nursery & Primary School'}.`,
+      invalidMsg: 'This testimonial could not be verified. The ID may be invalid or the record may not exist.',
+      award: 'Testimonial',
+    },
+    report: {
+      title: 'Report Card Verification',
+      verified: '✅ Report Card Verified',
+      invalid: '❌ Invalid Report Card',
+      validMsg: `This is a valid report card issued by ${student?.school_name || 'Heavenly Nature Nursery & Primary School'}.`,
+      invalidMsg: 'This report card could not be verified. The student ID may be invalid or the record may not exist.',
+      award: null,
+    },
+  }
+
+  const l = labels[verificationType]
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
@@ -97,7 +127,7 @@ function VerifyReport() {
             onError={(e) => { e.target.style.display = 'none' }}
           />
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-            {verificationTitle}
+            {l.title}
           </h1>
         </div>
 
@@ -117,7 +147,7 @@ function VerifyReport() {
             )}
             
             <h2 className={`text-lg font-bold ${valid ? 'text-green-700' : 'text-red-700'}`}>
-              {valid ? verifiedTitle : invalidTitle}
+              {valid ? l.verified : l.invalid}
             </h2>
           </div>
 
@@ -138,10 +168,10 @@ function VerifyReport() {
                   <span className="font-medium">{student.class_name}</span>
                 </div>
               )}
-              {isCertificate && (
+              {l.award && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Award:</span>
-                  <span className="font-medium text-green-600">Certificate of Nursery Education</span>
+                  <span className="font-medium text-green-600">{l.award}</span>
                 </div>
               )}
 
@@ -189,9 +219,9 @@ function VerifyReport() {
 
           <div className="text-center text-sm text-gray-500 dark:text-gray-400 mb-4">
             {valid ? (
-              <p>{validMessage}</p>
+              <p>{l.validMsg}</p>
             ) : (
-              <p>{error || invalidMessage}</p>
+              <p>{error || l.invalidMsg}</p>
             )}
           </div>
 
