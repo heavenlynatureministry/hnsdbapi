@@ -109,9 +109,9 @@ const BASE_CSS = `
 
   table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 13px; flex-shrink: 0; }
   th { background: rgba(20,60,140,0.92); color: #fff; padding: 5px 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
-  th.center { text-align: center; }
+  th.center, th.term-col { text-align: center; }
   td { padding: 4px 8px; border-bottom: 1px solid #bbb; font-size: 13px; }
-  td.center { text-align: center; }
+  td.center, td.term-col { text-align: center; }
   tr:nth-child(even) { background: rgba(248,249,250,0.5); }
   .total-row { font-weight: bold; background: rgba(26,86,219,0.12)!important; font-size: 14px; }
   .total-row td { padding: 5px 8px; border-top: 2px solid #1a56db; }
@@ -214,16 +214,17 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
     const a = (t1?.subjects||[]).find(s=>s.name===subj)||{}
     const b = (t2?.subjects||[]).find(s=>s.name===subj)||{}
     const c = (t3?.subjects||[]).find(s=>s.name===subj)||{}
-    return `<tr><td class="subject-col">${esc(subj)}</td><td>${a.score||'-'}</td><td>${b.score||'-'}</td><td>${c.score||'-'}</td></tr>`
+    return `<tr><td class="subject-col">${esc(subj)}</td><td class="term-col">${a.score||'-'}</td><td class="term-col">${b.score||'-'}</td><td class="term-col">${c.score||'-'}</td></tr>`
   }).join('')
 
   return `<!DOCTYPE html><html>
 <head><title>Annual Report - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}
     ${PORTRAIT_PAGE}
-    .info-grid{grid-template-columns:1fr 1fr 1fr 1fr}.info-item{flex-wrap:wrap}.info-label{width:auto;margin-right:3px;font-size:10px}
-    th{padding:3px 3px;font-size:7px}th.subject-col{text-align:left;padding-left:4px}
-    td{padding:2px 3px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:4px}
-    .total-row td{padding:3px 3px}.summary-row td{padding:2px 3px;background:rgba(240,244,255,.5);font-weight:bold;font-size:9px}
+    .info-grid{grid-template-columns:1fr 1fr}
+    th{padding:3px 4px;font-size:8px;text-align:center}th.subject-col{text-align:left;padding-left:4px}
+    td{padding:2px 4px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:4px}
+    td.term-col{text-align:center;font-weight:500}
+    .total-row td{padding:3px 4px}.summary-row td{padding:2px 4px;background:rgba(240,244,255,.5);font-weight:bold;font-size:9px}
     .annual-summary{margin:6px 0;padding:5px 8px;background:transparent;font-size:10px;border:1px solid #1a56db;flex-shrink:0}
     .annual-summary h4{margin-bottom:2px;font-size:11px;color:#1a3a6b}.annual-summary p{font-size:10px;line-height:1.3;margin-bottom:1px}
     .remarks-section{margin-top:4px;padding:3px 8px;font-size:10px;min-height:22px;background:transparent;line-height:1.3;flex-shrink:0}
@@ -237,21 +238,21 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
     <div class="title">ANNUAL ACADEMIC REPORT CARD</div><div class="subtitle">${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
-      <div class="info-item"><span class="info-label">ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
+      <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
       <div class="info-item"><span class="info-label">Class:</span><span>${esc(student?.class_name)}</span></div>
       <div class="info-item"><span class="info-label">Conduct:</span><span>${esc(student?.conduct||'Good')}</span></div>
     </div>
     <div class="section-divider"></div>
     <table><thead><tr><th class="subject-col">SUBJECTS</th><th>TERM I</th><th>TERM II</th><th>TERM III</th></tr></thead><tbody>
       ${rows}
-      <tr class="total-row"><td class="subject-col"><strong>TOTAL</strong></td><td><strong>${t1?.total_score||'-'}</strong></td><td><strong>${t2?.total_score||'-'}</strong></td><td><strong>${t3?.total_score||'-'}</strong></td></tr>
-      <tr class="summary-row"><td class="subject-col">PERCENTAGE</td><td>${esc(t1?.percentage||'N/A')}%</td><td>${esc(t2?.percentage||'N/A')}%</td><td>${esc(t3?.percentage||'N/A')}%</td></tr>
-      <tr class="summary-row"><td class="subject-col">POSITION</td><td>${esc(t1?.position||'N/A')}</td><td>${esc(t2?.position||'N/A')}</td><td>${esc(t3?.position||'N/A')}</td></tr>
-      <tr class="summary-row"><td class="subject-col">OUT OF</td><td>${esc(t1?.out_of||'N/A')}</td><td>${esc(t2?.out_of||'N/A')}</td><td>${esc(t3?.out_of||'N/A')}</td></tr>
+      <tr class="total-row"><td class="subject-col"><strong>TOTAL</strong></td><td class="term-col"><strong>${t1?.total_score||'-'}</strong></td><td class="term-col"><strong>${t2?.total_score||'-'}</strong></td><td class="term-col"><strong>${t3?.total_score||'-'}</strong></td></tr>
+      <tr class="summary-row"><td class="subject-col">PERCENTAGE</td><td class="term-col">${esc(t1?.percentage||'N/A')}%</td><td class="term-col">${esc(t2?.percentage||'N/A')}%</td><td class="term-col">${esc(t3?.percentage||'N/A')}%</td></tr>
+      <tr class="summary-row"><td class="subject-col">POSITION</td><td class="term-col">${esc(t1?.position||'N/A')}</td><td class="term-col">${esc(t2?.position||'N/A')}</td><td class="term-col">${esc(t3?.position||'N/A')}</td></tr>
+      <tr class="summary-row"><td class="subject-col">OUT OF</td><td class="term-col">${esc(t1?.out_of||'N/A')}</td><td class="term-col">${esc(t2?.out_of||'N/A')}</td><td class="term-col">${esc(t3?.out_of||'N/A')}</td></tr>
       <tr class="summary-row"><td class="subject-col">RESULT</td>
-        <td><strong style="color:${t1?.result==='Pass'?'#059669':'#dc2626'}">${esc(t1?.result||'N/A')}</strong></td>
-        <td><strong style="color:${t2?.result==='Pass'?'#059669':'#dc2626'}">${esc(t2?.result||'N/A')}</strong></td>
-        <td><strong style="color:${t3?.result==='Pass'?'#059669':'#dc2626'}">${esc(t3?.result||'N/A')}</strong></td>
+        <td class="term-col"><strong style="color:${t1?.result==='Pass'?'#059669':'#dc2626'}">${esc(t1?.result||'N/A')}</strong></td>
+        <td class="term-col"><strong style="color:${t2?.result==='Pass'?'#059669':'#dc2626'}">${esc(t2?.result||'N/A')}</strong></td>
+        <td class="term-col"><strong style="color:${t3?.result==='Pass'?'#059669':'#dc2626'}">${esc(t3?.result||'N/A')}</strong></td>
       </tr>
     </tbody></table>
     <div class="section-spacer"></div>
@@ -283,16 +284,17 @@ function buildAnnualLandscape(student, t1, t2, t3, year, school, letterhead, wm,
     const a = (t1?.subjects||[]).find(s=>s.name===subj)||{}
     const b = (t2?.subjects||[]).find(s=>s.name===subj)||{}
     const c = (t3?.subjects||[]).find(s=>s.name===subj)||{}
-    return `<tr><td class="subject-col">${esc(subj)}</td><td>${a.score||'-'}</td><td>${b.score||'-'}</td><td>${c.score||'-'}</td></tr>`
+    return `<tr><td class="subject-col">${esc(subj)}</td><td class="term-col">${a.score||'-'}</td><td class="term-col">${b.score||'-'}</td><td class="term-col">${c.score||'-'}</td></tr>`
   }).join('')
 
   return `<!DOCTYPE html><html>
 <head><title>Annual Report - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}
     ${LANDSCAPE_PAGE}
-    .info-grid{grid-template-columns:1fr 1fr 1fr}
-    th{padding:3px 3px;font-size:7px}th.subject-col{text-align:left;padding-left:4px}
-    td{padding:2px 3px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:4px}
-    .total-row td{padding:3px 3px}.summary-row td{padding:2px 3px;background:rgba(240,244,255,.5);font-weight:bold;font-size:9px}
+    .info-grid{grid-template-columns:1fr 1fr}
+    th{padding:3px 4px;font-size:8px;text-align:center}th.subject-col{text-align:left;padding-left:4px}
+    td{padding:2px 4px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:4px}
+    td.term-col{text-align:center;font-weight:500}
+    .total-row td{padding:3px 4px}.summary-row td{padding:2px 4px;background:rgba(240,244,255,.5);font-weight:bold;font-size:9px}
     .annual-summary{margin:4px 0;padding:3px 6px;background:transparent;font-size:9px;border:1px solid #1a56db;flex-shrink:0}
     .annual-summary h4{margin-bottom:1px;font-size:10px;color:#1a3a6b}.annual-summary p{font-size:9px;line-height:1.2;margin-bottom:1px}
     .remarks-section{margin-top:3px;padding:2px 6px;font-size:9px;min-height:20px;background:transparent;line-height:1.2;flex-shrink:0}
@@ -306,20 +308,21 @@ function buildAnnualLandscape(student, t1, t2, t3, year, school, letterhead, wm,
     <div class="title">ANNUAL ACADEMIC REPORT CARD ${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
-      <div class="info-item"><span class="info-label">ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
+      <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
       <div class="info-item"><span class="info-label">Class:</span><span>${esc(student?.class_name)}</span></div>
+      <div class="info-item"><span class="info-label">Conduct:</span><span>${esc(student?.conduct||'Good')}</span></div>
     </div>
     <div class="section-divider"></div>
     <table><thead><tr><th class="subject-col">SUBJECTS</th><th>TERM I</th><th>TERM II</th><th>TERM III</th></tr></thead><tbody>
       ${rows}
-      <tr class="total-row"><td class="subject-col"><strong>TOTAL</strong></td><td><strong>${t1?.total_score||'-'}</strong></td><td><strong>${t2?.total_score||'-'}</strong></td><td><strong>${t3?.total_score||'-'}</strong></td></tr>
-      <tr class="summary-row"><td class="subject-col">PERCENTAGE</td><td>${esc(t1?.percentage||'N/A')}%</td><td>${esc(t2?.percentage||'N/A')}%</td><td>${esc(t3?.percentage||'N/A')}%</td></tr>
-      <tr class="summary-row"><td class="subject-col">POSITION</td><td>${esc(t1?.position||'N/A')}</td><td>${esc(t2?.position||'N/A')}</td><td>${esc(t3?.position||'N/A')}</td></tr>
-      <tr class="summary-row"><td class="subject-col">OUT OF</td><td>${esc(t1?.out_of||'N/A')}</td><td>${esc(t2?.out_of||'N/A')}</td><td>${esc(t3?.out_of||'N/A')}</td></tr>
+      <tr class="total-row"><td class="subject-col"><strong>TOTAL</strong></td><td class="term-col"><strong>${t1?.total_score||'-'}</strong></td><td class="term-col"><strong>${t2?.total_score||'-'}</strong></td><td class="term-col"><strong>${t3?.total_score||'-'}</strong></td></tr>
+      <tr class="summary-row"><td class="subject-col">PERCENTAGE</td><td class="term-col">${esc(t1?.percentage||'N/A')}%</td><td class="term-col">${esc(t2?.percentage||'N/A')}%</td><td class="term-col">${esc(t3?.percentage||'N/A')}%</td></tr>
+      <tr class="summary-row"><td class="subject-col">POSITION</td><td class="term-col">${esc(t1?.position||'N/A')}</td><td class="term-col">${esc(t2?.position||'N/A')}</td><td class="term-col">${esc(t3?.position||'N/A')}</td></tr>
+      <tr class="summary-row"><td class="subject-col">OUT OF</td><td class="term-col">${esc(t1?.out_of||'N/A')}</td><td class="term-col">${esc(t2?.out_of||'N/A')}</td><td class="term-col">${esc(t3?.out_of||'N/A')}</td></tr>
       <tr class="summary-row"><td class="subject-col">RESULT</td>
-        <td><strong style="color:${t1?.result==='Pass'?'#059669':'#dc2626'}">${esc(t1?.result||'N/A')}</strong></td>
-        <td><strong style="color:${t2?.result==='Pass'?'#059669':'#dc2626'}">${esc(t2?.result||'N/A')}</strong></td>
-        <td><strong style="color:${t3?.result==='Pass'?'#059669':'#dc2626'}">${esc(t3?.result||'N/A')}</strong></td>
+        <td class="term-col"><strong style="color:${t1?.result==='Pass'?'#059669':'#dc2626'}">${esc(t1?.result||'N/A')}</strong></td>
+        <td class="term-col"><strong style="color:${t2?.result==='Pass'?'#059669':'#dc2626'}">${esc(t2?.result||'N/A')}</strong></td>
+        <td class="term-col"><strong style="color:${t3?.result==='Pass'?'#059669':'#dc2626'}">${esc(t3?.result||'N/A')}</strong></td>
       </tr>
     </tbody></table>
     <div class="section-spacer"></div>
