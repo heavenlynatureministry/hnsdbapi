@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import classesAPI from '../../api/classes'
 import teachersAPI from '../../api/teachers'
+import { exportClassTimetable } from '../../utils/exportTimetable'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
@@ -10,7 +11,7 @@ import FormInput from '../../components/common/FormInput'
 import FormSelect from '../../components/common/FormSelect'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import Badge from '../../components/common/Badge'
-import { ArrowLeft, Save, Plus, Trash2, Clock, BookOpen, Users } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, Clock, BookOpen, Users, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
@@ -159,6 +160,33 @@ function TimetableForm() {
     }
   }
 
+  const handlePrintClass = () => {
+    if (classData && schedule) {
+      // Enhance schedule with teacher names before printing
+      const enhancedSchedule = { ...schedule }
+      DAYS.forEach(day => {
+        enhancedSchedule[day] = (enhancedSchedule[day] || []).map(period => {
+          const teacher = teachers.find(t => (t._id || t.id) === period.teacher_id)
+          return {
+            ...period,
+            teacher_name: teacher 
+              ? `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim() || teacher.email 
+              : 'Not Assigned'
+          }
+        })
+      })
+      
+      exportClassTimetable({
+        class_name: classData.class_name,
+        class_level: classData.class_level,
+        teacher_name: classData.teacher_name,
+        schedule: enhancedSchedule,
+      })
+    } else {
+      toast.error('No timetable data to print')
+    }
+  }
+
   const getTotalPeriods = () => {
     return DAYS.reduce((sum, day) => sum + (schedule[day] || []).length, 0)
   }
@@ -183,6 +211,13 @@ function TimetableForm() {
             <button onClick={() => navigate('/timetable')} className="btn btn-secondary">
               <ArrowLeft size={18} /> Back
             </button>
+            <Button 
+              onClick={handlePrintClass} 
+              variant="secondary" 
+              icon={<Printer size={18} />}
+            >
+              Print
+            </Button>
             <Button onClick={handleSave} variant="primary" loading={saving} icon={<Save size={18} />}>
               Save Timetable
             </Button>
@@ -297,6 +332,9 @@ function TimetableForm() {
 
       {/* Action Buttons */}
       <div className="flex gap-3 justify-end">
+        <Button onClick={handlePrintClass} variant="secondary" icon={<Printer size={18} />} size="lg">
+          Print Timetable
+        </Button>
         <Button onClick={handleSave} variant="primary" loading={saving} icon={<Save size={18} />} size="lg">
           {saving ? 'Saving...' : 'Save Timetable'}
         </Button>
