@@ -12,10 +12,12 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import { ArrowLeft, Save, School } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+// ✅ Updated: Added Secondary level
 const CLASS_LEVEL_OPTIONS = [
   { value: '', label: '-- Select Class Level --' },
   { value: 'nursery', label: 'Nursery' },
   { value: 'primary', label: 'Primary' },
+  { value: 'secondary', label: 'Secondary' },
 ]
 
 const NURSERY_CLASS_OPTIONS = [
@@ -37,8 +39,18 @@ const PRIMARY_CLASS_OPTIONS = [
   { value: 'P8', label: 'P8' },
 ]
 
+// ✅ NEW: Secondary class options
+const SECONDARY_CLASS_OPTIONS = [
+  { value: '', label: '-- Select Class Name --' },
+  { value: 'S1', label: 'S1' },
+  { value: 'S2', label: 'S2' },
+  { value: 'S3', label: 'S3' },
+  { value: 'S4', label: 'S4' },
+]
+
 const TEACHER_PLACEHOLDER = [{ value: '', label: '-- Select Teacher (Optional) --' }]
 
+// ✅ Updated: 15 rooms (3 Nursery + 8 Primary + 4 Secondary)
 const CLASSROOM_OPTIONS = [
   { value: '', label: '-- Select Classroom (Optional) --' },
   { value: 'r1', label: 'Room 1' },
@@ -49,6 +61,13 @@ const CLASSROOM_OPTIONS = [
   { value: 'r6', label: 'Room 6' },
   { value: 'r7', label: 'Room 7' },
   { value: 'r8', label: 'Room 8' },
+  { value: 'r9', label: 'Room 9' },
+  { value: 'r10', label: 'Room 10' },
+  { value: 'r11', label: 'Room 11' },
+  { value: 'r12', label: 'Room 12' },
+  { value: 'r13', label: 'Room 13' },
+  { value: 'r14', label: 'Room 14' },
+  { value: 'r15', label: 'Room 15' },
 ]
 
 function ClassForm() {
@@ -57,7 +76,6 @@ function ClassForm() {
   const navigate = useNavigate()
   const { updatePageTitle, updateBreadcrumbs, currentAcademicYear } = useApp()
   
-  // ALL hooks must be here, before any conditional returns
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
@@ -74,12 +92,13 @@ function ClassForm() {
     stream: '',
   })
 
-  // Update max capacity when level changes
+  // ✅ Updated: Set max capacity based on level (Nursery=20, Primary=25, Secondary=30)
   useEffect(() => {
     if (formData.class_level) {
+      const capacityMap = { nursery: '20', primary: '25', secondary: '30' }
       setFormData(prev => ({
         ...prev,
-        max_capacity: prev.class_level === 'nursery' ? '20' : '25',
+        max_capacity: capacityMap[formData.class_level] || '25',
       }))
     }
   }, [formData.class_level])
@@ -144,7 +163,6 @@ function ClassForm() {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }))
-    // Reset class name when level changes
     if (name === 'class_level') {
       setFormData(prev => ({ ...prev, class_name: '' }))
     }
@@ -171,7 +189,6 @@ function ClassForm() {
 
     setLoading(true)
     try {
-      // Build clean payload - only include optional fields if they have values
       const payload = {
         class_name: formData.class_name,
         class_level: formData.class_level,
@@ -181,17 +198,14 @@ function ClassForm() {
         stream: formData.stream || undefined,
       }
       
-      // Only include teacher if selected
       if (formData.class_teacher_id) {
         payload.class_teacher_id = formData.class_teacher_id
       }
       
-      // Only include classroom if selected
       if (formData.classroom_id) {
         payload.classroom_id = formData.classroom_id
       }
       
-      // Remove undefined values
       Object.keys(payload).forEach(key => {
         if (payload[key] === undefined) delete payload[key]
       })
@@ -232,11 +246,12 @@ function ClassForm() {
     }
   }
 
-  // Conditional return AFTER all hooks
   if (fetching) return <LoadingSpinner fullScreen />
 
+  // ✅ Updated: Class options based on selected level
   const classOptions = formData.class_level === 'nursery' ? NURSERY_CLASS_OPTIONS : 
-                       formData.class_level === 'primary' ? PRIMARY_CLASS_OPTIONS : 
+                       formData.class_level === 'primary' ? PRIMARY_CLASS_OPTIONS :
+                       formData.class_level === 'secondary' ? SECONDARY_CLASS_OPTIONS :
                        [{ value: '', label: '-- Select Class Level First --' }]
 
   const teacherOptions = [
