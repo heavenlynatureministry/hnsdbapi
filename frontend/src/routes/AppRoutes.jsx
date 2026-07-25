@@ -37,6 +37,10 @@ const ClassDetail = lazy(() => import('../pages/classes/ClassDetail'))
 const ClassForm = lazy(() => import('../pages/classes/ClassForm'))
 const ClassSchedule = lazy(() => import('../pages/classes/ClassSchedule'))
 
+// ✅ Timetable
+const TimetableDashboard = lazy(() => import('../pages/timetable/TimetableDashboard'))
+const TimetableForm = lazy(() => import('../pages/timetable/TimetableForm'))
+
 // Attendance
 const AttendancePage = lazy(() => import('../pages/attendance/AttendancePage'))
 const AttendanceMark = lazy(() => import('../pages/attendance/AttendanceMark'))
@@ -159,6 +163,14 @@ function AppRoutes() {
             </Route>
 
             {/* --------------------------------------------------------- */}
+            {/* ✅ TIMETABLE */}
+            {/* --------------------------------------------------------- */}
+            <Route path="/timetable">
+              <Route index element={<TimetableDashboard />} />
+              <Route path=":classId" element={<TimetableForm />} />
+            </Route>
+
+            {/* --------------------------------------------------------- */}
             {/* ATTENDANCE */}
             {/* --------------------------------------------------------- */}
             <Route path="/attendance">
@@ -277,6 +289,8 @@ export const routeMetadata = {
   '/teachers/new': { title: 'Add Teacher', parent: 'Teachers' },
   '/classes': { title: 'Classes', icon: 'School' },
   '/classes/new': { title: 'Add Class', parent: 'Classes' },
+  '/timetable': { title: 'Timetable', icon: 'Clock' },
+  '/timetable/:classId': { title: 'Edit Timetable', parent: 'Timetable' },
   '/attendance': { title: 'Attendance', icon: 'ClipboardCheck' },
   '/attendance/report': { title: 'Attendance Report', parent: 'Attendance' },
   '/attendance/analytics': { title: 'Attendance Analytics', parent: 'Attendance' },
