@@ -34,7 +34,6 @@ function StudentForm() {
   const navigate = useNavigate()
   const { updatePageTitle, updateBreadcrumbs } = useApp()
 
-  // ALL hooks at the top
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(isEdit)
   const [errors, setErrors] = useState({})
@@ -86,13 +85,57 @@ function StudentForm() {
       }
 
       if (classesArray.length > 0) {
-        const options = classesArray.map(cls => ({
-          value: cls._id || cls.id || '',
-          label: cls.class_name || cls.name || 
-                 (cls.class_level ? `${cls.class_level} - ${cls.class_name || ''}` : '') ||
-                 'Unknown Class',
-        })).filter(opt => opt.value && opt.label)
-        setClassOptions([...CLASS_PLACEHOLDER, ...options])
+        // ✅ Group classes by level for organized display
+        const nursery = classesArray.filter(c => c.class_level === 'nursery' || c.class_name?.match(/^(Baby|Middle|Top)$/i))
+        const primary = classesArray.filter(c => c.class_level === 'primary' || c.class_name?.match(/^P[1-8]$/i))
+        const secondary = classesArray.filter(c => c.class_level === 'secondary' || c.class_name?.match(/^S[1-4]$/i))
+
+        const options = [...CLASS_PLACEHOLDER]
+        
+        // Add Nursery section
+        if (nursery.length > 0) {
+          options.push({ value: '', label: '── NURSERY ──', disabled: true })
+          nursery.forEach(cls => {
+            options.push({
+              value: cls._id || cls.id || '',
+              label: `  ${cls.class_name || cls.name || 'Unknown'}`,
+            })
+          })
+        }
+        
+        // Add Primary section
+        if (primary.length > 0) {
+          options.push({ value: '', label: '── PRIMARY ──', disabled: true })
+          primary.forEach(cls => {
+            options.push({
+              value: cls._id || cls.id || '',
+              label: `  ${cls.class_name || cls.name || 'Unknown'}`,
+            })
+          })
+        }
+        
+        // ✅ Add Secondary section
+        if (secondary.length > 0) {
+          options.push({ value: '', label: '── SECONDARY ──', disabled: true })
+          secondary.forEach(cls => {
+            options.push({
+              value: cls._id || cls.id || '',
+              label: `  ${cls.class_name || cls.name || 'Unknown'}`,
+            })
+          })
+        }
+        
+        // Fallback: if no levels detected, just list all
+        if (nursery.length === 0 && primary.length === 0 && secondary.length === 0) {
+          classesArray.forEach(cls => {
+            options.push({
+              value: cls._id || cls.id || '',
+              label: cls.class_name || cls.name || 'Unknown Class',
+            })
+          })
+        }
+        
+        setClassOptions(options)
       } else {
         toast.error('No classes found. Please create classes first.')
         setClassOptions(CLASS_PLACEHOLDER)
@@ -186,7 +229,6 @@ function StudentForm() {
     if (!formData.date_of_birth) newErrors.date_of_birth = 'Date of birth is required'
     if (!formData.student_type) newErrors.student_type = 'Please select a student type'
     
-    // Validate primary guardian has at least name
     const primaryGuardian = formData.guardians[0]
     if (primaryGuardian && !primaryGuardian.first_name.trim() && !primaryGuardian.last_name.trim()) {
       newErrors.guardians = 'Primary guardian name is required'
@@ -202,7 +244,6 @@ function StudentForm() {
 
     setLoading(true)
     try {
-      // Build clean payload - only include class_id if selected
       const payload = {
         first_name: formData.first_name,
         last_name: formData.last_name,
@@ -219,7 +260,6 @@ function StudentForm() {
         guardians: formData.guardians,
       }
       
-      // Only include class if one is selected
       if (formData.current_class_id) {
         payload.current_class_id = formData.current_class_id
       }
