@@ -220,7 +220,8 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
   return `<!DOCTYPE html><html>
 <head><title>Annual Report - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}
     ${PORTRAIT_PAGE}
-    .info-grid{grid-template-columns:1fr 1fr}
+    .info-grid{grid-template-columns:1fr 1fr 1fr 1fr;gap:2px;padding:3px 5px;font-size:10px}
+    .info-item{font-size:10px;padding:1px 2px}.info-label{width:auto;margin-right:2px;font-size:9px}
     th{padding:3px 4px;font-size:8px;text-align:center}th.subject-col{text-align:left;padding-left:4px}
     td{padding:2px 4px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:4px}
     td.term-col{text-align:center;font-weight:500}
@@ -238,7 +239,7 @@ function buildAnnualPortrait(student, t1, t2, t3, year, school, letterhead, wm, 
     <div class="title">ANNUAL ACADEMIC REPORT CARD</div><div class="subtitle">${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
-      <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
+      <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace;font-size:9px">${esc(student?.student_id)}</strong></span></div>
       <div class="info-item"><span class="info-label">Class:</span><span>${esc(student?.class_name)}</span></div>
       <div class="info-item"><span class="info-label">Conduct:</span><span>${esc(student?.conduct||'Good')}</span></div>
     </div>
@@ -290,7 +291,8 @@ function buildAnnualLandscape(student, t1, t2, t3, year, school, letterhead, wm,
   return `<!DOCTYPE html><html>
 <head><title>Annual Report - ${esc(student?.name)}</title><meta charset="utf-8"><style>${BASE_CSS}
     ${LANDSCAPE_PAGE}
-    .info-grid{grid-template-columns:1fr 1fr}
+    .info-grid{grid-template-columns:1fr 1fr 1fr 1fr;gap:2px;padding:3px 5px;font-size:10px}
+    .info-item{font-size:10px;padding:1px 2px}.info-label{width:auto;margin-right:2px;font-size:9px}
     th{padding:3px 4px;font-size:8px;text-align:center}th.subject-col{text-align:left;padding-left:4px}
     td{padding:2px 4px;text-align:center;font-size:10px}td.subject-col{text-align:left;font-weight:bold;padding-left:4px}
     td.term-col{text-align:center;font-weight:500}
@@ -308,7 +310,7 @@ function buildAnnualLandscape(student, t1, t2, t3, year, school, letterhead, wm,
     <div class="title">ANNUAL ACADEMIC REPORT CARD ${esc(year)}</div>
     <div class="info-grid">
       <div class="info-item"><span class="info-label">Name:</span><span><strong>${esc(student?.name)}</strong></span></div>
-      <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace">${esc(student?.student_id)}</strong></span></div>
+      <div class="info-item"><span class="info-label">Pupil's ID:</span><span><strong style="font-family:'Courier New',monospace;font-size:9px">${esc(student?.student_id)}</strong></span></div>
       <div class="info-item"><span class="info-label">Class:</span><span>${esc(student?.class_name)}</span></div>
       <div class="info-item"><span class="info-label">Conduct:</span><span>${esc(student?.conduct||'Good')}</span></div>
     </div>
