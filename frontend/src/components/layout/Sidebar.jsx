@@ -6,7 +6,7 @@ import {
   LayoutDashboard, GraduationCap, Users, School, ClipboardCheck,
   FileText, DollarSign, Calendar, Settings, BarChart3,
   Shield, UserCircle, ChevronLeft, ChevronRight, BookOpen,
-  X, Receipt, CreditCard, Printer, FileSpreadsheet
+  X, Receipt, CreditCard, Printer, FileSpreadsheet, Clock
 } from 'lucide-react'
 
 const menuItems = [
@@ -22,6 +22,7 @@ const menuItems = [
       { path: '/students', label: 'Students', icon: GraduationCap, roles: ['admin', 'teacher'] },
       { path: '/teachers', label: 'Teachers', icon: Users, roles: ['admin'] },
       { path: '/classes', label: 'Classes', icon: School, roles: ['admin', 'teacher'] },
+      { path: '/timetable', label: 'Timetable', icon: Clock, roles: ['admin', 'teacher'] },
       { path: '/attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['admin', 'teacher'] },
       { path: '/exams', label: 'Examinations', icon: FileText, roles: ['admin', 'teacher'] },
       { path: '/exams/report-cards', label: 'Report Cards', icon: Printer, roles: ['admin', 'teacher'] },
@@ -116,8 +117,9 @@ function Sidebar() {
                 <div className="space-y-0.5">
                   {visibleItems.map((item, iIdx) => {
                     const isActive = location.pathname === item.path || 
-                      (item.path !== '/financial' && location.pathname.startsWith(item.path + '/')) ||
-                      (item.path === '/financial' && location.pathname === '/financial')
+                      (item.path !== '/financial' && item.path !== '/timetable' && location.pathname.startsWith(item.path + '/')) ||
+                      (item.path === '/financial' && location.pathname === '/financial') ||
+                      (item.path === '/timetable' && location.pathname.startsWith('/timetable'))
                     return (
                       <NavLink
                         key={iIdx}
