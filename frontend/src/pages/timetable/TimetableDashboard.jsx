@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import classesAPI from '../../api/classes'
+import { exportSectionTimetable } from '../../utils/exportTimetable'
 import PageHeader from '../../components/common/PageHeader'
 import Card from '../../components/common/Card'
 import Button from '../../components/common/Button'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import Badge from '../../components/common/Badge'
-import { Download, Clock, BookOpen, Users, Printer } from 'lucide-react'
+import { Clock, BookOpen, Users, Printer, Edit } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const SECTIONS = [
@@ -55,57 +57,12 @@ function TimetableDashboard() {
     }
   }
 
+  // ✅ Uses the export utility
   const handlePrintSection = () => {
-    const printWindow = window.open('', '_blank', 'width=1100,height=800')
-    if (!printWindow) { alert('Please allow pop-ups'); return }
-    
-    const sectionLabel = SECTIONS.find(s => s.id === activeSection)?.label || activeSection
-    
-    let html = `<!DOCTYPE html><html><head><title>Timetable - ${sectionLabel}</title>
-    <meta charset="utf-8"><style>
-      @page { size: A4 landscape; margin: 10mm; }
-      @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-      body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #333; }
-      h1 { text-align: center; font-size: 18px; margin-bottom: 5px; color: #1a3a6b; }
-      h3 { text-align: center; font-size: 14px; color: #1a3a6b; margin: 10px 0 5px; border-top: 1px solid #ddd; padding-top: 8px; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11px; }
-      th { background: #1a56db; color: white; padding: 6px 8px; text-align: left; font-size: 10px; text-transform: uppercase; }
-      td { padding: 5px 8px; border: 1px solid #ddd; vertical-align: top; }
-      .period { background: #f0f4ff; padding: 3px 5px; margin: 2px 0; border-radius: 3px; font-size: 10px; border-left: 3px solid #1a56db; }
-      .period .subject { font-weight: bold; }
-      .period .time { color: #666; font-size: 9px; }
-      .period .teacher { color: #059669; font-size: 9px; }
-      .no-print { text-align: center; margin: 20px; }
-      .btn { padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
-      @media print { .no-print { display: none; } }
-    </style></head><body>
-    <h1>${timetable?.school_name || 'School'} - ${sectionLabel} Timetable</h1>
-    <p style="text-align:center;color:#666;font-size:11px">Academic Year: ${timetable?.academic_year || 'N/A'}</p>`
-    
-    if (timetable?.timetable) {
-      timetable.timetable.forEach(cls => {
-        html += `<h3>${cls.class_name}</h3><table><thead><tr><th>Day</th><th>Periods</th></tr></thead><tbody>`
-        DAYS.forEach((day, di) => {
-          const periods = cls.days?.[day] || []
-          let periodHTML = ''
-          if (periods.length === 0) {
-            periodHTML = '<span style="color:#999;font-style:italic">No periods</span>'
-          } else {
-            periods.forEach(p => {
-              periodHTML += `<div class="period"><span class="subject">${p.subject || 'N/A'}</span><br/><span class="time">${p.start_time || '--'} - ${p.end_time || '--'}</span><br/><span class="teacher">${p.teacher_name || 'Unassigned'}</span></div>`
-            })
-          }
-          html += `<tr><td style="width:80px;font-weight:bold">${DAY_LABELS[di]}</td><td>${periodHTML}</td></tr>`
-        })
-        html += '</tbody></table>'
-      })
+    if (timetable) {
+      const sectionName = SECTIONS.find(s => s.id === activeSection)?.label || activeSection
+      exportSectionTimetable(timetable, sectionName)
     }
-    
-    html += `<div class="no-print"><button class="btn" onclick="window.print()">🖨️ Print Timetable</button></div></body></html>`
-    
-    printWindow.document.write(html)
-    printWindow.document.close()
-    setTimeout(() => { printWindow.focus(); printWindow.print() }, 500)
   }
 
   const getPeriodCount = (cls) => {
@@ -116,13 +73,18 @@ function TimetableDashboard() {
     return count
   }
 
+  const getTotalPeriods = () => {
+    if (!timetable?.timetable) return 0
+    return timetable.timetable.reduce((sum, cls) => sum + getPeriodCount(cls), 0)
+  }
+
   if (loading) return <LoadingSpinner />
 
   return (
     <div className="space-y-6 animate-fade-in-up">
       <PageHeader
         title="School Timetable"
-        subtitle={`${activeSection.charAt(0).toUpperCase() + activeSection.slice(1)} Section • ${timetable?.academic_year || ''}`}
+        subtitle={`${activeSection.charAt(0).toUpperCase() + activeSection.slice(1)} Section • ${timetable?.academic_year || ''} • ${getTotalPeriods()} total periods`}
         actions={
           <Button onClick={handlePrintSection} variant="primary" icon={<Printer size={18} />}>
             Print {activeSection.charAt(0).toUpperCase() + activeSection.slice(1)} Timetable
@@ -153,7 +115,7 @@ function TimetableDashboard() {
           <div className="text-center py-12 text-gray-500">
             <Clock size={48} className="mx-auto mb-3 opacity-50" />
             <p className="text-lg font-medium">No timetable data</p>
-            <p className="text-sm">Use the Class Schedule page to add periods for each class.</p>
+            <p className="text-sm">Use the Class Schedule page to add periods for each class, or click Edit to set up a timetable.</p>
           </div>
         </Card>
       ) : (
@@ -165,6 +127,12 @@ function TimetableDashboard() {
                   <h3 className="font-bold text-lg text-gray-900 dark:text-white">{cls.class_name}</h3>
                   <Badge variant="info">{getPeriodCount(cls)} periods/week</Badge>
                 </div>
+                <Link
+                  to={`/timetable/${cls.class_id}`}
+                  className="btn btn-secondary btn-sm flex items-center gap-1"
+                >
+                  <Edit size={14} /> Edit Timetable
+                </Link>
               </div>
               
               <div className="overflow-x-auto">
