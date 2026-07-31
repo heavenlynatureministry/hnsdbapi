@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path, Reques
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from bson import ObjectId
+import re
 
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
@@ -65,11 +66,11 @@ def _get_next_class_name(class_name: str) -> str:
     if not class_name: return "Next Class"
     progression = {
         "Baby": "Middle", "Middle": "Top", "Top": "P1",
+        "N1": "N2", "N2": "N3",
         "P1": "P2", "P2": "P3", "P3": "P4", "P4": "P5", "P5": "P6", "P6": "P7", "P7": "P8", "P8": "S1",
         "S1": "S2", "S2": "S3", "S3": "S4",
     }
     upper = class_name.upper()
-    # Match exact or capitalize first letter
     for key, value in progression.items():
         if upper == key.upper():
             return value
@@ -79,24 +80,23 @@ def _get_next_class_name(class_name: str) -> str:
     return f"Next Level after {class_name}"
 
 
-# ✅ Updated: Graduating classes - N3 (Certificate), P8 (Testimonial), S4 (Testimonial)
 def _is_nursery_class(class_name: str) -> bool:
-    """Check if class is N3 (Nursery Certificate)."""
+    """Check if class is a nursery graduating class."""
     if not class_name: return False
-    return class_name.upper() == "N3"
+    return class_name.upper() in ("N3", "TOP", "NURSERY 3")
 
 def _is_testimonial_class(class_name: str) -> bool:
     """Check if class is P8 or S4 (Testimonial)."""
     if not class_name: return False
-    return class_name.upper() in ("P8", "S4")
+    return class_name.upper() in ("P8", "S4", "PRIMARY 8", "SENIOR 4")
 
 def _get_graduation_type(class_name: str) -> Optional[str]:
     """Get graduation type: nursery, primary_testimonial, secondary_testimonial, or None."""
     if not class_name: return None
     upper = class_name.upper()
-    if upper == "N3": return "nursery"
-    if upper == "P8": return "primary_testimonial"
-    if upper == "S4": return "secondary_testimonial"
+    if upper in ("N3", "TOP", "NURSERY 3"): return "nursery"
+    if upper in ("P8", "PRIMARY 8"): return "primary_testimonial"
+    if upper in ("S4", "SENIOR 4"): return "secondary_testimonial"
     return None
 
 
@@ -141,9 +141,38 @@ async def _get_student_attendance(db, student_oid, term, academic_year) -> dict:
     return {"total_days": attendance_total, "present_days": attendance_present, "attendance_rate": attendance_rate}
 
 
+async def _find_student(db, student_id: str):
+    """Find student by ID, ObjectId, or student_id_number"""
+    sid = _safe_objectid(student_id)
+    student = None
+    if sid:
+        student = await db.students.find_one({"_id": sid})
+    if not student:
+        student = await db.students.find_one({
+            "$or": [
+                {"student_id": student_id},
+                {"student_id_number": student_id},
+                {"id_number": student_id},
+                {"admission_number": student_id}
+            ]
+        })
+    return student
+
+
+# =========================================================================
+# EXAMS CRUD
+# =========================================================================
+
 @router.get("")
 @router.get("/")
-async def list_exams(class_id: Optional[str] = Query(None), exam_type: Optional[str] = Query(None), status: Optional[str] = Query(None), page: int = Query(1, ge=1), limit: int = Query(20, ge=1, le=100), current_user: Dict[str, Any] = Depends(get_current_user)):
+async def list_exams(
+    class_id: Optional[str] = Query(None),
+    exam_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     db = get_database(); filter_query = {}
     if class_id:
         cid = _safe_objectid(class_id)
@@ -156,7 +185,6 @@ async def list_exams(class_id: Optional[str] = Query(None), exam_type: Optional[
     return {"success": True, "message": "Exams retrieved", "data": {"exams": [parse_mongo_document(e) for e in exams], "total": total, "page": page, "limit": limit}}
 
 
-# ✅ UPDATED: Complete subjects list for Nursery, Primary, Secondary
 @router.get("/subjects")
 async def list_subjects(current_user: Dict[str, Any] = Depends(get_current_user)):
     """List all available subjects for Nursery, Primary, and Secondary"""
@@ -282,9 +310,7 @@ async def generate_report_card(request: Request, current_user: Dict[str, Any] = 
     except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
     student_id = body.get("student_id"); term = body.get("term", "Term 1"); academic_year = body.get("academic_year") or _get_current_academic_year()
     if not student_id: raise HTTPException(status_code=400, detail="Student ID is required")
-    sid = _safe_objectid(student_id); student = None
-    if sid: student = await db.students.find_one({"_id": sid})
-    if not student: student = await db.students.find_one({"$or": [{"student_id": student_id}, {"student_id_number": student_id}, {"id_number": student_id}, {"admission_number": student_id}]})
+    student = await _find_student(db, student_id)
     if not student: raise HTTPException(status_code=404, detail="Student not found")
     student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
     student_id_number = _get_student_id_number(student); student_oid = student.get("_id")
@@ -340,9 +366,7 @@ async def generate_annual_report_card(request: Request, current_user: Dict[str, 
     except Exception: raise HTTPException(status_code=400, detail="Invalid JSON body")
     student_id = body.get("student_id"); academic_year = body.get("academic_year") or _get_current_academic_year()
     if not student_id: raise HTTPException(status_code=400, detail="Student ID is required")
-    sid = _safe_objectid(student_id); student = None
-    if sid: student = await db.students.find_one({"_id": sid})
-    if not student: student = await db.students.find_one({"$or": [{"student_id": student_id}, {"student_id_number": student_id}, {"id_number": student_id}, {"admission_number": student_id}]})
+    student = await _find_student(db, student_id)
     if not student: raise HTTPException(status_code=404, detail="Student not found")
     student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
     student_id_number = _get_student_id_number(student); student_oid = student.get("_id")
@@ -468,14 +492,242 @@ async def record_results(request: Request, current_user: Dict[str, Any] = Depend
 
 @router.get("/student/{student_id}")
 async def get_student_results(student_id: str, academic_year: Optional[str] = Query(None), current_user: Dict[str, Any] = Depends(get_current_user)):
-    db = get_database(); sid = _safe_objectid(student_id); student = None; student_oid = None
-    if sid: student = await db.students.find_one({"_id": sid}); student_oid = sid
-    if not student: student = await db.students.find_one({"$or": [{"student_id": student_id}, {"student_id_number": student_id}, {"id_number": student_id}, {"admission_number": student_id}]})
-    if student: student_oid = student.get("_id")
-    if not student_oid: raise HTTPException(status_code=404, detail="Student not found")
+    db = get_database()
+    student = await _find_student(db, student_id)
+    if not student: raise HTTPException(status_code=404, detail="Student not found")
+    student_oid = student.get("_id")
     filter_query = {"student_id": student_oid}
     if academic_year: filter_query["academic_year"] = academic_year
     results = await db.exam_results.find(filter_query).to_list(length=None); results = [parse_mongo_document(r) for r in results]
-    student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip() if student else "Unknown"
-    student_id_number = _get_student_id_number(student) if student else student_id
+    student_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
+    student_id_number = _get_student_id_number(student)
     return {"success": True, "message": "Student results retrieved", "data": {"student_id": student_id_number, "student_name": student_name, "results": results, "total": len(results)}}
+
+
+# =========================================================================
+# EXAM ENTRY ROUTES (Testimonials, PLE, CSE)
+# =========================================================================
+
+@router.get("/entries/student/{student_id}")
+async def get_student_exam_entry(
+    student_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get exam entry (testimonial/PLE/CSE) for a student"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    student = await _find_student(db, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    success, message, entry = await ExamModel.get_exam_entry(db, str(student["_id"]))
+    
+    if not success:
+        return {"success": True, "message": message, "data": None}
+    
+    return {"success": True, "message": message, "data": entry}
+
+
+@router.post("/entries")
+async def create_or_update_exam_entry(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Create or update exam entry (testimonial/PLE/CSE)"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    student_id = body.get("student_id", "")
+    exam_type = body.get("exam_type", "Testimonial")
+    index_number = str(body.get("index_number", "")).strip()
+    centre_number = str(body.get("centre_number", "")).strip()
+    academic_year = body.get("academic_year", _get_current_academic_year())
+    subjects = body.get("subjects", [])
+    section = body.get("section", "")
+    
+    # Validate required fields
+    if not student_id:
+        raise HTTPException(status_code=400, detail="Student ID is required")
+    if not index_number:
+        raise HTTPException(status_code=400, detail="Index number is required")
+    if not centre_number:
+        raise HTTPException(status_code=400, detail="Centre number is required")
+    if not subjects:
+        raise HTTPException(status_code=400, detail="At least one subject is required")
+    
+    # Validate index and centre numbers (6-9 digits)
+    if not re.match(r'^\d{6,9}$', index_number):
+        raise HTTPException(status_code=400, detail="Index number must be 6-9 digits")
+    if not re.match(r'^\d{6,9}$', centre_number):
+        raise HTTPException(status_code=400, detail="Centre number must be 6-9 digits")
+    
+    # Find student
+    student = await _find_student(db, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    success, message, result = await ExamModel.create_exam_entry(
+        db=db,
+        student_id=str(student["_id"]),
+        exam_type=exam_type,
+        index_number=index_number,
+        centre_number=centre_number,
+        academic_year=academic_year,
+        subjects=subjects,
+        section=section,
+        created_by=str(current_user.get("_id", ""))
+    )
+    
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    
+    return {"success": True, "message": message, "data": result}
+
+
+@router.put("/entries/{student_id}/status")
+async def update_exam_entry_status(
+    student_id: str = Path(...),
+    request: Request = None,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Update exam entry status (draft, finalized, printed)"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    status = body.get("status", "")
+    valid_statuses = ["draft", "finalized", "printed"]
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be: {', '.join(valid_statuses)}")
+    
+    student = await _find_student(db, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    success, message, result = await ExamModel.update_exam_entry_status(
+        db=db,
+        student_id=str(student["_id"]),
+        status=status,
+        verified_by=str(current_user.get("_id", "")) if status == "finalized" else None
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    
+    return {"success": True, "message": message, "data": result}
+
+
+@router.delete("/entries/{student_id}")
+async def delete_exam_entry(
+    student_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete exam entry"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    student = await _find_student(db, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    success, message = await ExamModel.delete_exam_entry(db, str(student["_id"]))
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    
+    return {"success": True, "message": message}
+
+
+@router.get("/entries/list")
+async def list_exam_entries(
+    exam_type: Optional[str] = Query(None),
+    academic_year: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """List all exam entries with filtering and pagination"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    skip = (page - 1) * limit
+    result = await ExamModel.get_exam_entries(
+        db=db,
+        exam_type=exam_type,
+        academic_year=academic_year,
+        status=status,
+        limit=limit,
+        skip=skip
+    )
+    
+    return {
+        "success": True,
+        "message": "Exam entries retrieved",
+        "data": result
+    }
+
+
+@router.get("/entries/eligible")
+async def get_eligible_students(
+    exam_type: str = Query("Testimonial"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get students eligible for exam entry (P8 and S4)"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    students = await ExamModel.get_students_eligible_for_exam_entry(db, exam_type)
+    
+    return {
+        "success": True,
+        "message": f"Found {len(students)} eligible students",
+        "data": {
+            "students": [parse_mongo_document(s) for s in students],
+            "total": len(students)
+        }
+    }
+
+
+# Public verification endpoint (no auth required)
+@router.get("/entries/{entry_id}/verify")
+async def verify_exam_entry_public(
+    entry_id: str = Path(...)
+):
+    """Public verification endpoint for exam entries (testimonials) - No auth required"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    success, message, entry = await ExamModel.verify_exam_entry(db, entry_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    
+    return {
+        "success": True,
+        "message": "Exam entry verified",
+        "data": {
+            "student_name": entry.get("student_name", ""),
+            "exam_type": entry.get("exam_type", ""),
+            "academic_year": entry.get("academic_year", ""),
+            "index_number": entry.get("index_number", ""),
+            "centre_number": entry.get("centre_number", ""),
+            "section": entry.get("section", ""),
+            "total_score": entry.get("total_score", 0),
+            "percentage": entry.get("percentage", 0),
+            "result": entry.get("result", ""),
+            "status": entry.get("status", ""),
+            "subjects": entry.get("subjects", []),
+            "issued_date": entry.get("created_at", "")
+        }
+    }
