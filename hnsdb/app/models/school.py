@@ -26,7 +26,7 @@ class SchoolModel:
     - Academic calendar configuration
     - Term and holiday management
     - School events management
-    - Board of directors management
+    - Board of directors management (with photo support)
     - Network and partnership tracking
     - Strategic planning
     - System-wide settings
@@ -59,6 +59,20 @@ class SchoolModel:
         "chairperson", "vice_chairperson", "secretary", 
         "treasurer", "member", "advisor", "patron"
     ]
+    
+    # Board member position order for sorting
+    BOARD_POSITION_ORDER = {
+        "chairperson": 1,
+        "vice_chairperson": 2,
+        "secretary": 3,
+        "treasurer": 4,
+        "member": 5,
+        "advisor": 6,
+        "patron": 7
+    }
+    
+    # Board member statuses
+    BOARD_MEMBER_STATUSES = ["active", "inactive", "resigned", "retired"]
     
     # Membership types
     MEMBERSHIP_TYPES = [
@@ -133,6 +147,29 @@ class SchoolModel:
         }
     
     @staticmethod
+    def get_board_member_schema() -> Dict[str, Any]:
+        """Return board member schema"""
+        return {
+            "board_member_id": "String - Auto-generated ID (HNS-BOD-XXX)",
+            "first_name": "String",
+            "last_name": "String",
+            "middle_name": "String - Optional middle name",
+            "position": f"String - One of: {', '.join(SchoolModel.BOARD_POSITIONS)}",
+            "position_order": "Integer - Display order for sorting",
+            "phone_number": "String",
+            "email": "String",
+            "address": "String",
+            "valid_from": "DateTime",
+            "valid_until": "DateTime",
+            "photo_url": "String - URL to member photo",
+            "bio": "String - Biography or additional info",
+            "status": f"String - One of: {', '.join(SchoolModel.BOARD_MEMBER_STATUSES)}",
+            "created_by": "ObjectId",
+            "created_at": "DateTime",
+            "updated_at": "DateTime"
+        }
+    
+    @staticmethod
     async def create_indexes(db: AsyncIOMotorDatabase):
         """Create all school-related indexes"""
         try:
@@ -145,9 +182,12 @@ class SchoolModel:
             await db.school_events.create_index("status", name="idx_event_status")
             await db.school_events.create_index([("start_date", 1), ("status", 1)], name="idx_event_date_status")
             await db.school_events.create_index([("title", "text"), ("description", "text")], name="idx_event_search")
+            await db.board_members.create_index("board_member_id", unique=True, name="idx_board_member_id")
             await db.board_members.create_index([("last_name", 1), ("first_name", 1)], name="idx_board_name")
             await db.board_members.create_index("position", name="idx_board_position")
             await db.board_members.create_index("status", name="idx_board_status")
+            await db.board_members.create_index([("status", 1), ("position_order", 1)], name="idx_board_status_order")
+            await db.board_members.create_index("email", sparse=True, name="idx_board_email")
             await db.network_memberships.create_index("organization_name", name="idx_network_name")
             await db.network_memberships.create_index("membership_type", name="idx_network_type")
             await db.network_memberships.create_index("status", name="idx_network_status")
@@ -168,7 +208,8 @@ class SchoolModel:
     async def get_school_info(db: AsyncIOMotorDatabase) -> Optional[Dict[str, Any]]:
         """Get school information"""
         school = await db.school_info.find_one({})
-        if school: school["_id"] = str(school["_id"])
+        if school:
+            school["_id"] = str(school["_id"])
         return school
     
     @staticmethod
@@ -178,7 +219,8 @@ class SchoolModel:
         """Update school information"""
         protected = ["_id", "created_at", "registration_number"]
         update_data = {k: v for k, v in update_data.items() if k not in protected}
-        if not update_data: return False, "No valid fields to update", None
+        if not update_data:
+            return False, "No valid fields to update", None
         
         if "address" in update_data and isinstance(update_data["address"], dict):
             current = await db.school_info.find_one({})
@@ -214,9 +256,11 @@ class SchoolModel:
     ) -> Tuple[bool, str]:
         """Update school logo"""
         update_data = {"logo_url": logo_url, "updated_at": datetime.utcnow()}
-        if thumbnail_url: update_data["logo_thumbnail_url"] = thumbnail_url
+        if thumbnail_url:
+            update_data["logo_thumbnail_url"] = thumbnail_url
         result = await db.school_info.update_one({}, {"$set": update_data})
-        if result.modified_count > 0 or result.upserted_id: return True, "Logo updated successfully"
+        if result.modified_count > 0 or result.upserted_id:
+            return True, "Logo updated successfully"
         return False, "Failed to update logo"
 
     # =========================================================================
@@ -240,12 +284,16 @@ class SchoolModel:
         for i, term in enumerate(terms):
             for date_field in ["start_date", "end_date"]:
                 if date_field in term and isinstance(term[date_field], str):
-                    try: term[date_field] = datetime.strptime(term[date_field], "%Y-%m-%d")
-                    except ValueError: return False, f"Invalid date format for term {i+1} {date_field}", None
+                    try:
+                        term[date_field] = datetime.strptime(term[date_field], "%Y-%m-%d")
+                    except ValueError:
+                        return False, f"Invalid date format for term {i+1} {date_field}", None
             
             validated_term = {
-                "term_name": term.get("term_name", f"Term {i+1}"), "term_number": i + 1,
-                "start_date": term["start_date"], "end_date": term["end_date"],
+                "term_name": term.get("term_name", f"Term {i+1}"),
+                "term_number": i + 1,
+                "start_date": term["start_date"],
+                "end_date": term["end_date"],
                 "mid_term_break_start": term.get("mid_term_break_start"),
                 "mid_term_break_end": term.get("mid_term_break_end"),
                 "exam_period_start": term.get("exam_period_start"),
@@ -261,11 +309,15 @@ class SchoolModel:
             for holiday in holidays:
                 for date_field in ["start_date", "end_date"]:
                     if date_field in holiday and isinstance(holiday[date_field], str):
-                        try: holiday[date_field] = datetime.strptime(holiday[date_field], "%Y-%m-%d")
-                        except ValueError: return False, f"Invalid date format for holiday {date_field}", None
+                        try:
+                            holiday[date_field] = datetime.strptime(holiday[date_field], "%Y-%m-%d")
+                        except ValueError:
+                            return False, f"Invalid date format for holiday {date_field}", None
                 validated_holidays.append({
-                    "name": holiday["name"], "start_date": holiday["start_date"],
-                    "end_date": holiday["end_date"], "description": holiday.get("description", ""),
+                    "name": holiday["name"],
+                    "start_date": holiday["start_date"],
+                    "end_date": holiday["end_date"],
+                    "description": holiday.get("description", ""),
                     "is_recurring": holiday.get("is_recurring", False)
                 })
         
@@ -273,19 +325,26 @@ class SchoolModel:
         if important_dates:
             for imp_date in important_dates:
                 if "date" in imp_date and isinstance(imp_date["date"], str):
-                    try: imp_date["date"] = datetime.strptime(imp_date["date"], "%Y-%m-%d")
-                    except ValueError: return False, "Invalid date format for important date", None
+                    try:
+                        imp_date["date"] = datetime.strptime(imp_date["date"], "%Y-%m-%d")
+                    except ValueError:
+                        return False, "Invalid date format for important date", None
                 validated_dates.append({
-                    "name": imp_date["name"], "date": imp_date["date"],
+                    "name": imp_date["name"],
+                    "date": imp_date["date"],
                     "description": imp_date.get("description", ""),
                     "category": imp_date.get("category", "general")
                 })
         
         calendar = {
-            "academic_year": academic_year, "terms": validated_terms,
-            "holidays": validated_holidays, "important_dates": validated_dates,
-            "status": "active", "created_by": ObjectId(created_by) if created_by else None,
-            "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
+            "academic_year": academic_year,
+            "terms": validated_terms,
+            "holidays": validated_holidays,
+            "important_dates": validated_dates,
+            "status": "active",
+            "created_by": ObjectId(created_by) if created_by else None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
         }
         
         try:
@@ -301,7 +360,8 @@ class SchoolModel:
                 "current_academic_year": academic_year,
                 "current_term": current_term["term_name"],
                 "term_dates": {
-                    "term_start": current_term["start_date"], "term_end": current_term["end_date"],
+                    "term_start": current_term["start_date"],
+                    "term_end": current_term["end_date"],
                     "mid_term_start": current_term.get("mid_term_break_start"),
                     "mid_term_end": current_term.get("mid_term_break_end")
                 },
@@ -318,24 +378,31 @@ class SchoolModel:
         db: AsyncIOMotorDatabase, academic_year: Optional[str] = None, status: str = "active"
     ) -> Optional[Dict[str, Any]]:
         """Get academic calendar for a specific year"""
-        if not academic_year: academic_year = SchoolModel._get_current_academic_year()
-        calendar = await db.academic_calendar.find_one({"academic_year": academic_year, "status": status})
+        if not academic_year:
+            academic_year = SchoolModel._get_current_academic_year()
+        calendar = await db.academic_calendar.find_one(
+            {"academic_year": academic_year, "status": status}
+        )
         if calendar:
             calendar["_id"] = str(calendar["_id"])
-            if calendar.get("created_by"): calendar["created_by"] = str(calendar["created_by"])
+            if calendar.get("created_by"):
+                calendar["created_by"] = str(calendar["created_by"])
         return calendar
     
     @staticmethod
     async def get_current_term_info(db: AsyncIOMotorDatabase) -> Optional[Dict[str, Any]]:
         """Get current active term information"""
         calendar = await SchoolModel.get_academic_calendar(db)
-        if not calendar: return None
+        if not calendar:
+            return None
         today = datetime.now()
         for term in calendar.get("terms", []):
             if term["start_date"] <= today <= term["end_date"]:
                 return {
-                    "academic_year": calendar["academic_year"], "term_name": term["term_name"],
-                    "term_number": term["term_number"], "start_date": term["start_date"],
+                    "academic_year": calendar["academic_year"],
+                    "term_name": term["term_name"],
+                    "term_number": term["term_number"],
+                    "start_date": term["start_date"],
                     "end_date": term["end_date"],
                     "mid_term_break_start": term.get("mid_term_break_start"),
                     "mid_term_break_end": term.get("mid_term_break_end"),
@@ -353,21 +420,30 @@ class SchoolModel:
         db: AsyncIOMotorDatabase, check_date: Optional[date] = None
     ) -> Tuple[bool, str]:
         """Check if a given date is a school day"""
-        if not check_date: check_date = date.today()
+        if not check_date:
+            check_date = date.today()
         calendar = await SchoolModel.get_academic_calendar(db)
-        if not calendar: return False, "No active academic calendar found"
+        if not calendar:
+            return False, "No active academic calendar found"
         check_datetime = datetime.combine(check_date, datetime.min.time())
         in_term = False
         for term in calendar.get("terms", []):
             if term["start_date"] <= check_datetime <= term["end_date"]:
-                in_term = True; break
-        if not in_term: return False, "Date falls outside academic terms"
-        if check_date.weekday() >= 5: return False, "Weekend"
+                in_term = True
+                break
+        if not in_term:
+            return False, "Date falls outside academic terms"
+        if check_date.weekday() >= 5:
+            return False, "Weekend"
         for holiday in calendar.get("holidays", []):
-            holiday_start = holiday["start_date"]; holiday_end = holiday["end_date"]
-            if isinstance(holiday_start, datetime): holiday_start = holiday_start.date()
-            if isinstance(holiday_end, datetime): holiday_end = holiday_end.date()
-            if holiday_start <= check_date <= holiday_end: return False, f"Holiday: {holiday['name']}"
+            holiday_start = holiday["start_date"]
+            holiday_end = holiday["end_date"]
+            if isinstance(holiday_start, datetime):
+                holiday_start = holiday_start.date()
+            if isinstance(holiday_end, datetime):
+                holiday_end = holiday_end.date()
+            if holiday_start <= check_date <= holiday_end:
+                return False, f"Holiday: {holiday['name']}"
         return True, "School day"
 
     # =========================================================================
@@ -387,33 +463,52 @@ class SchoolModel:
         if event_type not in SchoolModel.EVENT_TYPES:
             return False, f"Invalid event type. Must be: {', '.join(SchoolModel.EVENT_TYPES)}", None
         if isinstance(start_date, str):
-            try: start_date = datetime.strptime(start_date, "%Y-%m-%d")
-            except ValueError: return False, "Invalid start date format. Use YYYY-MM-DD", None
+            try:
+                start_date = datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                return False, "Invalid start date format. Use YYYY-MM-DD", None
         if isinstance(end_date, str):
-            try: end_date = datetime.strptime(end_date, "%Y-%m-%d")
-            except ValueError: return False, "Invalid end date format. Use YYYY-MM-DD", None
-        if end_date < start_date: return False, "End date cannot be before start date", None
+            try:
+                end_date = datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError:
+                return False, "Invalid end date format. Use YYYY-MM-DD", None
+        if end_date < start_date:
+            return False, "End date cannot be before start date", None
         
         today = datetime.now()
-        if today < start_date: status = "upcoming"
-        elif start_date <= today <= end_date: status = "ongoing"
-        else: status = "completed"
+        if today < start_date:
+            status = "upcoming"
+        elif start_date <= today <= end_date:
+            status = "ongoing"
+        else:
+            status = "completed"
         
         event = {
-            "title": title.strip(), "event_type": event_type, "description": description,
-            "start_date": start_date, "end_date": end_date,
-            "location": location or "School Premises", "organizer": organizer or "School Administration",
-            "target_audience": target_audience or ["all"], "status": status,
-            "max_participants": max_participants, "current_participants": 0, "budget": budget,
+            "title": title.strip(),
+            "event_type": event_type,
+            "description": description,
+            "start_date": start_date,
+            "end_date": end_date,
+            "location": location or "School Premises",
+            "organizer": organizer or "School Administration",
+            "target_audience": target_audience or ["all"],
+            "status": status,
+            "max_participants": max_participants,
+            "current_participants": 0,
+            "budget": budget,
             "attachments": attachments or [],
             "created_by": ObjectId(created_by) if created_by else None,
-            "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
         }
         try:
             result = await db.school_events.insert_one(event)
             event["_id"] = str(result.inserted_id)
             logger.info(f"School event created: {title}")
-            await SchoolModel._log_audit(db, "school_events", str(result.inserted_id), "INSERT", created_by, {"title": title, "event_type": event_type})
+            await SchoolModel._log_audit(
+                db, "school_events", str(result.inserted_id), "INSERT", created_by,
+                {"title": title, "event_type": event_type}
+            )
             return True, "Event created successfully", event
         except Exception as e:
             logger.error(f"Failed to create event: {e}")
@@ -427,12 +522,15 @@ class SchoolModel:
         """Update a school event"""
         protected = ["_id", "created_at", "created_by", "current_participants"]
         update_data = {k: v for k, v in update_data.items() if k not in protected}
-        if not update_data: return False, "No valid fields to update", None
+        if not update_data:
+            return False, "No valid fields to update", None
         
         for date_field in ["start_date", "end_date"]:
             if date_field in update_data and isinstance(update_data[date_field], str):
-                try: update_data[date_field] = datetime.strptime(update_data[date_field], "%Y-%m-%d")
-                except ValueError: return False, f"Invalid {date_field} format", None
+                try:
+                    update_data[date_field] = datetime.strptime(update_data[date_field], "%Y-%m-%d")
+                except ValueError:
+                    return False, f"Invalid {date_field} format", None
         
         if "start_date" in update_data or "end_date" in update_data:
             event = await db.school_events.find_one({"_id": ObjectId(event_id)})
@@ -440,18 +538,25 @@ class SchoolModel:
                 start = update_data.get("start_date", event["start_date"])
                 end = update_data.get("end_date", event["end_date"])
                 today = datetime.now()
-                if today < start: update_data["status"] = "upcoming"
-                elif start <= today <= end: update_data["status"] = "ongoing"
-                else: update_data["status"] = "completed"
+                if today < start:
+                    update_data["status"] = "upcoming"
+                elif start <= today <= end:
+                    update_data["status"] = "ongoing"
+                else:
+                    update_data["status"] = "completed"
         
         update_data["updated_at"] = datetime.utcnow()
         try:
             result = await db.school_events.find_one_and_update(
-                {"_id": ObjectId(event_id)}, {"$set": update_data}, return_document=ReturnDocument.AFTER
+                {"_id": ObjectId(event_id)},
+                {"$set": update_data},
+                return_document=ReturnDocument.AFTER
             )
-            if not result: return False, "Event not found", None
+            if not result:
+                return False, "Event not found", None
             result["_id"] = str(result["_id"])
-            if result.get("created_by"): result["created_by"] = str(result["created_by"])
+            if result.get("created_by"):
+                result["created_by"] = str(result["created_by"])
             return True, "Event updated successfully", result
         except Exception as e:
             logger.error(f"Failed to update event: {e}")
@@ -466,14 +571,20 @@ class SchoolModel:
     ) -> Dict[str, Any]:
         """Get school events with filtering"""
         filter_query = {}
-        if event_type: filter_query["event_type"] = event_type
-        if status: filter_query["status"] = status
-        if upcoming_only: filter_query["status"] = {"$in": ["upcoming", "ongoing"]}
+        if event_type:
+            filter_query["event_type"] = event_type
+        if status:
+            filter_query["status"] = status
+        if upcoming_only:
+            filter_query["status"] = {"$in": ["upcoming", "ongoing"]}
         if start_date or end_date:
             date_filter = {}
-            if start_date: date_filter["$gte"] = datetime.combine(start_date, datetime.min.time())
-            if end_date: date_filter["$lte"] = datetime.combine(end_date, datetime.max.time())
-            if date_filter: filter_query["start_date"] = date_filter
+            if start_date:
+                date_filter["$gte"] = datetime.combine(start_date, datetime.min.time())
+            if end_date:
+                date_filter["$lte"] = datetime.combine(end_date, datetime.max.time())
+            if date_filter:
+                filter_query["start_date"] = date_filter
         if search:
             filter_query["$or"] = [
                 {"title": {"$regex": search, "$options": "i"}},
@@ -482,13 +593,20 @@ class SchoolModel:
             ]
         
         total = await db.school_events.count_documents(filter_query)
-        events = await db.school_events.find(filter_query).sort("start_date", 1).skip(skip).limit(limit).to_list(length=limit)
+        events = await db.school_events.find(filter_query).sort(
+            "start_date", 1
+        ).skip(skip).limit(limit).to_list(length=limit)
+        
         for event in events:
             event["_id"] = str(event["_id"])
-            if event.get("created_by"): event["created_by"] = str(event["created_by"])
+            if event.get("created_by"):
+                event["created_by"] = str(event["created_by"])
         
         return {
-            "events": events, "total": total, "limit": limit, "skip": skip,
+            "events": events,
+            "total": total,
+            "limit": limit,
+            "skip": skip,
             "page": (skip // limit) + 1 if limit > 0 else 1,
             "total_pages": (total + limit - 1) // limit if limit > 0 else 1
         }
@@ -501,46 +619,251 @@ class SchoolModel:
     async def add_board_member(
         db: AsyncIOMotorDatabase, first_name: str, last_name: str, position: str,
         phone_number: str, email: Optional[str] = None, address: Optional[str] = None,
-        valid_from: Optional[Union[date, str]] = None, valid_until: Optional[Union[date, str]] = None,
-        photo_url: Optional[str] = None, bio: Optional[str] = None, created_by: Optional[str] = None
+        middle_name: Optional[str] = None,
+        valid_from: Optional[Union[date, str]] = None,
+        valid_until: Optional[Union[date, str]] = None,
+        photo_url: Optional[str] = None, bio: Optional[str] = None,
+        created_by: Optional[str] = None
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-        """Add a school board member"""
+        """Add a school board member with photo support"""
         if position not in SchoolModel.BOARD_POSITIONS:
             return False, f"Invalid position. Must be: {', '.join(SchoolModel.BOARD_POSITIONS)}", None
+        
         if isinstance(valid_from, str):
-            try: valid_from = datetime.strptime(valid_from, "%Y-%m-%d")
-            except ValueError: return False, "Invalid valid_from date format", None
+            try:
+                valid_from = datetime.strptime(valid_from, "%Y-%m-%d")
+            except ValueError:
+                return False, "Invalid valid_from date format. Use YYYY-MM-DD", None
+        
         if isinstance(valid_until, str):
-            try: valid_until = datetime.strptime(valid_until, "%Y-%m-%d")
-            except ValueError: return False, "Invalid valid_until date format", None
-        if not valid_from: valid_from = datetime.utcnow()
+            try:
+                valid_until = datetime.strptime(valid_until, "%Y-%m-%d")
+            except ValueError:
+                return False, "Invalid valid_until date format. Use YYYY-MM-DD", None
+        
+        if not valid_from:
+            valid_from = datetime.utcnow()
+        
+        # Generate unique board member ID
+        board_member_id = await SchoolModel._generate_board_member_id(db)
         
         member = {
-            "first_name": first_name.strip().title(), "last_name": last_name.strip().title(),
-            "position": position, "phone_number": phone_number,
-            "email": email.lower().strip() if email else None, "address": address,
-            "valid_from": valid_from, "valid_until": valid_until,
-            "photo_url": photo_url, "bio": bio, "status": "active",
+            "board_member_id": board_member_id,
+            "first_name": first_name.strip().title(),
+            "last_name": last_name.strip().title(),
+            "middle_name": middle_name.strip().title() if middle_name else None,
+            "position": position,
+            "position_order": SchoolModel.BOARD_POSITION_ORDER.get(position, 5),
+            "phone_number": phone_number,
+            "email": email.lower().strip() if email else None,
+            "address": address,
+            "valid_from": valid_from,
+            "valid_until": valid_until,
+            "photo_url": photo_url,
+            "bio": bio,
+            "status": "active",
             "created_by": ObjectId(created_by) if created_by else None,
-            "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
         }
+        
+        # Remove None values for optional fields
+        member = {k: v for k, v in member.items() if v is not None or k in [
+            "middle_name", "address", "photo_url", "bio", "valid_until"
+        ]}
+        
         try:
             result = await db.board_members.insert_one(member)
             member["_id"] = str(result.inserted_id)
-            return True, "Board member added successfully", member
+            logger.info(f"Board member added: {board_member_id} - {first_name} {last_name}")
+            await SchoolModel._log_audit(
+                db, "board_members", str(result.inserted_id), "INSERT", created_by,
+                {"board_member_id": board_member_id, "position": position}
+            )
+            return True, f"Board member added successfully (ID: {board_member_id})", member
         except Exception as e:
             logger.error(f"Failed to add board member: {e}")
             return False, f"Failed to add board member: {str(e)}", None
     
     @staticmethod
-    async def get_board_members(db: AsyncIOMotorDatabase, status: str = "active") -> List[Dict[str, Any]]:
-        """Get all board members"""
-        filter_query = {"status": status} if status else {}
-        members = await db.board_members.find(filter_query).sort([("position_order", 1), ("last_name", 1)]).to_list(length=None)
+    async def update_board_member(
+        db: AsyncIOMotorDatabase, member_id: str, update_data: Dict[str, Any],
+        updated_by: Optional[str] = None
+    ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+        """Update a board member"""
+        protected = ["_id", "board_member_id", "created_at", "created_by"]
+        update_data = {k: v for k, v in update_data.items() if k not in protected}
+        
+        if not update_data:
+            return False, "No valid fields to update", None
+        
+        if "position" in update_data:
+            if update_data["position"] not in SchoolModel.BOARD_POSITIONS:
+                return False, f"Invalid position. Must be: {', '.join(SchoolModel.BOARD_POSITIONS)}", None
+            update_data["position_order"] = SchoolModel.BOARD_POSITION_ORDER.get(
+                update_data["position"], 5
+            )
+        
+        if "status" in update_data:
+            if update_data["status"] not in SchoolModel.BOARD_MEMBER_STATUSES:
+                return False, f"Invalid status. Must be: {', '.join(SchoolModel.BOARD_MEMBER_STATUSES)}", None
+        
+        for date_field in ["valid_from", "valid_until"]:
+            if date_field in update_data and isinstance(update_data[date_field], str):
+                try:
+                    update_data[date_field] = datetime.strptime(update_data[date_field], "%Y-%m-%d")
+                except ValueError:
+                    return False, f"Invalid {date_field} format. Use YYYY-MM-DD", None
+        
+        update_data["updated_at"] = datetime.utcnow()
+        
+        try:
+            result = await db.board_members.find_one_and_update(
+                {"_id": ObjectId(member_id)},
+                {"$set": update_data},
+                return_document=ReturnDocument.AFTER
+            )
+            if not result:
+                return False, "Board member not found", None
+            
+            result["_id"] = str(result["_id"])
+            if result.get("created_by"):
+                result["created_by"] = str(result["created_by"])
+            
+            await SchoolModel._log_audit(
+                db, "board_members", member_id, "UPDATE", updated_by, update_data
+            )
+            return True, "Board member updated successfully", result
+        except Exception as e:
+            logger.error(f"Failed to update board member: {e}")
+            return False, f"Failed to update board member: {str(e)}", None
+    
+    @staticmethod
+    async def get_board_member(
+        db: AsyncIOMotorDatabase, member_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get a single board member by ID"""
+        try:
+            member = await db.board_members.find_one({"_id": ObjectId(member_id)})
+            if member:
+                member["_id"] = str(member["_id"])
+                if member.get("created_by"):
+                    member["created_by"] = str(member["created_by"])
+            return member
+        except Exception as e:
+            logger.error(f"Failed to get board member: {e}")
+            return None
+    
+    @staticmethod
+    async def get_board_member_by_code(
+        db: AsyncIOMotorDatabase, board_member_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get a board member by their member ID code (e.g., HNS-BOD-001)"""
+        try:
+            member = await db.board_members.find_one({"board_member_id": board_member_id})
+            if member:
+                member["_id"] = str(member["_id"])
+                if member.get("created_by"):
+                    member["created_by"] = str(member["created_by"])
+            return member
+        except Exception as e:
+            logger.error(f"Failed to get board member by code: {e}")
+            return None
+    
+    @staticmethod
+    async def get_board_members(
+        db: AsyncIOMotorDatabase, status: Optional[str] = "active",
+        position: Optional[str] = None, limit: int = 50, skip: int = 0
+    ) -> Dict[str, Any]:
+        """Get board members with filtering and pagination"""
+        filter_query = {}
+        if status:
+            filter_query["status"] = status
+        if position:
+            filter_query["position"] = position
+        
+        total = await db.board_members.count_documents(filter_query)
+        members = await db.board_members.find(filter_query).sort(
+            [("position_order", 1), ("last_name", 1)]
+        ).skip(skip).limit(limit).to_list(length=limit)
+        
         for member in members:
             member["_id"] = str(member["_id"])
-            if member.get("created_by"): member["created_by"] = str(member["created_by"])
-        return members
+            if member.get("created_by"):
+                member["created_by"] = str(member["created_by"])
+        
+        return {
+            "members": members,
+            "total": total,
+            "limit": limit,
+            "skip": skip
+        }
+    
+    @staticmethod
+    async def remove_board_member(
+        db: AsyncIOMotorDatabase, member_id: str, removed_by: Optional[str] = None
+    ) -> Tuple[bool, str]:
+        """Remove a board member (set status to inactive)"""
+        result = await db.board_members.update_one(
+            {"_id": ObjectId(member_id)},
+            {"$set": {
+                "status": "inactive",
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        if result.modified_count > 0:
+            await SchoolModel._log_audit(
+                db, "board_members", member_id, "DEACTIVATE", removed_by,
+                {"status": "inactive"}
+            )
+            return True, "Board member deactivated successfully"
+        return False, "Board member not found"
+    
+    @staticmethod
+    async def get_board_statistics(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+        """Get board member statistics"""
+        pipeline = [
+            {"$facet": {
+                "total": [{"$match": {"status": "active"}}, {"$count": "count"}],
+                "by_position": [
+                    {"$match": {"status": "active"}},
+                    {"$group": {"_id": "$position", "count": {"$sum": 1}}}
+                ],
+                "by_status": [
+                    {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+                ]
+            }}
+        ]
+        
+        results = await db.board_members.aggregate(pipeline).to_list(length=1)
+        if not results:
+            return {"total_active": 0, "by_position": {}, "by_status": {}}
+        
+        stats = results[0]
+        return {
+            "total_active": stats["total"][0]["count"] if stats["total"] else 0,
+            "by_position": {
+                item["_id"]: item["count"] for item in stats["by_position"]
+            },
+            "by_status": {
+                item["_id"]: item["count"] for item in stats["by_status"]
+            }
+        }
+    
+    @staticmethod
+    async def _generate_board_member_id(db: AsyncIOMotorDatabase) -> str:
+        """Generate a unique board member ID (HNS-BOD-XXX)"""
+        last_member = await db.board_members.find_one(
+            sort=[("board_member_id", -1)]
+        )
+        if last_member and last_member.get("board_member_id"):
+            try:
+                new_number = int(last_member["board_member_id"].split("-")[-1]) + 1
+            except (ValueError, IndexError):
+                new_number = 1
+        else:
+            new_number = 1
+        return f"HNS-BOD-{new_number:03d}"
 
     # =========================================================================
     # NETWORK MEMBERSHIPS MANAGEMENT
@@ -550,31 +873,48 @@ class SchoolModel:
     async def add_network_membership(
         db: AsyncIOMotorDatabase, organization_name: str, membership_type: str,
         contact_person: str, contact_email: str, contact_phone: str,
-        start_date: Optional[Union[date, str]] = None, end_date: Optional[Union[date, str]] = None,
+        start_date: Optional[Union[date, str]] = None,
+        end_date: Optional[Union[date, str]] = None,
         benefits: Optional[str] = None, website: Optional[str] = None,
         created_by: Optional[str] = None
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """Add a network membership or partnership"""
         if membership_type not in SchoolModel.MEMBERSHIP_TYPES:
             return False, f"Invalid membership type. Must be: {', '.join(SchoolModel.MEMBERSHIP_TYPES)}", None
+        
         if isinstance(start_date, str):
-            try: start_date = datetime.strptime(start_date, "%Y-%m-%d")
-            except ValueError: return False, "Invalid start date format", None
+            try:
+                start_date = datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                return False, "Invalid start date format", None
+        
         if isinstance(end_date, str):
-            try: end_date = datetime.strptime(end_date, "%Y-%m-%d")
-            except ValueError: return False, "Invalid end date format", None
-        if not start_date: start_date = datetime.utcnow()
+            try:
+                end_date = datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError:
+                return False, "Invalid end date format", None
+        
+        if not start_date:
+            start_date = datetime.utcnow()
         
         status = "active"
-        if end_date and end_date < datetime.utcnow(): status = "expired"
+        if end_date and end_date < datetime.utcnow():
+            status = "expired"
         
         membership = {
-            "organization_name": organization_name.strip(), "membership_type": membership_type,
-            "contact_person": contact_person, "contact_email": contact_email.lower().strip(),
-            "contact_phone": contact_phone, "website": website,
-            "start_date": start_date, "end_date": end_date, "benefits": benefits,
-            "status": status, "created_by": ObjectId(created_by) if created_by else None,
-            "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
+            "organization_name": organization_name.strip(),
+            "membership_type": membership_type,
+            "contact_person": contact_person,
+            "contact_email": contact_email.lower().strip(),
+            "contact_phone": contact_phone,
+            "website": website,
+            "start_date": start_date,
+            "end_date": end_date,
+            "benefits": benefits,
+            "status": status,
+            "created_by": ObjectId(created_by) if created_by else None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
         }
         try:
             result = await db.network_memberships.insert_one(membership)
@@ -586,16 +926,24 @@ class SchoolModel:
     
     @staticmethod
     async def get_network_memberships(
-        db: AsyncIOMotorDatabase, status: Optional[str] = None, membership_type: Optional[str] = None
+        db: AsyncIOMotorDatabase, status: Optional[str] = None,
+        membership_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Get network memberships with filtering"""
         filter_query = {}
-        if status: filter_query["status"] = status
-        if membership_type: filter_query["membership_type"] = membership_type
-        memberships = await db.network_memberships.find(filter_query).sort("organization_name", 1).to_list(length=None)
+        if status:
+            filter_query["status"] = status
+        if membership_type:
+            filter_query["membership_type"] = membership_type
+        
+        memberships = await db.network_memberships.find(filter_query).sort(
+            "organization_name", 1
+        ).to_list(length=None)
+        
         for membership in memberships:
             membership["_id"] = str(membership["_id"])
-            if membership.get("created_by"): membership["created_by"] = str(membership["created_by"])
+            if membership.get("created_by"):
+                membership["created_by"] = str(membership["created_by"])
         return memberships
 
     # =========================================================================
@@ -609,33 +957,49 @@ class SchoolModel:
         description: Optional[str] = None
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """Create a strategic plan"""
-        if year_from >= year_to: return False, "End year must be greater than start year", None
-        if year_from < 2020: return False, "Start year must be 2020 or later", None
+        if year_from >= year_to:
+            return False, "End year must be greater than start year", None
+        if year_from < 2020:
+            return False, "Start year must be 2020 or later", None
         
         validated_areas = []
         total_budget = 0
         for area in thematic_areas:
             if not area.get("name") or not area.get("objectives"):
                 return False, "Each thematic area must have a name and objectives", None
+            
             validated_objectives = []
             for obj in area["objectives"]:
-                if not obj.get("objective"): return False, "Each objective must have a description", None
+                if not obj.get("objective"):
+                    return False, "Each objective must have a description", None
                 validated_objectives.append({
-                    "objective": obj["objective"], "activities": obj.get("activities", []),
-                    "indicators": obj.get("indicators", []), "budget": obj.get("budget", 0),
+                    "objective": obj["objective"],
+                    "activities": obj.get("activities", []),
+                    "indicators": obj.get("indicators", []),
+                    "budget": obj.get("budget", 0),
                     "responsible_party": obj.get("responsible_party", ""),
-                    "timeline": obj.get("timeline", ""), "status": obj.get("status", "planned"),
+                    "timeline": obj.get("timeline", ""),
+                    "status": obj.get("status", "planned"),
                     "progress": obj.get("progress", 0)
                 })
                 total_budget += obj.get("budget", 0)
-            validated_areas.append({"name": area["name"], "objectives": validated_objectives})
+            
+            validated_areas.append({
+                "name": area["name"],
+                "objectives": validated_objectives
+            })
         
         plan = {
-            "year_from": year_from, "year_to": year_to, "period": f"{year_from}-{year_to}",
-            "description": description, "thematic_areas": validated_areas,
-            "total_budget": total_budget, "status": "active",
+            "year_from": year_from,
+            "year_to": year_to,
+            "period": f"{year_from}-{year_to}",
+            "description": description,
+            "thematic_areas": validated_areas,
+            "total_budget": total_budget,
+            "status": "active",
             "created_by": ObjectId(created_by) if created_by else None,
-            "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
         }
         try:
             result = await db.strategic_plans.insert_one(plan)
@@ -646,19 +1010,30 @@ class SchoolModel:
             return False, f"Failed to create plan: {str(e)}", None
     
     @staticmethod
-    async def get_strategic_plans(db: AsyncIOMotorDatabase, status: str = "active") -> List[Dict[str, Any]]:
+    async def get_strategic_plans(
+        db: AsyncIOMotorDatabase, status: str = "active"
+    ) -> List[Dict[str, Any]]:
         """Get strategic plans"""
-        plans = await db.strategic_plans.find({"status": status} if status else {}).sort("year_from", -1).to_list(length=None)
+        filter_query = {"status": status} if status else {}
+        plans = await db.strategic_plans.find(filter_query).sort(
+            "year_from", -1
+        ).to_list(length=None)
+        
         for plan in plans:
             plan["_id"] = str(plan["_id"])
-            if plan.get("created_by"): plan["created_by"] = str(plan["created_by"])
+            if plan.get("created_by"):
+                plan["created_by"] = str(plan["created_by"])
             if plan.get("thematic_areas"):
-                total_objectives = 0; completed_objectives = 0
+                total_objectives = 0
+                completed_objectives = 0
                 for area in plan["thematic_areas"]:
                     for obj in area.get("objectives", []):
                         total_objectives += 1
-                        if obj.get("status") == "completed": completed_objectives += 1
-                plan["progress_percentage"] = round((completed_objectives / total_objectives * 100) if total_objectives else 0, 2)
+                        if obj.get("status") == "completed":
+                            completed_objectives += 1
+                plan["progress_percentage"] = round(
+                    (completed_objectives / total_objectives * 100) if total_objectives else 0, 2
+                )
         return plans
 
     # =========================================================================
@@ -679,14 +1054,21 @@ class SchoolModel:
     ) -> Tuple[bool, str]:
         """Set or update a system setting"""
         setting = {
-            "setting_key": setting_key, "setting_value": setting_value,
-            "setting_group": setting_group, "description": description,
+            "setting_key": setting_key,
+            "setting_value": setting_value,
+            "setting_group": setting_group,
+            "description": description,
             "updated_by": ObjectId(updated_by) if updated_by else None,
             "updated_at": datetime.utcnow()
         }
         try:
-            result = await db.system_settings.update_one({"setting_key": setting_key}, {"$set": setting}, upsert=True)
-            return True, f"Setting '{setting_key}' {'updated' if result.modified_count > 0 else 'created'} successfully"
+            result = await db.system_settings.update_one(
+                {"setting_key": setting_key},
+                {"$set": setting},
+                upsert=True
+            )
+            action = "updated" if result.modified_count > 0 else "created"
+            return True, f"Setting '{setting_key}' {action} successfully"
         except Exception as e:
             logger.error(f"Failed to set system setting: {e}")
             return False, f"Failed to update setting: {str(e)}"
@@ -698,10 +1080,12 @@ class SchoolModel:
         """Get all system settings, optionally filtered by group"""
         filter_query = {"setting_group": setting_group} if setting_group else {}
         settings = await db.system_settings.find(filter_query).to_list(length=None)
+        
         grouped_settings = {}
         for setting in settings:
             group = setting.get("setting_group", "general")
-            if group not in grouped_settings: grouped_settings[group] = {}
+            if group not in grouped_settings:
+                grouped_settings[group] = {}
             grouped_settings[group][setting["setting_key"]] = setting["setting_value"]
         return grouped_settings
 
@@ -716,14 +1100,18 @@ class SchoolModel:
         total_teachers = await db.teachers.count_documents({"status": "active"})
         total_classes = await db.classes.count_documents({})
         total_staff = await db.users.count_documents({"status": "active"})
+        total_board_members = await db.board_members.count_documents({"status": "active"})
         
         student_types = await db.students.aggregate([
-            {"$match": {"status": "active"}}, {"$group": {"_id": "$student_type", "count": {"$sum": 1}}}
+            {"$match": {"status": "active"}},
+            {"$group": {"_id": "$student_type", "count": {"$sum": 1}}}
         ]).to_list(length=None)
         
         today = datetime.combine(date.today(), datetime.min.time())
         today_attendance = await db.attendance.count_documents({"date": today})
-        upcoming_events = await db.school_events.count_documents({"status": {"$in": ["upcoming", "ongoing"]}})
+        upcoming_events = await db.school_events.count_documents(
+            {"status": {"$in": ["upcoming", "ongoing"]}}
+        )
         
         academic_year = SchoolModel._get_current_academic_year()
         financial_summary = await db.financial_records.aggregate([
@@ -731,17 +1119,38 @@ class SchoolModel:
             {"$group": {"_id": "$transaction_type", "total": {"$sum": "$amount"}}}
         ]).to_list(length=None)
         
-        income = 0; expenses = 0
+        income = 0
+        expenses = 0
         for item in financial_summary:
-            if item["_id"] == "income": income = item["total"]
-            elif item["_id"] == "expense": expenses = item["total"]
+            if item["_id"] == "income":
+                income = item["total"]
+            elif item["_id"] == "expense":
+                expenses = item["total"]
         
         return {
-            "students": {"total_active": total_students, "by_type": {item["_id"]: item["count"] for item in student_types}},
-            "staff": {"total_teachers": total_teachers, "total_staff": total_staff, "total_classes": total_classes},
-            "attendance": {"today_marked": today_attendance, "attendance_rate": round((today_attendance / total_students * 100) if total_students else 0, 2)},
+            "students": {
+                "total_active": total_students,
+                "by_type": {item["_id"]: item["count"] for item in student_types}
+            },
+            "staff": {
+                "total_teachers": total_teachers,
+                "total_staff": total_staff,
+                "total_classes": total_classes,
+                "total_board_members": total_board_members
+            },
+            "attendance": {
+                "today_marked": today_attendance,
+                "attendance_rate": round(
+                    (today_attendance / total_students * 100) if total_students else 0, 2
+                )
+            },
             "events": {"upcoming": upcoming_events},
-            "financial": {"academic_year": academic_year, "total_income": round(income, 2), "total_expenses": round(expenses, 2), "balance": round(income - expenses, 2)}
+            "financial": {
+                "academic_year": academic_year,
+                "total_income": round(income, 2),
+                "total_expenses": round(expenses, 2),
+                "balance": round(income - expenses, 2)
+            }
         }
 
     # =========================================================================
@@ -770,18 +1179,24 @@ class SchoolModel:
         Breaks: August, December, January
         """
         month = datetime.now().month
-        if 2 <= month <= 4: return "Term 1"
-        elif 5 <= month <= 7: return "Term 2"
-        elif 9 <= month <= 11: return "Term 3"
-        elif month == 8: return "Term 2 Break"
-        else: return "Annual Break"
+        if 2 <= month <= 4:
+            return "Term 1"
+        elif 5 <= month <= 7:
+            return "Term 2"
+        elif 9 <= month <= 11:
+            return "Term 3"
+        elif month == 8:
+            return "Term 2 Break"
+        else:
+            return "Annual Break"
     
     @staticmethod
     def _validate_academic_year(year_str: str) -> bool:
         """Validate academic year format (YYYY/YYYY)"""
         try:
             parts = year_str.split("/")
-            if len(parts) != 2: return False
+            if len(parts) != 2:
+                return False
             year1, year2 = int(parts[0]), int(parts[1])
             return year2 == year1 + 1 and year1 >= 2020
         except (ValueError, IndexError):
@@ -795,10 +1210,12 @@ class SchoolModel:
         """Log school operations to audit log"""
         try:
             await db.audit_log.insert_one({
-                "table_name": table_name, "record_id": record_id,
+                "table_name": table_name,
+                "record_id": record_id,
                 "operation": operation,
                 "changed_by": ObjectId(changed_by) if changed_by else None,
-                "new_values": details, "changed_at": datetime.utcnow(),
+                "new_values": details,
+                "changed_at": datetime.utcnow(),
                 "academic_year": SchoolModel._get_current_academic_year(),
                 "term": SchoolModel._get_current_term()
             })
