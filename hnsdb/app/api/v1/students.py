@@ -1,8 +1,11 @@
 """Students API - Production Ready"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path, Request, UploadFile, File, Form
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 from bson import ObjectId
+import os
+import shutil
+from pathlib import Path as FilePath
 
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
@@ -11,6 +14,10 @@ from app.schemas.common import SuccessResponse
 from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
+
+# Upload directory for student photos
+UPLOAD_DIR = FilePath("uploads/students")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _calculate_age(dob) -> int:
@@ -343,6 +350,287 @@ async def permanently_delete_student(
         return {"success": True, "message": f"Student '{student_name}' permanently deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete student: {str(e)}")
+
+
+# =========================================================================
+# PHOTO UPLOAD
+# =========================================================================
+
+@router.post("/{student_id}/photo")
+async def upload_student_photo(
+    student_id: str = Path(...),
+    file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Upload student photo"""
+    db = get_database()
+    
+    sid = _safe_objectid(student_id)
+    if not sid:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+    
+    student = await db.students.find_one({"_id": sid})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/jpg", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Invalid file type. Allowed: JPEG, PNG, WebP")
+    
+    # Validate file size (max 2MB)
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size: 2MB")
+    
+    # Generate unique filename
+    file_extension = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"{student_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.{file_extension}"
+    file_path = UPLOAD_DIR / filename
+    
+    # Save file
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    
+    # Update student record with photo URL
+    photo_url = f"/uploads/students/{filename}"
+    await db.students.update_one(
+        {"_id": sid},
+        {"$set": {"photo_url": photo_url, "updated_at": datetime.utcnow()}}
+    )
+    
+    # Delete old photo if exists
+    old_photo = student.get("photo_url", "")
+    if old_photo and old_photo.startswith("/uploads/students/"):
+        old_path = FilePath(old_photo.lstrip("/"))
+        if old_path.exists():
+            try:
+                old_path.unlink()
+            except Exception:
+                pass
+    
+    return {
+        "success": True,
+        "message": "Photo uploaded successfully",
+        "data": {"photo_url": photo_url}
+    }
+
+
+@router.delete("/{student_id}/photo")
+async def delete_student_photo(
+    student_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete student photo"""
+    db = get_database()
+    
+    sid = _safe_objectid(student_id)
+    if not sid:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+    
+    student = await db.students.find_one({"_id": sid})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    old_photo = student.get("photo_url", "")
+    if old_photo and old_photo.startswith("/uploads/students/"):
+        old_path = FilePath(old_photo.lstrip("/"))
+        if old_path.exists():
+            try:
+                old_path.unlink()
+            except Exception:
+                pass
+    
+    await db.students.update_one(
+        {"_id": sid},
+        {"$set": {"photo_url": None, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"success": True, "message": "Photo deleted successfully"}
+
+
+# =========================================================================
+# EXAM ENTRY ROUTES (Testimonials, PLE, CSE)
+# =========================================================================
+
+@router.get("/{student_id}/exam-entry")
+async def get_student_exam_entry(
+    student_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get exam entry (testimonial/PLE/CSE) for a student"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    sid = _safe_objectid(student_id)
+    if not sid:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+    
+    success, message, entry = await ExamModel.get_exam_entry(db, student_id)
+    
+    if not success:
+        return {"success": True, "message": message, "data": None}
+    
+    return {"success": True, "message": message, "data": entry}
+
+
+@router.post("/{student_id}/exam-entry")
+async def create_or_update_exam_entry(
+    student_id: str = Path(...),
+    request: Request = None,
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Create or update exam entry for a student (testimonial/PLE/CSE)"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    sid = _safe_objectid(student_id)
+    if not sid:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+    
+    # Check student exists
+    student = await db.students.find_one({"_id": sid})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    exam_type = body.get("exam_type", "Testimonial")
+    index_number = body.get("index_number", "")
+    centre_number = body.get("centre_number", "")
+    academic_year = body.get("academic_year", "")
+    subjects = body.get("subjects", [])
+    section = body.get("section", "")
+    
+    # Validate required fields
+    if not index_number:
+        raise HTTPException(status_code=400, detail="Index number is required")
+    if not centre_number:
+        raise HTTPException(status_code=400, detail="Centre number is required")
+    if not academic_year:
+        raise HTTPException(status_code=400, detail="Academic year is required")
+    if not subjects:
+        raise HTTPException(status_code=400, detail="At least one subject is required")
+    
+    success, message, result = await ExamModel.create_exam_entry(
+        db=db,
+        student_id=student_id,
+        exam_type=exam_type,
+        index_number=index_number,
+        centre_number=centre_number,
+        academic_year=academic_year,
+        subjects=subjects,
+        section=section,
+        created_by=current_user.get("_id")
+    )
+    
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    
+    return {"success": True, "message": message, "data": result}
+
+
+@router.put("/{student_id}/exam-entry/status")
+async def update_exam_entry_status(
+    student_id: str = Path(...),
+    status: str = Body(..., embed=True),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Update exam entry status (draft, finalized, printed)"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    sid = _safe_objectid(student_id)
+    if not sid:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+    
+    valid_statuses = ["draft", "finalized", "printed"]
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be: {', '.join(valid_statuses)}")
+    
+    success, message, result = await ExamModel.update_exam_entry_status(
+        db=db,
+        student_id=student_id,
+        status=status,
+        verified_by=current_user.get("_id") if status == "finalized" else None
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    
+    return {"success": True, "message": message, "data": result}
+
+
+@router.delete("/{student_id}/exam-entry")
+async def delete_exam_entry(
+    student_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete exam entry"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    sid = _safe_objectid(student_id)
+    if not sid:
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+    
+    success, message = await ExamModel.delete_exam_entry(db, student_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    
+    return {"success": True, "message": message}
+
+
+@router.get("/exam-entries/list")
+async def list_exam_entries(
+    exam_type: Optional[str] = Query(None),
+    academic_year: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """List all exam entries with filtering"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    skip = (page - 1) * limit
+    result = await ExamModel.get_exam_entries(
+        db=db,
+        exam_type=exam_type,
+        academic_year=academic_year,
+        status=status,
+        limit=limit,
+        skip=skip
+    )
+    
+    return {
+        "success": True,
+        "message": "Exam entries retrieved",
+        "data": result
+    }
+
+
+@router.get("/exam-entries/eligible")
+async def get_eligible_students(
+    exam_type: str = Query("Testimonial"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get students eligible for exam entry (P8 and S4)"""
+    db = get_database()
+    from app.models.exam import ExamModel
+    
+    students = await ExamModel.get_students_eligible_for_exam_entry(db, exam_type)
+    
+    return {
+        "success": True,
+        "message": f"Found {len(students)} eligible students",
+        "data": {"students": students, "total": len(students)}
+    }
 
 
 # =========================================================================
