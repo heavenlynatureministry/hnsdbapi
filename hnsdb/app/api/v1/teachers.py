@@ -1,8 +1,9 @@
 """Teachers API - Production Ready"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path, Request, UploadFile, File
 from typing import Optional, Dict, Any
 from datetime import date, datetime
 from bson import ObjectId
+from pathlib import Path as FilePath
 
 from app.core.security import get_current_user, require_role
 from app.core.database import get_database
@@ -11,6 +12,10 @@ from app.schemas.common import SuccessResponse
 from app.utils.helpers import parse_mongo_document
 
 router = APIRouter()
+
+# Upload directory for teacher photos
+UPLOAD_DIR = FilePath("uploads/teachers")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _safe_objectid(value) -> Optional[ObjectId]:
@@ -25,6 +30,10 @@ def _safe_objectid(value) -> Optional[ObjectId]:
     except Exception:
         return None
 
+
+# =========================================================================
+# LIST & SEARCH
+# =========================================================================
 
 @router.get("")
 @router.get("/")
@@ -97,6 +106,10 @@ async def find_available_teachers(
     }
 
 
+# =========================================================================
+# SINGLE TEACHER
+# =========================================================================
+
 @router.get("/{teacher_id}")
 async def get_teacher(
     teacher_id: str = Path(...),
@@ -120,6 +133,103 @@ async def get_teacher(
         "message": "Teacher retrieved",
         "data": teacher
     }
+
+
+# =========================================================================
+# PHOTO UPLOAD
+# =========================================================================
+
+@router.post("/{teacher_id}/photo")
+async def upload_teacher_photo(
+    teacher_id: str = Path(...),
+    file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Upload teacher photo"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(teacher_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid teacher ID")
+    
+    teacher = await db.teachers.find_one({"_id": obj_id})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/jpg", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Invalid file type. Allowed: JPEG, PNG, WebP")
+    
+    # Validate file size (max 2MB)
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size: 2MB")
+    
+    # Generate unique filename
+    file_extension = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"teacher_{teacher_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.{file_extension}"
+    file_path = UPLOAD_DIR / filename
+    
+    # Save file
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    
+    # Update teacher record with photo URL
+    photo_url = f"/uploads/teachers/{filename}"
+    await db.teachers.update_one(
+        {"_id": obj_id},
+        {"$set": {"photo_url": photo_url, "updated_at": datetime.utcnow()}}
+    )
+    
+    # Delete old photo if exists
+    old_photo = teacher.get("photo_url", "")
+    if old_photo and old_photo.startswith("/uploads/teachers/"):
+        old_path = FilePath(old_photo.lstrip("/"))
+        if old_path.exists():
+            try:
+                old_path.unlink()
+            except Exception:
+                pass
+    
+    return {
+        "success": True,
+        "message": "Photo uploaded successfully",
+        "data": {"photo_url": photo_url}
+    }
+
+
+@router.delete("/{teacher_id}/photo")
+async def delete_teacher_photo(
+    teacher_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete teacher photo"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(teacher_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid teacher ID")
+    
+    teacher = await db.teachers.find_one({"_id": obj_id})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    
+    old_photo = teacher.get("photo_url", "")
+    if old_photo and old_photo.startswith("/uploads/teachers/"):
+        old_path = FilePath(old_photo.lstrip("/"))
+        if old_path.exists():
+            try:
+                old_path.unlink()
+            except Exception:
+                pass
+    
+    await db.teachers.update_one(
+        {"_id": obj_id},
+        {"$set": {"photo_url": None, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"success": True, "message": "Photo deleted successfully"}
 
 
 # =========================================================================
