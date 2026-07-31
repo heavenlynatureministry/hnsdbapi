@@ -263,54 +263,295 @@ async def list_board_members(
 ):
     """List board members"""
     db = get_database()
-    members = await db.board_members.find({"status": status}).to_list(length=None)
+    members = await db.board_members.find({"status": status}).sort([("position_order", 1), ("last_name", 1)]).to_list(length=None)
     members = [parse_mongo_document(m) for m in members]
     return {"success": True, "message": "Board members retrieved", "data": {"members": members, "total": len(members)}}
 
 
 @router.post("/board", status_code=201)
 async def add_board_member(
-    member: BoardMemberCreate,
+    request: Request,
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Add board member"""
+    """Add board member with photo support"""
     db = get_database()
-    member_doc = {**member.dict(), "status": "active", "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
-    result = await db.board_members.insert_one(member_doc)
-    member_doc["_id"] = str(result.inserted_id)
-    member_doc = parse_mongo_document(member_doc)
-    return {"success": True, "message": "Board member added", "data": member_doc}
+    from app.models.school import SchoolModel
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    first_name = (body.get('first_name', '') or '').strip()
+    last_name = (body.get('last_name', '') or '').strip()
+    position = (body.get('position', '') or '').strip()
+    phone_number = (body.get('phone_number', '') or '').strip()
+    
+    if not first_name or not last_name:
+        raise HTTPException(status_code=400, detail="First name and last name are required")
+    if not position:
+        raise HTTPException(status_code=400, detail="Position is required")
+    if not phone_number:
+        raise HTTPException(status_code=400, detail="Phone number is required")
+    
+    success, message, result = await SchoolModel.add_board_member(
+        db=db,
+        first_name=first_name,
+        last_name=last_name,
+        position=position,
+        phone_number=phone_number,
+        email=body.get('email'),
+        address=body.get('address'),
+        middle_name=body.get('middle_name'),
+        valid_from=body.get('valid_from'),
+        valid_until=body.get('valid_until'),
+        photo_url=body.get('photo_url'),
+        bio=body.get('bio'),
+        created_by=str(current_user.get("_id", ""))
+    )
+    
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    
+    if result:
+        result = parse_mongo_document(result)
+    
+    return {"success": True, "message": message, "data": result}
+
+
+@router.get("/board/{member_id}")
+async def get_board_member(
+    member_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get single board member"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(member_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid member ID")
+    
+    member = await db.board_members.find_one({"_id": obj_id})
+    if not member:
+        raise HTTPException(status_code=404, detail="Board member not found")
+    
+    member = parse_mongo_document(member)
+    return {"success": True, "message": "Board member retrieved", "data": member}
 
 
 @router.put("/board/{member_id}")
 async def update_board_member(
-    member_id: str = Path(...), member: BoardMemberCreate = Body(...),
+    member_id: str = Path(...),
+    request: Request = None,
     current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
     """Update board member"""
     db = get_database()
-    update_dict = {**member.dict(), "updated_at": datetime.utcnow()}
-    update_dict = _clean_immutable_fields(update_dict)
-    result = await db.board_members.find_one_and_update(
-        {"_id": ObjectId(member_id)}, {"$set": update_dict}, return_document=True
+    from app.models.school import SchoolModel
+    
+    obj_id = _safe_objectid(member_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid member ID")
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    if not body:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    # Clean immutable fields
+    for key in ['_id', 'board_member_id', 'created_at', 'created_by']:
+        body.pop(key, None)
+    
+    success, message, result = await SchoolModel.update_board_member(
+        db=db,
+        member_id=member_id,
+        update_data=body,
+        updated_by=str(current_user.get("_id", ""))
     )
-    if not result: raise HTTPException(status_code=404, detail="Member not found")
-    result = parse_mongo_document(result)
-    return {"success": True, "message": "Board member updated", "data": result}
+    
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    
+    if result:
+        result = parse_mongo_document(result)
+    
+    return {"success": True, "message": message, "data": result}
 
 
 @router.delete("/board/{member_id}")
 async def remove_board_member(
-    member_id: str = Path(...), current_user: Dict[str, Any] = Depends(require_role("admin"))
+    member_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
 ):
-    """Remove board member"""
+    """Remove board member (soft delete)"""
     db = get_database()
-    result = await db.board_members.update_one(
-        {"_id": ObjectId(member_id)}, {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
+    from app.models.school import SchoolModel
+    
+    obj_id = _safe_objectid(member_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid member ID")
+    
+    success, message = await SchoolModel.remove_board_member(
+        db=db,
+        member_id=member_id,
+        removed_by=str(current_user.get("_id", ""))
     )
-    if result.modified_count == 0: raise HTTPException(status_code=404, detail="Member not found")
-    return {"success": True, "message": "Board member removed"}
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Board member not found")
+    
+    return {"success": True, "message": message}
 
+
+@router.delete("/board/{member_id}/permanent")
+async def permanently_delete_board_member(
+    member_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Permanently delete board member"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(member_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid member ID")
+    
+    member = await db.board_members.find_one({"_id": obj_id})
+    if not member:
+        raise HTTPException(status_code=404, detail="Board member not found")
+    
+    member_name = f"{member.get('first_name', '')} {member.get('last_name', '')}"
+    
+    # Delete photo file if exists
+    old_photo = member.get("photo_url", "")
+    if old_photo and old_photo.startswith("/uploads/"):
+        from pathlib import Path as FilePath
+        old_path = FilePath(old_photo.lstrip("/"))
+        if old_path.exists():
+            try:
+                old_path.unlink()
+            except Exception:
+                pass
+    
+    await db.board_members.delete_one({"_id": obj_id})
+    
+    return {"success": True, "message": f"Board member '{member_name}' permanently deleted"}
+
+
+# =========================================================================
+# BOARD MEMBER PHOTO UPLOAD
+# =========================================================================
+
+@router.post("/board/{member_id}/photo")
+async def upload_board_member_photo(
+    member_id: str = Path(...),
+    file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Upload board member photo"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(member_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid member ID")
+    
+    member = await db.board_members.find_one({"_id": obj_id})
+    if not member:
+        raise HTTPException(status_code=404, detail="Board member not found")
+    
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/jpg", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Invalid file type. Allowed: JPEG, PNG, WebP")
+    
+    # Validate file size (max 2MB)
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size: 2MB")
+    
+    # Generate unique filename
+    file_extension = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"board_{member_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.{file_extension}"
+    
+    # Create upload directory if not exists
+    upload_dir = FilePath("uploads/board_members")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / filename
+    
+    # Save file
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    
+    # Update board member record with photo URL
+    photo_url = f"/uploads/board_members/{filename}"
+    await db.board_members.update_one(
+        {"_id": obj_id},
+        {"$set": {"photo_url": photo_url, "updated_at": datetime.utcnow()}}
+    )
+    
+    # Delete old photo if exists
+    old_photo = member.get("photo_url", "")
+    if old_photo and old_photo.startswith("/uploads/board_members/"):
+        old_path = FilePath(old_photo.lstrip("/"))
+        if old_path.exists():
+            try:
+                old_path.unlink()
+            except Exception:
+                pass
+    
+    return {
+        "success": True,
+        "message": "Photo uploaded successfully",
+        "data": {"photo_url": photo_url}
+    }
+
+
+@router.delete("/board/{member_id}/photo")
+async def delete_board_member_photo(
+    member_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin"))
+):
+    """Delete board member photo"""
+    db = get_database()
+    
+    obj_id = _safe_objectid(member_id)
+    if not obj_id:
+        raise HTTPException(status_code=400, detail="Invalid member ID")
+    
+    member = await db.board_members.find_one({"_id": obj_id})
+    if not member:
+        raise HTTPException(status_code=404, detail="Board member not found")
+    
+    old_photo = member.get("photo_url", "")
+    if old_photo and old_photo.startswith("/uploads/board_members/"):
+        old_path = FilePath(old_photo.lstrip("/"))
+        if old_path.exists():
+            try:
+                old_path.unlink()
+            except Exception:
+                pass
+    
+    await db.board_members.update_one(
+        {"_id": obj_id},
+        {"$set": {"photo_url": None, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"success": True, "message": "Photo deleted successfully"}
+
+
+@router.get("/board/statistics")
+async def get_board_statistics(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get board member statistics"""
+    db = get_database()
+    from app.models.school import SchoolModel
+    
+    stats = await SchoolModel.get_board_statistics(db)
+    return {"success": True, "message": "Board statistics retrieved", "data": stats}
+    
 
 # =========================================================================
 # ACADEMIC RESET (ADMIN ONLY)
