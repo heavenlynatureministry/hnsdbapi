@@ -37,7 +37,7 @@ const ClassDetail = lazy(() => import('../pages/classes/ClassDetail'))
 const ClassForm = lazy(() => import('../pages/classes/ClassForm'))
 const ClassSchedule = lazy(() => import('../pages/classes/ClassSchedule'))
 
-// ✅ Timetable
+// Timetable
 const TimetableDashboard = lazy(() => import('../pages/timetable/TimetableDashboard'))
 const TimetableForm = lazy(() => import('../pages/timetable/TimetableForm'))
 
@@ -54,6 +54,13 @@ const ExamForm = lazy(() => import('../pages/exams/ExamForm'))
 const ResultsEntry = lazy(() => import('../pages/exams/ResultsEntry'))
 const ReportCard = lazy(() => import('../pages/exams/ReportCard'))
 const ExamAnalytics = lazy(() => import('../pages/exams/ExamAnalytics'))
+
+// ✅ Testimonial & Certificate
+const TestimonialForm = lazy(() => import('../pages/report/TestimonialForm'))
+const CertificateForm = lazy(() => import('../pages/report/CertificateForm'))
+
+// ✅ ID Cards
+const IDCards = lazy(() => import('../pages/academic/IDCards'))
 
 // Financial
 const TransactionsList = lazy(() => import('../pages/financial/TransactionsList'))
@@ -83,8 +90,9 @@ const UsersList = lazy(() => import('../pages/users/UsersList'))
 const UserForm = lazy(() => import('../pages/users/UserForm'))
 const UserProfile = lazy(() => import('../pages/users/UserProfile'))
 
-// ✅ Verification Page (Public)
+// ✅ Verification Pages (Public)
 const VerifyReport = lazy(() => import('../pages/VerifyReport'))
+const VerifyTestimonial = lazy(() => import('../pages/VerifyTestimonial'))
 
 // =========================================================================
 // LOADING COMPONENT
@@ -108,6 +116,12 @@ function AppRoutes() {
         
         {/* ✅ Report Card Verification - Public */}
         <Route path="/verify-report/:studentId" element={<VerifyReport />} />
+        
+        {/* ✅ Testimonial Verification - Public */}
+        <Route path="/verify/testimonial/:entryId" element={<VerifyTestimonial />} />
+        
+        {/* ✅ ID Card Verification - Public */}
+        <Route path="/verify/id/:type/:personId" element={<VerifyReport />} />
         
         <Route element={<AuthLayout />}>
           <Route
@@ -163,7 +177,7 @@ function AppRoutes() {
             </Route>
 
             {/* --------------------------------------------------------- */}
-            {/* ✅ TIMETABLE */}
+            {/* TIMETABLE */}
             {/* --------------------------------------------------------- */}
             <Route path="/timetable">
               <Route index element={<TimetableDashboard />} />
@@ -191,6 +205,22 @@ function AppRoutes() {
               <Route path=":id/results" element={<ResultsEntry />} />
               <Route path="report-cards" element={<ReportCard />} />
               <Route path="analytics" element={<ExamAnalytics />} />
+            </Route>
+
+            {/* --------------------------------------------------------- */}
+            {/* ✅ REPORT CARDS & CERTIFICATES (NEW) */}
+            {/* --------------------------------------------------------- */}
+            <Route path="/report">
+              <Route index element={<ReportCard />} />
+              <Route path="testimonial/:studentId" element={<TestimonialForm />} />
+              <Route path="certificate/:studentId" element={<CertificateForm />} />
+            </Route>
+
+            {/* --------------------------------------------------------- */}
+            {/* ✅ ID CARDS (NEW) */}
+            {/* --------------------------------------------------------- */}
+            <Route path="/academic">
+              <Route path="id-cards" element={<IDCards />} />
             </Route>
 
             {/* --------------------------------------------------------- */}
@@ -299,6 +329,12 @@ export const routeMetadata = {
   '/exams/:id/edit': { title: 'Edit Exam', parent: 'Exams' },
   '/exams/report-cards': { title: 'Report Cards', parent: 'Exams' },
   '/exams/analytics': { title: 'Exam Analytics', parent: 'Exams' },
+  // ✅ NEW: Report Cards & Certificates
+  '/report': { title: 'Report Cards & Certificates', icon: 'Award' },
+  '/report/testimonial/:studentId': { title: 'Testimonial Form', parent: 'Reports' },
+  '/report/certificate/:studentId': { title: 'Nursery Certificate', parent: 'Reports' },
+  // ✅ NEW: ID Cards
+  '/academic/id-cards': { title: 'ID Cards', icon: 'CreditCard' },
   '/financial': { title: 'Financial', icon: 'DollarSign' },
   '/financial/new': { title: 'New Transaction', parent: 'Financial' },
   '/financial/edit/:id': { title: 'Edit Transaction', parent: 'Financial' },
@@ -319,7 +355,10 @@ export const routeMetadata = {
   '/reports/annual': { title: 'Annual Report', parent: 'Reports' },
   '/users': { title: 'Users', icon: 'Shield' },
   '/profile': { title: 'My Profile', icon: 'UserCircle' },
+  // ✅ Public Verification
   '/verify-report/:studentId': { title: 'Verify Report Card', icon: 'Shield' },
+  '/verify/testimonial/:entryId': { title: 'Verify Testimonial', icon: 'Shield' },
+  '/verify/id/:type/:personId': { title: 'Verify ID Card', icon: 'Shield' },
 }
 
 export default AppRoutes
