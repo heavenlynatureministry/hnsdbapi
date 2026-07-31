@@ -53,6 +53,97 @@ const classesAPI = {
     api.get('/classes/statistics/overview', { params }),
   getLevels: async (params = {}) => api.get('/classes/levels', { params }),
   getPromotionMap: async () => api.get('/classes/promotion-map'),
+
+  // =========================================================================
+  // TESTIMONIAL & CERTIFICATE (convenience methods - delegates to exams API)
+  // =========================================================================
+  
+  /**
+   * Get exam entry for a student in this class
+   * @param {string} studentId - Student ID
+   * @returns {Promise} - Exam entry data
+   */
+  getStudentExamEntry: async (studentId) => {
+    return api.get(`/exams/entries/student/${studentId}`)
+  },
+
+  /**
+   * Save exam entry (testimonial) for a student
+   * @param {string} studentId - Student ID
+   * @param {Object} data - Exam entry data
+   * @returns {Promise}
+   */
+  saveExamEntry: async (studentId, data) => {
+    return api.post('/exams/entries', {
+      student_id: studentId,
+      ...data,
+    })
+  },
+
+  /**
+   * Get students eligible for testimonial (P8/S4) in a specific class
+   * @param {string} [examType='Testimonial'] - 'PLE', 'CSE', or 'Testimonial'
+   * @returns {Promise} - Array of eligible students
+   */
+  getEligibleStudents: async (examType = 'Testimonial') => {
+    return api.get('/exams/entries/eligible', { params: { exam_type: examType } })
+  },
+
+  /**
+   * Generate annual report / certificate for a student
+   * @param {string} studentId - Student ID
+   * @param {string} [academicYear] - Academic year
+   * @returns {Promise}
+   */
+  generateAnnualReport: async (studentId, academicYear = '') => {
+    return api.post('/exams/report-cards/annual', {
+      student_id: studentId,
+      academic_year: academicYear || undefined,
+    })
+  },
+
+  /**
+   * Generate single term report for a student
+   * @param {string} studentId - Student ID
+   * @param {string} term - Term name
+   * @param {string} [academicYear] - Academic year
+   * @returns {Promise}
+   */
+  generateTermReport: async (studentId, term, academicYear = '') => {
+    return api.post('/exams/report-cards/generate', {
+      student_id: studentId,
+      term,
+      academic_year: academicYear || undefined,
+    })
+  },
+
+  /**
+   * List all exam entries with filtering
+   * @param {Object} params - Filter params
+   * @returns {Promise}
+   */
+  listExamEntries: async (params = {}) => {
+    return api.get('/exams/entries/list', { params })
+  },
+
+  /**
+   * Update exam entry status
+   * @param {string} studentId - Student ID
+   * @param {string} status - 'draft', 'finalized', 'printed'
+   * @returns {Promise}
+   */
+  updateExamEntryStatus: async (studentId, status) => {
+    return api.put(`/exams/entries/${studentId}/status`, { status })
+  },
+
+  /**
+   * Verify an exam entry publicly
+   * @param {string} entryId - Exam entry ID
+   * @returns {Promise}
+   */
+  verifyExamEntry: async (entryId) => {
+    return api.get(`/exams/entries/${entryId}/verify`)
+  },
 }
 
 export default classesAPI
